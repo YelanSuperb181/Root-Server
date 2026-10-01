@@ -3,8 +3,10 @@
 // decides how Wisp looks and feels from moment to moment.
 //
 // Physics runs in domain units (the bubble's radius is 1) through
-// @wisp/shared, the same code the server runs. Everything visual (faces,
-// emotes, particles, ripples, cracks, the shatter) is local decoration on top.
+// @wisp/shared, the same code the server runs. Everything visual (the
+// universe, faces, emotes, particles, ripples, cracks, the shatter) is local
+// decoration on top. Inside the bubble the camera holds still; once the
+// bubble bursts it follows Wisp through open space.
 
 import type { MessageEvent, StateEvent, Watcher, WispState } from "@wisp/gen-shared";
 import {
@@ -12,13 +14,15 @@ import {
   Body,
   FLING_COAST,
   FLING_SPEED,
+  MOODS,
   Mood,
   OPEN_FOR,
-  OPEN_HALF_H,
-  OPEN_HALF_W,
   ORB_RADIUS,
+  Point,
+  Reaction,
   SLEEP_AFTER,
   STEP,
+  Situation,
   TRICKS,
   Trick,
   TrickKind,
@@ -29,6 +33,7 @@ import {
   isBursting,
   isSplash,
   isTrick,
+  landingPoint,
   pokeImpulse,
   readMessage,
   sanitize,
@@ -36,6 +41,7 @@ import {
   trickAge,
   wallPush,
 } from "@wisp/shared";
+import { ChromeRects, chromeBurst, chromeReform, measureChrome } from "./chrome";
 import {
   Cam,
   Crack,
@@ -48,24 +54,25 @@ import {
   drawCracks,
   drawRipples,
   drawSpeech,
+  drawThought,
+  easeInOut,
   easeOut,
   glowSprite,
   makeCrack,
+  mixCam,
   rand,
   rgba,
   toScreen,
   toWorld,
 } from "./fx";
 import type { DomainLink } from "./net";
+import { Universe } from "./universe";
 import { Brows, Eyes, Look, Mouth, drawHalo, drawWisp } from "./wisp";
 
 const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const now = () => performance.now() / 1000;
 const pick = <T>(list: readonly T[]): T => list[(Math.random() * list.length) | 0];
-const easeInOut = (x: number) => {
-  const k = clamp01(x);
-  return k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
-};
+const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 
 /** Particle speeds were tuned in pixels on a 250px domain; this turns them into domain units. */
 const PX = 1 / 250;
@@ -155,23 +162,16 @@ const TRICK_STATUS: Record<TrickKind, string> = {
   approach: "coming closer",
 };
 
-const MOODS = Object.keys(TINTS) as Mood[];
-
-interface Star {
-  x: number; // domain units
-  y: number;
-  s: number;
-  tw: number;
-  ph: number;
-}
-
-function makeStars(n: number, minR: number, maxR: number): Star[] {
-  return Array.from({ length: n }, () => {
-    const a = Math.random() * Math.PI * 2;
-    const d = Math.sqrt(minR * minR + Math.random() * (maxR * maxR - minR * minR));
-    return { x: Math.cos(a) * d, y: Math.sin(a) * d, s: 0.4 + Math.random() * 1.3, tw: 0.6 + Math.random() * 2.2, ph: Math.random() * 6.28 };
-  });
-}
+/** Room left for the floating bar on top and the message box below, once the domain fills the window. */
+const HUD_TOP = 64;
+const HUD_BOTTOM = 84;
+/** How the burst plays out: the universe opens in `REVEAL` s while the camera swings over in `BURST_CAM` s. */
+const REVEAL = 1.4;
+const BURST_CAM = 1.4;
+/** The universe folds back into the bubble over this long. */
+const GATHER = 0.95;
+/** The first moments after the burst play in slow motion. */
+const SLOW_MO = 0.35;
 
 export interface DomainUi {
   status: HTMLElement;
@@ -182,9 +182,27 @@ export interface DomainUi {
   cardText: HTMLElement;
 }
 
+/** A way for a solo domain to ask Claude how Wisp reacts (the browser prototype has one). */
+export type SoloBrain = (situation: Situation) => Promise<Reaction | undefined>;
+
+interface Transition {
+  kind: "burst" | "reform";
+  start: number;
+  /** The camera at the start, in viewport pixels. */
+  from: Cam;
+  /** Reform only: where the bubble will be, in viewport pixels. */
+  to?: Cam;
+  /** The window around the domain before the change, for its own animation. */
+  chrome?: ChromeRects;
+}
+
 export class DomainView {
   /** Called when the bubble bursts or re-forms; `byMe` when this viewer burst it. */
   onOpenChange: ((open: boolean, byMe: boolean) => void) | undefined;
+  /** Called before the universe folds back into the bubble (to leave fullscreen first). */
+  beforeReform: (() => Promise<void>) | undefined;
+  /** When set, a solo domain asks it how Wisp reacts to what's typed in. */
+  brain: SoloBrain | undefined;
 
   private ctx: CanvasRenderingContext2D;
   private W = 0;
@@ -192,13 +210,13 @@ export class DomainView {
   private dpr = 1;
   private rectLeft = 0;
   private rectTop = 0;
-  private cam: Cam = { x: 0, y: 0, s: 100, rot: 0 };
-  private camFrom: Cam | undefined; // viewport coordinates, while the camera moves between bubble and arena
-  private camTweenStart = 0;
+  private cam: Cam = { x: 0, y: 0, s: 100, fx: 0, fy: 0 };
+  private follow = { fx: 0, fy: 0, s: 0 };
   private layoutOpen = false;
+  private trans: Transition | undefined;
+  private reforming = false;
   private font: string;
-  private nearStars = makeStars(110, 0, 1);
-  private farStars = makeStars(reduced ? 120 : 260, 1, Math.hypot(OPEN_HALF_W, OPEN_HALF_H));
+  private universe = new Universe(reduced);
 
   // Shared state (domain units, server clock)
   private body: Body = { x: 0, y: 0, vx: 0, vy: 0, strain: 0 };
@@ -207,31 +225,37 @@ export class DomainView {
   private simulatedUntil = 0;
   private asleep = false;
   private open = false;
+  private anchor: Point = { x: 0, y: 0 };
   private flingUntil = 0;
   private trick: Trick | undefined;
   private holder: { userId: string; nickname: string } | undefined;
-  private remoteTarget: { x: number; y: number } | undefined;
+  private remoteTarget: Point | undefined;
   private lastInteraction = 0;
   private watchers: Watcher[] = [];
   private nextIdleTrick = 0;
 
   // Me
-  private pointer = { x: 0, y: 0, inside: false, down: false, dragging: false, downAt: 0, downX: 0, downY: 0 };
+  private pointer = { x: 0, y: 0, cx: 0, cy: 0, inside: false, down: false, dragging: false, downAt: 0, downX: 0, downY: 0 };
   private samples: Array<{ x: number; y: number; at: number }> = [];
   private holding = false;
   private lastDragSent = 0;
   private notice = "";
   private noticeUntil = 0;
+  private soloTalk: Array<{ from: string; text: string; wisp: string }> = [];
 
   // Looks
   private t = 0;
+  /** Effects time: runs slower for a moment after the burst. */
+  private fxT = 0;
+  private slowUntil = -1;
   private gaze = { x: 0, y: 0 };
-  private lookAt: { x: number; y: number; until: number } | undefined; // screen px
+  private lookAt: { x: number; y: number; until: number } | undefined;
   private blinkUntil = 0;
   private nextBlink = 2;
   private mood: Mood | undefined;
   private moodUntil = 0;
   private pending: { mood: Mood; say: string; at: number } | undefined;
+  private thinking: { id: string; since: number; landsAt: number } | undefined;
   private mote: { x: number; y: number; born: number; arrive: number } | undefined; // canvas px
   private surprisedUntil = 0;
   private bonkUntil = 0;
@@ -247,8 +271,12 @@ export class DomainView {
   private squash = 0;
   private squashAngle = 0;
   private shake = 0;
+  private faceKey = "";
+  private facePopAt = -1;
   private tint: RGB = [...CALM];
   private renderOffset = { x: 0, y: 0 };
+  /** A long glide of Wisp's drawn position (the re-seal), instead of the usual quick catch-up. */
+  private glide: { x: number; y: number; start: number; dur: number } | undefined;
   private particles = new Particles(reduced ? 160 : 800);
   private emotes = new Emotes();
   private shatter = new Shatter();
@@ -304,7 +332,10 @@ export class DomainView {
     if (initial) {
       this.syncClock(initial.simTime);
       this.adopt(initial, false);
-      if (this.open) this.setOpen(true, false, false);
+      if (this.open) {
+        this.follow = { fx: this.body.x, fy: this.body.y, s: 0 };
+        this.setLayout(true);
+      }
     }
     if (watchers) this.setWatchers(watchers);
     this.summonMotes();
@@ -316,6 +347,7 @@ export class DomainView {
     this.asleep = s.asleep;
     this.flingUntil = s.flingUntil;
     this.open = s.open;
+    this.anchor = { x: s.anchorX, y: s.anchorY };
     this.holder = s.holderUserId ? { userId: s.holderUserId, nickname: s.holderNickname || "someone" } : undefined;
     this.remoteTarget = this.holder && this.holder.userId !== this.link.me ? { x: s.targetX, y: s.targetY } : undefined;
     this.trick = s.trick && isTrick(s.trick) ? { kind: s.trick, start: s.trickStart, x: s.trickX, y: s.trickY, dir: s.trickDir } : undefined;
@@ -336,8 +368,8 @@ export class DomainView {
     this.simulatedUntil = this.simNow();
   }
 
-  private forces(target: { x: number; y: number } | undefined) {
-    return { target, asleep: this.asleep, flingUntil: this.flingUntil, trick: this.trick, open: this.open };
+  private forces(target: Point | undefined) {
+    return { target, asleep: this.asleep, flingUntil: this.flingUntil, trick: this.trick, open: this.open, anchor: this.anchor };
   }
 
   private applyEvent(e: StateEvent): void {
@@ -349,7 +381,8 @@ export class DomainView {
     // The burst knocks Wisp out of whoever's hand; the server letting go of me (timeout) ends my hold too.
     if (this.holding && (e.cause === "burst" || (e.cause === "release" && byMe))) this.dropHold();
     const wasOpen = this.open;
-    this.adopt(e.state, true, e.cause === "reform" ? 3 : 0.3);
+    const before = { x: this.body.x + this.renderOffset.x, y: this.body.y + this.renderOffset.y };
+    this.adopt(e.state, true, e.cause === "reform" ? 0 : 0.3);
     switch (e.cause) {
       case "grab":
         if (byOther) this.reactGrab();
@@ -370,23 +403,48 @@ export class DomainView {
         this.yawnUntil = this.t + 1.4;
         break;
       case "burst":
-        this.burstFx(byMe, e.byNickname || "someone");
+        this.startBurst(byMe, e.byNickname || "someone");
         break;
       case "reform":
-        this.reformFx(e.byNickname);
+        this.glideFrom(before);
+        void this.startReform(e.byNickname);
         break;
     }
     // Joined mid-burst, or missed the moment: just match the layout.
-    if (this.open !== wasOpen && e.cause !== "burst" && e.cause !== "reform") this.setOpen(this.open, false, false);
+    if (this.open !== wasOpen && e.cause !== "burst" && e.cause !== "reform") {
+      this.setLayout(this.open);
+      this.onOpenChange?.(this.open, false);
+    }
   }
 
   private applyMessage(m: MessageEvent): void {
     const mine = m.fromUserId !== "" && m.fromUserId === this.link.me;
-    const mood = (MOODS as string[]).includes(m.mood) ? (m.mood as Mood) : "happy";
+    const name = mine ? "You" : m.fromNickname || "someone";
     const where = m.channelName ? `in #${m.channelName}` : "in the domain";
-    this.showCard(mine ? "You" : m.fromNickname || "someone", where, m.text || "…");
     const delay = Math.max(0.25, Math.min(2, m.reactAt - this.simNow()));
+    if (m.thinking) {
+      this.showCard(name, where, m.text || "…");
+      this.keepCard(30); // up for as long as Wisp ponders
+      this.launchMote(delay);
+      this.thinking = { id: m.id, since: this.t, landsAt: this.t + delay };
+      this.pending = undefined;
+      return;
+    }
+    const mood = (MOODS as readonly string[]).includes(m.mood) ? (m.mood as Mood) : "happy";
+    if (m.id !== "" && this.thinking?.id === m.id) {
+      // Wisp has made up its mind about the message it was pondering.
+      const landsAt = this.thinking.landsAt;
+      this.thinking = undefined;
+      this.keepCard(4.5);
+      this.pending = { mood, say: m.say, at: Math.max(this.t + 0.12, landsAt) };
+      return;
+    }
+    this.showCard(name, where, m.text || "…");
+    this.launchMote(delay);
     this.pending = { mood, say: m.say, at: this.t + delay };
+  }
+
+  private launchMote(delay: number): void {
     const rect = this.ui.card.getBoundingClientRect();
     const canvasRect = this.canvas.getBoundingClientRect();
     this.mote = { x: rect.left + rect.width / 2 - canvasRect.left, y: rect.bottom - canvasRect.top, born: this.t, arrive: this.t + delay };
@@ -416,29 +474,50 @@ export class DomainView {
     cardWhere.textContent = where;
     cardText.textContent = text;
     card.hidden = false;
-    card.classList.remove("show");
+    card.classList.remove("show", "hold");
     void card.offsetWidth; // restart the animation
     card.classList.add("show");
+    this.keepCard(6);
+  }
+
+  /** Keeps the message card up for another `seconds`. */
+  private keepCard(seconds: number): void {
+    const { card } = this.ui;
     if (this.cardTimer) clearTimeout(this.cardTimer);
+    card.classList.add("hold");
     this.cardTimer = setTimeout(() => {
-      card.classList.remove("show");
-      card.hidden = true;
-    }, 6000);
+      card.classList.remove("hold");
+      card.classList.add("leaving");
+      this.cardTimer = setTimeout(() => {
+        card.classList.remove("show", "leaving");
+        card.hidden = true;
+      }, 450);
+    }, seconds * 1000);
   }
 
   // ---- Talking to Wisp, sealing the bubble -------------------------------------
 
   /** Something typed into the domain's message box. */
-  say(text: string): void {
+  async say(text: string): Promise<void> {
     const clean = text.replace(/\s+/g, " ").trim().slice(0, 160);
     if (!clean) return;
     if (this.link.mode === "live") {
       this.link.say(clean);
       return;
     }
-    const reaction = readMessage(clean);
-    const reactAt = this.simNow() + 0.7;
-    this.applyMessage({ fromUserId: "", fromNickname: "You", text: clean, channelName: "", mood: reaction.mood, say: reaction.say, reactAt });
+    const id = `solo-${Date.now()}`;
+    const base = { id, fromUserId: "", fromNickname: "You", text: clean, channelName: "", mood: "", say: "" };
+    let reaction: Reaction | undefined;
+    if (this.brain) {
+      this.applyMessage({ ...base, thinking: true, reactAt: this.simNow() + 0.7 });
+      reaction = await this.brain({ from: "you", text: clean, channel: "", chat: [], memory: this.soloTalk, asleep: this.asleep, open: this.open, watching: 1 }).catch(() => undefined);
+      if (reaction) {
+        this.soloTalk.push({ from: "you", text: clean, wisp: reaction.say });
+        if (this.soloTalk.length > 6) this.soloTalk.shift();
+      }
+    }
+    reaction ??= readMessage(clean);
+    this.applyMessage({ ...base, thinking: false, mood: reaction.mood, say: reaction.say, reactAt: this.simNow() + (this.brain ? 0.1 : 0.7) });
     if (reaction.mood === "sleepy") {
       this.asleep = true;
       this.trick = undefined;
@@ -446,22 +525,25 @@ export class DomainView {
       return;
     }
     this.wake();
-    if (!this.holding && reaction.trick) this.startTrickLocal(reaction.trick, 0.7);
+    const delay = this.pending ? Math.max(0.1, this.pending.at - this.t) : 0.7;
+    if (!this.holding && reaction.trick) this.startTrickLocal(reaction.trick, delay);
   }
 
   /** Puts the bubble back together. */
   seal(): void {
-    if (!this.open) return;
+    if (!this.open || this.reforming) return;
     if (this.link.mode === "live") {
       this.link.reform();
       return;
     }
+    const before = { x: this.body.x, y: this.body.y };
     this.open = false;
+    this.anchor = { x: 0, y: 0 };
     this.trick = undefined;
     const inside = sanitize(this.body);
     this.body = { x: inside.x, y: inside.y, vx: inside.vx * 0.3, vy: inside.vy * 0.3, strain: 0 };
-    this.renderOffset = { x: 0, y: 0 };
-    this.reformFx("");
+    this.glideFrom(before);
+    void this.startReform("");
   }
 
   get isOpen(): boolean {
@@ -470,16 +552,16 @@ export class DomainView {
 
   // ---- Input ------------------------------------------------------------------
 
-  private toDomain(e: PointerEvent): { x: number; y: number } {
-    return toWorld(this.cam, e.clientX - this.rectLeft, e.clientY - this.rectTop);
+  private toDomain(clientX: number, clientY: number): Point {
+    return toWorld(this.cam, clientX - this.rectLeft, clientY - this.rectTop);
   }
 
-  private overWisp(p: { x: number; y: number }): boolean {
+  private overWisp(p: Point): boolean {
     return this.t > 1.1 && Math.hypot(p.x - this.body.x, p.y - this.body.y) < ORB_RADIUS * 1.8;
   }
 
-  private insideArena(p: { x: number; y: number }): boolean {
-    return this.open ? Math.abs(p.x) < OPEN_HALF_W && Math.abs(p.y) < OPEN_HALF_H : Math.hypot(p.x, p.y) < 1.15;
+  private insideArena(p: Point): boolean {
+    return this.open || Math.hypot(p.x, p.y) < 1.15;
   }
 
   private wake(): void {
@@ -498,9 +580,9 @@ export class DomainView {
   private bindInput(): void {
     const c = this.canvas;
     c.addEventListener("pointerdown", (e) => {
-      const p = this.toDomain(e);
-      Object.assign(this.pointer, p, { inside: true });
-      if (!this.overWisp(p)) return;
+      const p = this.toDomain(e.clientX, e.clientY);
+      Object.assign(this.pointer, p, { cx: e.clientX, cy: e.clientY, inside: true });
+      if (!this.overWisp(p) || this.trans) return;
       if (this.holder && this.holder.userId !== this.link.me) {
         this.setNotice(`${this.holder.nickname} has Wisp`, 1.5);
         return;
@@ -512,9 +594,8 @@ export class DomainView {
     });
 
     c.addEventListener("pointermove", (e) => {
-      const p = this.toDomain(e);
-      this.pointer.x = p.x;
-      this.pointer.y = p.y;
+      const p = this.toDomain(e.clientX, e.clientY);
+      Object.assign(this.pointer, p, { cx: e.clientX, cy: e.clientY });
       this.pointer.inside = this.insideArena(p);
       if (this.pointer.inside && !this.asleep) this.lastInteraction = this.simNow();
       if (this.pointer.down) {
@@ -554,8 +635,7 @@ export class DomainView {
     c.addEventListener("keydown", (e) => {
       const angles: Record<string, number> = { ArrowRight: 0, ArrowDown: Math.PI / 2, ArrowLeft: Math.PI, ArrowUp: -Math.PI / 2 };
       if (e.key in angles) {
-        // Arrow keys push in screen directions, whichever way the arena is turned.
-        this.poke(angles[e.key] - this.cam.rot, false);
+        this.poke(angles[e.key], false);
         e.preventDefault();
       } else if (e.key === " " || e.key === "Enter") {
         this.poke(Math.random() * Math.PI * 2);
@@ -598,6 +678,8 @@ export class DomainView {
     this.body = { ...sanitize({ x: this.body.x, y: this.body.y, vx: (b.x - a.x) / dt, vy: (b.y - a.y) / dt }, this.open), strain };
     const fast = Math.hypot(this.body.vx, this.body.vy) > FLING_SPEED;
     if (fast) this.flingUntil = this.simNow() + FLING_COAST;
+    // Out in open space Wisp settles wherever it's flung (the server works it out the same way).
+    if (this.open) this.anchor = landingPoint(this.body);
     this.holding = false;
     this.holder = undefined;
     this.link.release(this.body);
@@ -617,12 +699,17 @@ export class DomainView {
 
   // ---- Reactions to what happens ----------------------------------------------------
 
-  private wispPx(): { x: number; y: number } {
-    const [x, y] = toScreen(this.cam, this.body.x + this.renderOffset.x, this.body.y + this.renderOffset.y);
+  private drawnBody(): Point {
+    return { x: this.body.x + this.renderOffset.x, y: this.body.y + this.renderOffset.y };
+  }
+
+  private wispPx(): Point {
+    const b = this.drawnBody();
+    const [x, y] = toScreen(this.cam, b.x, b.y);
     return { x, y };
   }
 
-  private speak(text: string, life = 1.8 + text.length * 0.045): void {
+  private speak(text: string, life = 1.8 + Math.min(6, text.length * 0.06)): void {
     this.speech = { text, born: this.t, life };
   }
 
@@ -632,7 +719,7 @@ export class DomainView {
     this.emotes.clearAttached();
     if (say) this.speak(say);
     const { x, y } = this.body;
-    const t = this.t;
+    const t = this.fxT;
     switch (mood) {
       case "love":
         for (let i = 0; i < 6; i++) this.emotes.float("heart", x + rand(-0.08, 0.08), y - 0.05, rand(-0.25, 0.25), rand(-0.6, -0.3), t, rand(1.2, 1.8), rand(0.35, 0.6));
@@ -657,7 +744,7 @@ export class DomainView {
         this.emotes.attach("sweat", 0.95, -0.6, t, 2.2, 0.4);
         break;
       case "sleepy":
-        this.yawnUntil = t + 1.4;
+        this.yawnUntil = this.t + 1.4;
         break;
       case "comfort":
         for (let i = 0; i < 3; i++) this.emotes.float("heart", x + rand(-0.1, 0.1), y - 0.06, rand(-0.12, 0.12), rand(-0.3, -0.18), t, 2, 0.4);
@@ -671,7 +758,7 @@ export class DomainView {
 
   private reactGrab(): void {
     this.surprisedUntil = this.t + 0.35;
-    this.emotes.attach("bang", 0.95, -1.15, this.t, 0.6, 0.55);
+    this.emotes.attach("bang", 0.95, -1.15, this.fxT, 0.6, 0.55);
     this.particles.burst(this.body.x, this.body.y, reduced ? 4 : 12, 160 * PX, [CYAN, WHITE]);
   }
 
@@ -694,7 +781,7 @@ export class DomainView {
   private wakeFx(): void {
     this.blinkUntil = this.t + 0.15;
     this.stretchUntil = this.t + 0.6;
-    this.emotes.attach("bang", 0.95, -1.15, this.t, 0.7, 0.5);
+    this.emotes.attach("bang", 0.95, -1.15, this.fxT, 0.7, 0.5);
     this.particles.burst(this.body.x, this.body.y, reduced ? 4 : 10, 120 * PX, [CYAN, WHITE]);
   }
 
@@ -709,14 +796,11 @@ export class DomainView {
     if (this.t - this.lastImpact < 0.12) return;
     this.lastImpact = this.t;
     const pxSpeed = speed * 250; // tuned in pixels on a 250px-radius domain
-    const wall = this.open
-      ? { x: this.body.x + nx * ORB_RADIUS, y: this.body.y + ny * ORB_RADIUS }
-      : { x: nx, y: ny };
-    this.ripples.push({ ...wall, nx, ny, born: this.t, power: Math.max(0.25, Math.min(1, pxSpeed / 1300)), open: this.open });
-    this.particles.burst(wall.x - nx * 0.01, wall.y - ny * 0.01, Math.min(30, 6 + pxSpeed / 55), Math.min(340, 80 + pxSpeed * 0.2) * PX, [CYAN, VIOLET], -nx, -ny);
+    this.ripples.push({ nx, ny, born: this.t, power: Math.max(0.25, Math.min(1, pxSpeed / 1300)) });
+    this.particles.burst(nx * 0.99, ny * 0.99, Math.min(30, 6 + pxSpeed / 55), Math.min(340, 80 + pxSpeed * 0.2) * PX, [CYAN, VIOLET], -nx, -ny);
     this.wobble = Math.min(1, this.wobble + pxSpeed / 1600);
     this.squash = Math.max(this.squash, Math.min(1, pxSpeed / 1400));
-    this.squashAngle = Math.atan2(ny, nx) + this.cam.rot;
+    this.squashAngle = Math.atan2(ny, nx);
     if (pxSpeed > 600) this.bonkUntil = this.t + 0.45;
     if (pxSpeed > 1500) {
       this.dizzyUntil = this.t + 1.4;
@@ -725,49 +809,103 @@ export class DomainView {
     if (!reduced) this.shake = Math.max(this.shake, Math.min(1, (pxSpeed - 300) / 1500));
   }
 
-  /** The bubble gives way: glass everywhere, a flash, and the domain opens up to the whole window. */
-  private burstFx(byMe: boolean, by: string): void {
-    const before = { x: this.cam.x + this.rectLeft, y: this.cam.y + this.rectTop, r: this.cam.s };
-    const breakAngle = Math.atan2(this.body.y, this.body.x) + this.cam.rot;
-    this.setOpen(true, true, byMe);
-    this.shatter.explode(before.x - this.rectLeft, before.y - this.rectTop, before.r, breakAngle, this.t, reduced ? 16 : 48);
-    this.shatter.flash(this.t, reduced ? 0.2 : 0.8);
+  /** Wisp's drawn position glides from `from` to where it really is, over the re-seal. */
+  private glideFrom(from: Point): void {
+    this.glide = { x: from.x - this.body.x, y: from.y - this.body.y, start: this.t, dur: GATHER };
+    this.renderOffset = { x: this.glide.x, y: this.glide.y };
+  }
+
+  /** The current camera, in viewport pixels (so it survives the canvas changing size). */
+  private viewportCam(): Cam {
+    return { ...this.cam, x: this.cam.x + this.rectLeft, y: this.cam.y + this.rectTop };
+  }
+
+  /**
+   * The bubble gives way. In one orchestrated moment: a flash and shockwaves,
+   * the glass flies outward in slow motion, the window around it breaks away,
+   * and the universe opens out from where the bubble was while the camera
+   * swings over to follow Wisp.
+   */
+  private startBurst(byMe: boolean, by: string): void {
+    const chrome = measureChrome();
+    const from = this.viewportCam();
+    const [bx, by_] = toScreen(this.cam, 0, 0);
+    const center = { x: bx + this.rectLeft, y: by_ + this.rectTop };
+    const radius = this.cam.s;
+    const breakAngle = Math.atan2(this.body.y, this.body.x);
+    this.setLayout(true);
+    chromeBurst(chrome);
+    this.follow = { fx: 0, fy: 0, s: from.s };
+    this.trans = { kind: "burst", start: this.t, from, chrome };
+    this.shatter.explode(center.x - this.rectLeft, center.y - this.rectTop, radius, breakAngle, this.fxT, reduced ? 16 : 48);
+    this.shatter.flash(this.fxT, reduced ? 0.2 : 0.6);
+    this.slowUntil = this.t + SLOW_MO;
     if (!reduced) this.shake = 1.6;
     this.cracks = [];
     this.crackLevel = 0;
     this.particles.burst(this.body.x, this.body.y, reduced ? 24 : 90, 700 * PX, [CYAN, VIOLET, WHITE, GOLD], undefined, undefined, 1.4);
     this.applyMood("excited", pick(["WHEEEEE!!", "FREEDOM!!", "I'M FREE!!", "WOOOOO!"]), 3.5);
     this.setNotice(byMe ? "you burst the bubble!" : `${by} burst the bubble!`, 3);
+    this.onOpenChange?.(true, byMe);
   }
 
-  private reformFx(by: string | undefined): void {
-    this.setOpen(false, true, false);
-    const target = this.bubbleCam();
-    this.shatter.implode(target.x, target.y, Math.hypot(this.W, this.H), target.s, this.t);
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * Math.PI * 2;
-      this.ripples.push({ x: Math.cos(a), y: Math.sin(a), nx: Math.cos(a), ny: Math.sin(a), born: this.t + 0.5, power: 0.6, open: false });
+  /**
+   * The bubble re-forms. First (still full-window) the universe folds back
+   * in toward where the bubble will be, its glass gathering out of the dark
+   * while the camera glides home; then the window settles back around it.
+   */
+  private async startReform(by: string | undefined): Promise<void> {
+    if (this.reforming) return;
+    this.reforming = true;
+    try {
+      await this.beforeReform?.().catch(() => undefined);
+      await nextFrame();
+      this.resize();
+      const to = this.measureBubbleCam();
+      const from = this.viewportCam();
+      this.trans = { kind: "reform", start: this.t, from, to, chrome: measureChrome() };
+      this.shatter.gather(to.x - this.rectLeft, to.y - this.rectTop, to.s, Math.hypot(this.W, this.H) * 0.7, this.fxT, GATHER, reduced ? 14 : 44);
+      this.cracks = [];
+      this.crackLevel = 0;
+      if (by) this.setNotice(`${by} sealed the bubble`, 2.5);
+    } finally {
+      this.reforming = false;
     }
-    for (let i = 0; i < (reduced ? 12 : 50); i++) {
+  }
+
+  /** The re-seal's second half: the window comes back around the newly whole bubble. */
+  private finishReform(): void {
+    const chrome = this.trans?.chrome;
+    this.trans = undefined;
+    this.setLayout(false);
+    chromeReform(chrome);
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2;
+      this.ripples.push({ nx: Math.cos(a), ny: Math.sin(a), born: this.t + i * 0.03, power: 0.7 });
+    }
+    for (let i = 0; i < (reduced ? 12 : 40); i++) {
       const a = Math.random() * Math.PI * 2;
-      this.particles.emit(Math.cos(a), Math.sin(a), -Math.cos(a) * 0.4, -Math.sin(a) * 0.4, rand(0.6, 1.2), rand(1, 2.5), Math.random() < 0.3 ? VIOLET : CYAN);
+      this.particles.emit(Math.cos(a), Math.sin(a), -Math.cos(a) * 0.35, -Math.sin(a) * 0.35, rand(0.6, 1.2), rand(1, 2.5), Math.random() < 0.3 ? VIOLET : CYAN);
     }
-    this.cracks = [];
-    this.crackLevel = 0;
     this.applyMood("curious", pick(["oh!", "home sweet bubble", "huh?"]), 1.8);
-    if (by) this.setNotice(`${by} sealed the bubble`, 2.5);
+    this.onOpenChange?.(false, false);
   }
 
-  /** Switches the page between the bubble window and the burst, full-window arena. */
-  private setOpen(open: boolean, animate: boolean, byMe: boolean): void {
+  /** Where the bubble sits once the window is back, in viewport pixels (measured without showing anything). */
+  private measureBubbleCam(): Cam {
+    const wasOpen = document.body.classList.contains("open");
+    document.body.classList.remove("open");
+    const rect = this.canvas.getBoundingClientRect();
+    if (wasOpen) document.body.classList.add("open");
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, s: Math.max(60, Math.min(rect.width, rect.height) / 2 - 18), fx: 0, fy: 0 };
+  }
+
+  /** Switches the page between the bubble window and the full-window universe. */
+  private setLayout(open: boolean): void {
     if (open === this.layoutOpen) return;
-    const from: Cam = { x: this.cam.x + this.rectLeft, y: this.cam.y + this.rectTop, s: this.cam.s, rot: this.cam.rot };
     document.body.classList.toggle("open", open);
     this.layoutOpen = open;
     this.resize();
-    this.camFrom = animate && !reduced ? from : undefined;
-    this.camTweenStart = this.t;
-    this.onOpenChange?.(open, byMe);
   }
 
   private summonMotes(): void {
@@ -794,12 +932,13 @@ export class DomainView {
       this.dropHold();
       burstLaunch(this.body);
       this.open = true;
+      this.anchor = landingPoint(this.body);
       this.flingUntil = nowSim + BURST_COAST;
       this.lastInteraction = nowSim;
-      this.burstFx(true, "you");
+      this.startBurst(true, "you");
       return;
     }
-    if (this.holding) return;
+    if (this.holding || this.trans) return;
     if (this.open && nowSim - this.lastInteraction > OPEN_FOR) this.seal();
     if (!this.asleep && nowSim - this.lastInteraction > SLEEP_AFTER) {
       this.asleep = true;
@@ -813,7 +952,8 @@ export class DomainView {
 
   private resize(): void {
     const rect = this.canvas.getBoundingClientRect();
-    this.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    // Fullscreen canvases are big; a slightly softer resolution keeps them smooth.
+    this.dpr = Math.min(window.devicePixelRatio || 1, this.layoutOpen ? 1.5 : 2);
     this.W = rect.width;
     this.H = rect.height;
     this.rectLeft = rect.left;
@@ -823,41 +963,56 @@ export class DomainView {
   }
 
   private bubbleCam(): Cam {
-    return { x: this.W / 2, y: this.H / 2, s: Math.max(60, Math.min(this.W, this.H) / 2 - 18), rot: 0 };
+    return { x: this.W / 2, y: this.H / 2, s: Math.max(60, Math.min(this.W, this.H) / 2 - 18), fx: 0, fy: 0 };
   }
 
-  /** The open arena fitted to the window, leaving room for the bar on top and the message box below. Turned sideways on tall screens. */
-  private openCam(): Cam {
-    const top = 64;
-    const bottom = 84;
-    const availW = this.W - 24;
-    const availH = this.H - top - bottom;
-    const portrait = availH > availW * 1.05;
-    const s = portrait
-      ? Math.min(availH / (2 * OPEN_HALF_W), availW / (2 * OPEN_HALF_H))
-      : Math.min(availW / (2 * OPEN_HALF_W), availH / (2 * OPEN_HALF_H));
-    return { x: this.W / 2, y: top + availH / 2, s: Math.max(40, s), rot: portrait ? Math.PI / 2 : 0 };
+  /**
+   * Out in open space the camera follows Wisp loosely: it only moves once
+   * Wisp strays from the middle of the screen, leads a little in the
+   * direction of flight, and pulls back as Wisp speeds up. Carrying Wisp to
+   * the edge of the screen pans across the universe.
+   */
+  private followCam(dt: number): Cam {
+    const availH = Math.max(120, this.H - HUD_TOP - HUD_BOTTOM);
+    const base = Math.max(135, Math.min(this.W, availH) / 2 / 1.6);
+    const speed = Math.hypot(this.body.vx, this.body.vy);
+    const target = base / (1 + 0.045 * Math.min(speed, 12));
+    if (this.follow.s <= 0) this.follow.s = target;
+    this.follow.s += (target - this.follow.s) * Math.min(1, dt * 1.6);
+    const b = this.drawnBody();
+    const tx = b.x + this.body.vx * 0.2;
+    const ty = b.y + this.body.vy * 0.2;
+    const dx = tx - this.follow.fx;
+    const dy = ty - this.follow.fy;
+    const m = Math.hypot(dx, dy);
+    const deadZone = (0.16 * Math.min(this.W, availH)) / this.follow.s;
+    if (m > deadZone) {
+      const k = (1 - deadZone / m) * Math.min(1, dt * 4);
+      this.follow.fx += dx * k;
+      this.follow.fy += dy * k;
+    }
+    return { x: this.W / 2, y: HUD_TOP + availH / 2, s: this.follow.s, fx: this.follow.fx, fy: this.follow.fy };
   }
 
-  private updateCam(): void {
-    const target = this.layoutOpen ? this.openCam() : this.bubbleCam();
-    if (!this.camFrom) {
-      this.cam = target;
+  private updateCam(dt: number): void {
+    const tr = this.trans;
+    if (tr?.kind === "burst") {
+      const k = (this.t - tr.start) / BURST_CAM;
+      const target = this.followCam(dt);
+      const from = { ...tr.from, x: tr.from.x - this.rectLeft, y: tr.from.y - this.rectTop };
+      this.cam = mixCam(from, target, easeInOut(k));
+      if (k >= 1 && this.t - tr.start >= REVEAL) this.trans = undefined;
       return;
     }
-    const k = easeInOut((this.t - this.camTweenStart) / 0.9);
-    if (k >= 1) {
-      this.camFrom = undefined;
-      this.cam = target;
+    if (tr?.kind === "reform" && tr.to) {
+      const k = (this.t - tr.start) / GATHER;
+      const from = { ...tr.from, x: tr.from.x - this.rectLeft, y: tr.from.y - this.rectTop };
+      const to = { ...tr.to, x: tr.to.x - this.rectLeft, y: tr.to.y - this.rectTop };
+      this.cam = mixCam(from, to, easeInOut(k));
+      if (k >= 1) this.finishReform();
       return;
     }
-    const f = this.camFrom;
-    this.cam = {
-      x: f.x - this.rectLeft + (target.x - (f.x - this.rectLeft)) * k,
-      y: f.y - this.rectTop + (target.y - (f.y - this.rectTop)) * k,
-      s: f.s + (target.s - f.s) * k,
-      rot: f.rot + (target.rot - f.rot) * k,
-    };
+    this.cam = this.layoutOpen ? this.followCam(dt) : this.bubbleCam();
   }
 
   private prevFrame = performance.now();
@@ -866,16 +1021,23 @@ export class DomainView {
     const dt = Math.min(0.05, (ms - this.prevFrame) / 1000);
     this.prevFrame = ms;
     this.t += dt;
-    this.updateCam();
+    const slow = this.t < this.slowUntil ? 0.3 + 0.7 * clamp01(1 - (this.slowUntil - this.t) / SLOW_MO) ** 2 : 1;
+    this.fxT += dt * slow;
     this.simulate();
+    this.updateCam(dt);
     this.updateLooks(dt);
     this.updateStatus();
-    this.draw(dt);
+    this.draw(dt, dt * slow);
     requestAnimationFrame((next) => this.frame(next));
   }
 
-  private holdTarget(): { x: number; y: number } | undefined {
-    return this.holding ? clampTarget({ x: this.pointer.x, y: this.pointer.y }, this.open) : this.remoteTarget;
+  private holdTarget(): Point | undefined {
+    if (!this.holding) return this.remoteTarget;
+    // The camera may have moved under a still pointer; aim where the pointer is now.
+    const p = this.toDomain(this.pointer.cx, this.pointer.cy);
+    this.pointer.x = p.x;
+    this.pointer.y = p.y;
+    return clampTarget(p, this.open);
   }
 
   private simulate(): void {
@@ -892,8 +1054,8 @@ export class DomainView {
       if (this.trick.kind === "spin") this.dizzyUntil = this.t + 0.8;
       this.trick = undefined;
     }
-    // Holding still still counts as holding: tell the server we haven't let go.
-    if (this.holding && this.t - this.lastDragSent > 0.5 && target) {
+    // Holding still still counts as holding; and in open space the camera can move the aim.
+    if (this.holding && target && (this.t - this.lastDragSent > 0.5 || this.layoutOpen)) {
       this.link.drag(target.x, target.y);
       this.lastDragSent = this.t;
     }
@@ -914,16 +1076,21 @@ export class DomainView {
 
   private updateLooks(dt: number): void {
     const t = this.t;
+    const ft = this.fxT;
     const { x, y } = this.body;
     if (this.mood && t > this.moodUntil) this.mood = undefined;
+    if (this.thinking && t - this.thinking.since > 30) this.thinking = undefined;
 
     // A message reaching Wisp.
+    if (this.mote && t >= this.mote.arrive) {
+      this.mote = undefined;
+      this.particles.burst(x, y, reduced ? 6 : 18, 180 * PX, [WHITE, CYAN]);
+    }
     if (this.pending && t >= this.pending.at) {
       const p = this.pending;
       this.pending = undefined;
-      this.mote = undefined;
       this.particles.burst(x, y, reduced ? 8 : 26, 220 * PX, [WHITE, CYAN, TINTS[p.mood]]);
-      this.applyMood(p.mood, p.say);
+      this.applyMood(p.mood, p.say, 4.2 + Math.min(4, p.say.length * 0.04));
     }
 
     if (t > this.nextBlink && !this.asleep) {
@@ -931,7 +1098,7 @@ export class DomainView {
       this.nextBlink = t + (Math.random() < 0.2 ? 0.25 : 2.5 + Math.random() * 4);
     }
 
-    // Wall strain: cracks, ripples, a straining face.
+    // Wall strain: cracks, ripples, a straining face. Cracks fade as the wall heals.
     const strain = this.shownStrain();
     const pushing = !this.open && wallPush(this.body, this.holdTarget()) > 0.04;
     if (pushing) {
@@ -939,10 +1106,10 @@ export class DomainView {
       if (!reduced) this.shake = Math.max(this.shake, strain * 0.35);
       if (t - this.lastPressRipple > Math.max(0.12, 0.5 - strain * 0.4)) {
         this.lastPressRipple = t;
-        this.ripples.push({ x: Math.cos(this.strainAngle), y: Math.sin(this.strainAngle), nx: Math.cos(this.strainAngle), ny: Math.sin(this.strainAngle), born: t, power: 0.3 + 0.7 * strain, open: false });
+        this.ripples.push({ nx: Math.cos(this.strainAngle), ny: Math.sin(this.strainAngle), born: t, power: 0.3 + 0.7 * strain });
       }
       if (this.every("sweat", 0.5 - strain * 0.25)) {
-        this.emotes.float("sweat", x + rand(-0.04, 0.04), y - 0.07, rand(-0.3, 0.3), -0.25, t, 0.8, 0.32, 1.4);
+        this.emotes.float("sweat", x + rand(-0.04, 0.04), y - 0.07, rand(-0.3, 0.3), -0.25, ft, 0.8, 0.32, 1.4);
       }
     }
     if (strain > this.crackLevel + 0.09 && strain > 0.08) {
@@ -962,26 +1129,26 @@ export class DomainView {
 
     // Moods give off emotes while they last.
     const mood = this.mood;
-    if (mood === "love" && this.every("love", 0.28)) this.emotes.float("heart", x + rand(-0.06, 0.06), y - 0.08, rand(-0.15, 0.15), rand(-0.45, -0.3), t, 1.5, rand(0.3, 0.5));
-    if (mood === "comfort" && this.every("comfort", 0.55)) this.emotes.float("heart", x + rand(-0.06, 0.06), y - 0.08, rand(-0.1, 0.1), -0.22, t, 1.8, 0.35);
-    if (mood === "shy" && this.every("shy", 0.8)) this.emotes.float("heart", x + rand(-0.08, 0.08), y - 0.06, rand(-0.1, 0.1), -0.25, t, 1.2, 0.28);
+    if (mood === "love" && this.every("love", 0.28)) this.emotes.float("heart", x + rand(-0.06, 0.06), y - 0.08, rand(-0.15, 0.15), rand(-0.45, -0.3), ft, 1.5, rand(0.3, 0.5));
+    if (mood === "comfort" && this.every("comfort", 0.55)) this.emotes.float("heart", x + rand(-0.06, 0.06), y - 0.08, rand(-0.1, 0.1), -0.22, ft, 1.8, 0.35);
+    if (mood === "shy" && this.every("shy", 0.8)) this.emotes.float("heart", x + rand(-0.08, 0.08), y - 0.06, rand(-0.1, 0.1), -0.25, ft, 1.2, 0.28);
     if ((mood === "excited" || mood === "laugh") && this.every("sparkle", mood === "excited" ? 0.14 : 0.35)) {
       const a = Math.random() * Math.PI * 2;
-      this.emotes.float(mood === "excited" ? "star" : "spark", x, y, Math.cos(a) * 0.45, Math.sin(a) * 0.45, t, 0.8, rand(0.25, 0.4));
+      this.emotes.float(mood === "excited" ? "star" : "spark", x, y, Math.cos(a) * 0.45, Math.sin(a) * 0.45, ft, 0.8, rand(0.25, 0.4));
     }
     if (mood === "sad" && this.every("tear", 0.5)) {
       const side = Math.random() < 0.5 ? -1 : 1;
-      this.emotes.float("tear", x + side * ORB_RADIUS * 0.34, y + ORB_RADIUS * 0.1, side * 0.05, 0.05, t, 1.2, 0.28, 1.2);
+      this.emotes.float("tear", x + side * ORB_RADIUS * 0.34, y + ORB_RADIUS * 0.1, side * 0.05, 0.05, ft, 1.2, 0.28, 1.2);
     }
     if (mood === "scared" && this.every("scared", 0.45)) {
       const side = Math.random() < 0.5 ? -1 : 1;
-      this.emotes.float("sweat", x + side * ORB_RADIUS * 0.8, y - ORB_RADIUS * 0.4, side * 0.35, -0.2, t, 0.7, 0.3, 1.5);
+      this.emotes.float("sweat", x + side * ORB_RADIUS * 0.8, y - ORB_RADIUS * 0.4, side * 0.35, -0.2, ft, 0.7, 0.3, 1.5);
     }
-    if (this.asleep && Math.random() < dt * 0.7) this.emotes.float("z", x + ORB_RADIUS * 0.8, y - ORB_RADIUS * 0.9, 0.06, -0.12, t, 2.4, 0.4);
+    if (this.asleep && Math.random() < dt * 0.7) this.emotes.float("z", x + ORB_RADIUS * 0.8, y - ORB_RADIUS * 0.9, 0.06, -0.12, ft, 2.4, 0.4);
 
     // Tricks have their own flourishes.
     const trickNow = this.trick && trickAge(this.trick, this.simNow()) !== undefined ? this.trick.kind : undefined;
-    if (trickNow === "dance" && this.every("note", 0.35)) this.emotes.float("note", x + rand(-0.06, 0.06), y - 0.08, rand(-0.2, 0.2), -0.35, t, 1.3, 0.45);
+    if (trickNow === "dance" && this.every("note", 0.35)) this.emotes.float("note", x + rand(-0.06, 0.06), y - 0.08, rand(-0.2, 0.2), -0.35, ft, 1.3, 0.45);
     if (trickNow === "heart" && !reduced) {
       // Wisp draws the heart in light as it flies.
       for (let i = 0; i < 2; i++) this.particles.emit(x + rand(-0.01, 0.01), y + rand(-0.01, 0.01), 0, 0, 2.6, rand(1.4, 2.4), PINK);
@@ -990,7 +1157,7 @@ export class DomainView {
     // Being petted (pointer resting on Wisp).
     const petted = this.petSince > 0 && t - this.petSince > 0.6 && !this.holding;
     if (petted && !this.asleep && this.every("pet", 0.7)) {
-      this.emotes.float("heart", x + rand(-0.05, 0.05), y - 0.07, rand(-0.08, 0.08), -0.2, t, 1.1, 0.26);
+      this.emotes.float("heart", x + rand(-0.05, 0.05), y - 0.07, rand(-0.08, 0.08), -0.2, ft, 1.1, 0.26);
       if (Math.random() < 0.12) this.speak(pick(["hehe~", "♡", "mmm~"]), 1.1);
     }
 
@@ -1003,6 +1170,11 @@ export class DomainView {
       const mp = this.motePoint();
       gx = mp.x - me.x;
       gy = mp.y - me.y;
+    } else if (this.thinking) {
+      // Pondering: eyes up and off to the side.
+      gx = 0.65;
+      gy = -0.8;
+      reach = 1;
     } else if (this.pointer.inside && !this.asleep) {
       const [px, py] = toScreen(this.cam, this.pointer.x, this.pointer.y);
       gx = px - me.x;
@@ -1015,10 +1187,9 @@ export class DomainView {
     } else {
       const speed = Math.hypot(this.body.vx, this.body.vy);
       if (speed > 0.6) {
-        const [vx, vy] = toScreen({ ...this.cam, x: 0, y: 0 }, this.body.vx, this.body.vy);
-        gx = vx;
-        gy = vy;
-        reach = this.cam.s * 1.2;
+        gx = this.body.vx;
+        gy = this.body.vy;
+        reach = 1.2;
       } else {
         // Idly looking around.
         if (!this.lookAt || t > this.lookAt.until) {
@@ -1037,7 +1208,7 @@ export class DomainView {
     this.gaze.y += ((gy / gl) * gm - this.gaze.y) * Math.min(1, dt * 8);
 
     // Color follows the mood (or the trick), warming toward white as the wall strains.
-    let tintTarget: RGB = this.mood ? TINTS[this.mood] : trickNow ? TINTS[TRICK_MOOD[trickNow]] : this.asleep ? TINTS.sleepy : CALM;
+    let tintTarget: RGB = this.mood ? TINTS[this.mood] : this.thinking ? TINTS.curious : trickNow ? TINTS[TRICK_MOOD[trickNow]] : this.asleep ? TINTS.sleepy : CALM;
     if (!this.mood && trickNow) tintTarget = [(tintTarget[0] + CALM[0]) / 2, (tintTarget[1] + CALM[1]) / 2, (tintTarget[2] + CALM[2]) / 2];
     if (strain > 0) tintTarget = [tintTarget[0] + (255 - tintTarget[0]) * strain * 0.6, tintTarget[1] + (255 - tintTarget[1]) * strain * 0.6, tintTarget[2] + (255 - tintTarget[2]) * strain * 0.6];
     const k = Math.min(1, dt * 4);
@@ -1046,29 +1217,35 @@ export class DomainView {
     this.wobble *= Math.exp(-3 * dt);
     this.squash *= Math.exp(-7 * dt);
     this.shake *= Math.exp(-6 * dt);
-    const decay = Math.exp(-10 * dt);
-    this.renderOffset.x *= decay;
-    this.renderOffset.y *= decay;
+    if (this.glide) {
+      // The long, eased glide back into the bubble.
+      const g = this.glide;
+      const left = 1 - easeInOut((t - g.start) / g.dur);
+      this.renderOffset = { x: g.x * left, y: g.y * left };
+      if (left <= 0) this.glide = undefined;
+    } else {
+      const decay = Math.exp(-10 * dt);
+      this.renderOffset.x *= decay;
+      this.renderOffset.y *= decay;
+    }
 
     // Trail
     if (t > 1.1) {
       const speed = Math.hypot(this.body.vx, this.body.vy);
       let n = ((reduced ? 4 : 16) + speed * 250 * (reduced ? 0.01 : 0.05)) * dt;
-      const ox = this.body.x + this.renderOffset.x;
-      const oy = this.body.y + this.renderOffset.y;
-      const trailColor: RGB = this.tint;
+      const o = this.drawnBody();
       while (n > 0) {
         if (Math.random() < n) {
           const a = Math.random() * Math.PI * 2;
-          const o = ORB_RADIUS * 0.6 * Math.random();
+          const r = ORB_RADIUS * 0.6 * Math.random();
           this.particles.emit(
-            ox + Math.cos(a) * o,
-            oy + Math.sin(a) * o,
+            o.x + Math.cos(a) * r,
+            o.y + Math.sin(a) * r,
             -this.body.vx * 0.12 + rand(-20, 20) * PX,
             -this.body.vy * 0.12 + rand(-20, 20) * PX,
             0.6 + Math.random() * 0.9,
             0.8 + Math.random() * 1.8,
-            Math.random() < 0.25 ? VIOLET : trailColor,
+            Math.random() < 0.25 ? VIOLET : this.tint,
           );
         }
         n -= 1;
@@ -1076,7 +1253,7 @@ export class DomainView {
     }
   }
 
-  private motePoint(): { x: number; y: number } {
+  private motePoint(): Point {
     const m = this.mote!;
     const target = this.wispPx();
     const k = easeInOut((this.t - m.born) / Math.max(0.01, m.arrive - m.born));
@@ -1104,7 +1281,8 @@ export class DomainView {
       return { eyes: "happy", mouth: "smile", brows: "none", blush: 0.45 };
     }
     if (this.mood) return MOOD_FACE[this.mood];
-    if (this.pending) return { eyes: "wide", mouth: "o", brows: "raised", blush: 0 };
+    if (this.thinking && t >= this.thinking.landsAt) return { eyes: "open", mouth: "flat", brows: "raised", blush: 0 };
+    if (this.pending || this.mote) return { eyes: "wide", mouth: "o", brows: "raised", blush: 0 };
     if (t < this.surprisedUntil) return { eyes: "wide", mouth: "o", brows: "none", blush: 0 };
     if (t < this.giggleUntil) return { eyes: "happy", mouth: "open", brows: "none", blush: 0.5 };
     if (trickNow) return MOOD_FACE[TRICK_MOOD[trickNow]];
@@ -1119,9 +1297,17 @@ export class DomainView {
     const strain = this.shownStrain();
     const trickNow = this.trick && trickAge(this.trick, this.simNow()) !== undefined ? this.trick : undefined;
     const face = this.face(trickNow?.kind, strain);
+    // A new expression arrives with a little pop.
+    const key = `${face.eyes}|${face.mouth}`;
+    if (key !== this.faceKey) {
+      this.faceKey = key;
+      this.facePopAt = t;
+    }
+    const pop = reduced ? 1 : 1 + 0.08 * Math.sin(Math.PI * clamp01((t - this.facePopAt) / 0.22));
     const intro = reduced ? 1 : easeOut((t - 0.75) / 0.6);
     let { x, y } = this.wispPx();
-    const [svx, svy] = toScreen({ ...this.cam, x: 0, y: 0 }, this.body.vx, this.body.vy);
+    const svx = this.body.vx * this.cam.s;
+    const svy = this.body.vy * this.cam.s;
     const speedPx = Math.hypot(svx, svy);
     const pulse = 1 + 0.04 * Math.sin(t * 2.4) + 0.05 * this.wobble * Math.sin(t * 28);
     const r = ORB_RADIUS * this.cam.s * intro * pulse;
@@ -1133,8 +1319,8 @@ export class DomainView {
       y += rand(-jitter, jitter);
     }
 
-    let tilt = Math.max(-0.35, Math.min(0.35, (svx / Math.max(1, this.cam.s)) * 0.08));
-    if (this.mood === "curious" || this.pending) tilt += 0.22;
+    let tilt = Math.max(-0.35, Math.min(0.35, this.body.vx * 0.08));
+    if (this.mood === "curious" || this.pending || this.thinking) tilt += 0.22;
     if (face.eyes === "laugh") tilt += Math.sin(t * 22) * 0.12;
     if (this.mood === "shy") tilt -= 0.15;
     if (trickNow?.kind === "spin") {
@@ -1143,14 +1329,17 @@ export class DomainView {
     }
     if (trickNow?.kind === "wiggle" || trickNow?.kind === "dance") tilt += Math.sin(t * 16) * 0.18;
 
-    let scaleX = 1;
-    let scaleY = 1;
-    if (this.mood === "grumpy") scaleX = scaleY = 1.1 + 0.03 * Math.sin(t * 6);
+    let scaleX = pop;
+    let scaleY = pop;
+    if (this.mood === "grumpy") {
+      scaleX *= 1.1 + 0.03 * Math.sin(t * 6);
+      scaleY *= 1.1 + 0.03 * Math.sin(t * 6);
+    }
     if (t < this.stretchUntil) {
       const k = 1 - (this.stretchUntil - t) / 0.6;
       const s = Math.sin(k * Math.PI) * 0.18;
-      scaleX = 1 - s * 0.5;
-      scaleY = 1 + s;
+      scaleX *= 1 - s * 0.5;
+      scaleY *= 1 + s;
     }
     if (this.asleep) {
       const breathe = Math.sin(t * 1.8) * 0.03;
@@ -1189,18 +1378,20 @@ export class DomainView {
     let s = "drifting";
     if (t < 1.2) s = "summoning…";
     else if (t < this.noticeUntil) s = this.notice;
+    else if (this.trans?.kind === "reform") s = "sealing the bubble…";
     else if (t < this.bonkUntil) s = "bonk!";
     else if (t < this.dizzyUntil) s = "dizzy…";
-    else if (this.holding) s = strain > 0.15 ? "the wall is cracking…" : "held by you";
+    else if (this.holding) s = strain > 0.15 ? "the wall is cracking…" : this.open ? "carrying Wisp through space" : "held by you";
     else if (this.holder) s = strain > 0.15 ? `${this.holder.nickname} is cracking the wall…` : `held by ${this.holder.nickname}`;
-    else if (this.pending) s = "listening…";
+    else if (this.thinking) s = "thinking…";
+    else if (this.pending || this.mote) s = "listening…";
     else if (this.mood) s = MOOD_STATUS[this.mood];
     else if (this.asleep) s = "dozing";
     else if (t < this.giggleUntil) s = "giggling";
     else if (trickNow) s = TRICK_STATUS[trickNow];
     else if (speed > 2.6) s = "wheee!";
     else if (this.petSince > 0 && t - this.petSince > 0.6) s = "being petted";
-    else if (this.open) s = "roaming free";
+    else if (this.open) s = "roaming the universe";
     if (s !== this.lastStatus) {
       this.ui.status.textContent = s;
       this.lastStatus = s;
@@ -1209,7 +1400,7 @@ export class DomainView {
 
   // ---- Drawing ----------------------------------------------------------------------
 
-  private draw(dt: number): void {
+  private draw(dt: number, fxDt: number): void {
     const ctx = this.ctx;
     const { W, H, t } = this;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
@@ -1220,119 +1411,122 @@ export class DomainView {
     ctx.translate(sx, sy);
 
     const strain = this.shownStrain();
-    const tweenK = this.camFrom ? easeInOut((t - this.camTweenStart) / 0.9) : 1;
     const opening = reduced ? 1 : Math.min(1, t / 0.9);
     const wallR = this.cam.s * (0.6 + 0.4 * easeOut(opening));
+    const [cx, cy] = toScreen(this.cam, 0, 0);
+    const tr = this.trans;
 
-    if (this.layoutOpen) this.drawArena(tweenK);
-    else this.drawBubble(wallR, this.camFrom ? tweenK : easeOut(opening), strain);
+    if (this.layoutOpen) {
+      // The universe, opening out from (or folding back into) where the bubble is.
+      // Big enough to cover the whole screen from wherever the bubble's middle is right now.
+      const full = Math.max(Math.hypot(cx, cy), Math.hypot(W - cx, cy), Math.hypot(cx, H - cy), Math.hypot(W - cx, H - cy)) + 40;
+      let reveal: number | undefined;
+      if (tr?.kind === "burst") {
+        const k = (t - tr.start) / REVEAL;
+        if (k < 1) reveal = wallR + (full - wallR) * easeInOut(k);
+      } else if (tr?.kind === "reform") {
+        const k = (t - tr.start) / GATHER;
+        reveal = wallR + (full - wallR) * (1 - easeInOut(k));
+      }
+      const view = { alpha: 1, vignette: true, shooting: !tr };
+      if (reveal !== undefined) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, reveal, 0, Math.PI * 2);
+        ctx.clip();
+        this.universe.draw(ctx, W, H, this.cam, t, dt, view);
+        ctx.restore();
+        this.drawRevealRing(cx, cy, reveal, tr!.kind === "burst" ? clamp01((t - tr!.start) / REVEAL) : clamp01((t - tr!.start) / GATHER));
+      } else {
+        this.universe.draw(ctx, W, H, this.cam, t, dt, view);
+      }
+      if (tr?.kind === "reform") this.drawRim(cx, cy, wallR, clamp01((t - tr.start) / GATHER), 0);
+    } else {
+      this.drawBubble(cx, cy, wallR, tr ? 1 : easeOut(opening), strain, dt);
+    }
 
     const look = this.computeLook();
     ctx.save();
-    // Wisp's light stays inside its world: everything glowing is clipped to the wall.
-    this.clipToWorld(wallR);
-    this.particles.draw(ctx, this.cam, dt);
+    // Inside the bubble Wisp's light stays behind the glass: everything glowing is clipped to the wall.
+    if (!this.layoutOpen) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, wallR - 1, 0, Math.PI * 2);
+      ctx.clip();
+    }
+    this.particles.draw(ctx, this.cam, fxDt);
     if (look.r > 0.5) {
       drawHalo(ctx, look);
       this.drawTether(look);
       drawWisp(ctx, look, t);
       if (t < this.dizzyUntil) this.drawDizzyStars(look);
     }
-    this.emotes.draw(ctx, this.cam, look, t, dt, this.font);
+    this.emotes.draw(ctx, this.cam, look, this.fxT, fxDt, this.font);
     ctx.restore();
 
     if (!this.layoutOpen) {
-      this.drawWallGlow(wallR, look, strain);
-      drawCracks(ctx, this.cam, this.cracks, strain, t, wallR);
-    } else {
-      this.drawEdgeGlow(look);
+      this.drawWallGlow(cx, cy, wallR, look, strain);
+      drawCracks(ctx, this.cam, this.cracks, strain, t, wallR, (mx, my) => {
+        // A healed crack sparkles shut.
+        this.particles.burst(mx, my, reduced ? 3 : 9, 60 * PX, [WHITE, CYAN], undefined, undefined, 0.7);
+      });
+      drawRipples(ctx, this.cam, this.ripples, t, wallR);
     }
-    drawRipples(ctx, this.cam, this.ripples, t, wallR);
     this.drawHolderTag(look);
-    if (this.speech && look.r > 0.5) {
+    if (this.thinking && t >= this.thinking.landsAt && look.r > 0.5) drawThought(ctx, look, t - this.thinking.landsAt, W);
+    else if (this.speech && look.r > 0.5) {
       drawSpeech(ctx, this.speech.text, look, t - this.speech.born, this.speech.life, W, H, this.font);
       if (t - this.speech.born > this.speech.life) this.speech = undefined;
     }
     if (this.mote) this.drawMote();
     ctx.restore();
-    this.shatter.draw(ctx, W, H, t, dt);
+    this.shatter.draw(ctx, W, H, this.fxT, fxDt);
   }
 
-  private clipToWorld(wallR: number): void {
+  /** The bright edge of the universe as it opens out or folds back in. */
+  private drawRevealRing(cx: number, cy: number, r: number, k: number): void {
     const ctx = this.ctx;
-    ctx.beginPath();
-    if (this.layoutOpen) {
-      const corners = [
-        [-OPEN_HALF_W, -OPEN_HALF_H],
-        [OPEN_HALF_W, -OPEN_HALF_H],
-        [OPEN_HALF_W, OPEN_HALF_H],
-        [-OPEN_HALF_W, OPEN_HALF_H],
-      ].map(([cx, cy]) => toScreen(this.cam, cx, cy));
-      corners.forEach(([px, py], i) => (i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py)));
-      ctx.closePath();
-    } else {
-      ctx.arc(this.cam.x, this.cam.y, wallR - 1, 0, Math.PI * 2);
-    }
-    ctx.clip();
-  }
-
-  private drawStars(stars: Star[], alpha: number): void {
-    const ctx = this.ctx;
-    const t = this.t;
-    const turn = reduced ? 0 : t * 0.006;
-    const c = Math.cos(turn);
-    const s = Math.sin(turn);
-    ctx.fillStyle = "#DDE8FF";
-    for (const st of stars) {
-      const tw = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(t * st.tw + st.ph));
-      const [px, py] = toScreen(this.cam, c * st.x - s * st.y, s * st.x + c * st.y);
-      ctx.globalAlpha = alpha * tw * 0.8;
-      ctx.beginPath();
-      ctx.arc(px, py, st.s * 0.8, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.globalAlpha = 1;
-  }
-
-  private drawAuroras(r: number, alpha: number): void {
-    const { ctx, t, cam } = this;
+    const fade = Math.sin(Math.PI * Math.min(1, k * 1.2));
+    if (fade <= 0.01) return;
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
-    ctx.globalAlpha = alpha;
-    const auroras: Array<[number, number, string]> = [
-      [Math.sin(t * 0.05) * r * 0.45, Math.cos(t * 0.07) * r * 0.35, "rgba(64, 196, 220, 0.16)"],
-      [Math.cos(t * 0.04 + 2) * r * 0.5, Math.sin(t * 0.06 + 1) * r * 0.4, "rgba(150, 110, 255, 0.14)"],
-    ];
-    for (const [ax, ay, col] of auroras) {
-      const ag = ctx.createRadialGradient(cam.x + ax, cam.y + ay, 0, cam.x + ax, cam.y + ay, r * 0.7);
-      ag.addColorStop(0, col);
-      ag.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.fillStyle = ag;
-      ctx.fillRect(cam.x - r * 1.5, cam.y - r * 1.5, r * 3, r * 3);
+    for (const [width, color, blur] of [
+      [10, `rgba(127, 227, 255, ${0.35 * fade})`, 30],
+      [2, `rgba(235, 250, 255, ${0.9 * fade})`, 12],
+    ] as const) {
+      ctx.lineWidth = width;
+      ctx.strokeStyle = color;
+      ctx.shadowColor = "rgba(127, 227, 255, 1)";
+      ctx.shadowBlur = blur;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.stroke();
     }
     ctx.restore();
   }
 
-  /** The bubble: night sky inside, a glowing rim that bulges and shivers where it's being pushed. */
-  private drawBubble(r: number, alpha: number, strain: number): void {
-    const { ctx, cam, t } = this;
-    const { x: cx, y: cy } = cam;
-    const g = ctx.createRadialGradient(cx, cy - r * 0.2, r * 0.05, cx, cy, r);
-    g.addColorStop(0, "#1B2850");
-    g.addColorStop(0.65, "#0F1734");
-    g.addColorStop(1, "#090E22");
+  /** The bubble: the universe seen through dark glass, with a glowing rim. */
+  private drawBubble(cx: number, cy: number, r: number, alpha: number, strain: number, dt: number): void {
+    const { ctx } = this;
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fillStyle = g;
-    ctx.fill();
     ctx.clip();
-    this.drawAuroras(r, 1);
-    this.drawStars(this.nearStars, alpha);
+    this.universe.draw(ctx, this.W, this.H, this.cam, this.t, dt, { alpha, vignette: false, shooting: false });
+    const glass = ctx.createRadialGradient(cx, cy - r * 0.2, r * 0.05, cx, cy, r);
+    glass.addColorStop(0, "rgba(27, 40, 80, 0.35)");
+    glass.addColorStop(0.7, "rgba(15, 23, 52, 0.45)");
+    glass.addColorStop(1, "rgba(9, 14, 34, 0.8)");
+    ctx.fillStyle = glass;
+    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
     ctx.restore();
+    this.drawRim(cx, cy, r, alpha, strain);
+  }
 
-    // The rim, pushed outward around where Wisp is straining against it.
+  /** The rim, pushed outward around where Wisp is straining against it, with its slow ring of ticks. */
+  private drawRim(cx: number, cy: number, r: number, alpha: number, strain: number): void {
+    const { ctx, t } = this;
+    if (alpha <= 0) return;
     const rimPath = () => {
       ctx.beginPath();
       const n = 120;
@@ -1343,8 +1537,8 @@ export class DomainView {
         const bulge = strain * 0.035 * Math.exp(-((d / 0.32) ** 2));
         const quiver = strain > 0.35 && !reduced ? (Math.random() - 0.5) * 0.006 * strain : 0;
         const rr = r * (1 + bulge + quiver);
-        const px = cx + Math.cos(a + cam.rot) * rr;
-        const py = cy + Math.sin(a + cam.rot) * rr;
+        const px = cx + Math.cos(a) * rr;
+        const py = cy + Math.sin(a) * rr;
         if (i === 0) ctx.moveTo(px, py);
         else ctx.lineTo(px, py);
       }
@@ -1379,47 +1573,15 @@ export class DomainView {
     ctx.restore();
   }
 
-  /** The burst world: the same night sky, much bigger, with only a faint edge. */
-  private drawArena(alpha: number): void {
-    const { ctx, cam } = this;
-    const corners = [
-      [-OPEN_HALF_W, -OPEN_HALF_H],
-      [OPEN_HALF_W, -OPEN_HALF_H],
-      [OPEN_HALF_W, OPEN_HALF_H],
-      [-OPEN_HALF_W, OPEN_HALF_H],
-    ].map(([x, y]) => toScreen(cam, x, y));
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    ctx.beginPath();
-    corners.forEach(([px, py], i) => (i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py)));
-    ctx.closePath();
-    const g = ctx.createRadialGradient(cam.x, cam.y, 0, cam.x, cam.y, cam.s * 2.4);
-    g.addColorStop(0, "rgba(27, 40, 80, 0.85)");
-    g.addColorStop(1, "rgba(9, 14, 34, 0.35)");
-    ctx.fillStyle = g;
-    ctx.fill();
-    ctx.save();
-    ctx.clip();
-    this.drawAuroras(cam.s * 2, 1);
-    this.drawStars(this.nearStars, alpha);
-    this.drawStars(this.farStars, alpha);
-    ctx.restore();
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = "rgba(127, 227, 255, 0.16)";
-    ctx.stroke();
-    ctx.restore();
-  }
-
   /** Where Wisp is close, its light pools on the wall instead of passing through it. */
-  private drawWallGlow(r: number, look: Look, strain: number): void {
-    const bx = this.body.x + this.renderOffset.x;
-    const by = this.body.y + this.renderOffset.y;
-    const gap = r - Math.hypot(bx, by) * this.cam.s - look.r;
+  private drawWallGlow(cx: number, cy: number, r: number, look: Look, strain: number): void {
+    const b = this.drawnBody();
+    const gap = r - Math.hypot(b.x, b.y) * this.cam.s - look.r;
     const near = Math.max(0, 1 - gap / (look.r * 3.5));
     if (near <= 0) return;
-    const a = Math.atan2(by, bx) + this.cam.rot;
+    const a = Math.atan2(b.y, b.x);
     const spread = 0.12 + 0.18 * (1 - near) + (look.r / r) * 1.2 + strain * 0.25;
-    const { ctx, cam } = this;
+    const { ctx } = this;
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
     ctx.lineWidth = 2 + 3 * near + strain * 4;
@@ -1427,48 +1589,14 @@ export class DomainView {
     ctx.shadowColor = rgba(this.tint, 1);
     ctx.shadowBlur = 14 * near + strain * 20;
     ctx.beginPath();
-    ctx.arc(cam.x, cam.y, r, a - spread, a + spread);
+    ctx.arc(cx, cy, r, a - spread, a + spread);
     ctx.stroke();
-    ctx.restore();
-  }
-
-  /** In the open arena, the edge only shows where Wisp comes near it. */
-  private drawEdgeGlow(look: Look): void {
-    const { ctx, cam } = this;
-    const bx = this.body.x + this.renderOffset.x;
-    const by = this.body.y + this.renderOffset.y;
-    const edges: Array<[number, number, number]> = [
-      [1, 0, OPEN_HALF_W - Math.abs(bx)],
-      [0, 1, OPEN_HALF_H - Math.abs(by)],
-    ];
-    ctx.save();
-    ctx.globalCompositeOperation = "lighter";
-    ctx.lineCap = "round";
-    for (const [ex, ey, gapUnits] of edges) {
-      const gap = gapUnits * cam.s - look.r;
-      const near = Math.max(0, 1 - gap / (look.r * 3.5));
-      if (near <= 0) continue;
-      const sign = ex ? Math.sign(bx) || 1 : Math.sign(by) || 1;
-      const wx = ex ? sign * OPEN_HALF_W : bx;
-      const wy = ey ? sign * OPEN_HALF_H : by;
-      const half = 0.25 + 0.2 * (1 - near);
-      const [ax, ay] = toScreen(cam, wx - ey * half, wy - ex * half);
-      const [bx2, by2] = toScreen(cam, wx + ey * half, wy + ex * half);
-      ctx.lineWidth = 2 + 3 * near;
-      ctx.strokeStyle = rgba(this.tint, 0.7 * near);
-      ctx.shadowColor = rgba(this.tint, 1);
-      ctx.shadowBlur = 14 * near;
-      ctx.beginPath();
-      ctx.moveTo(ax, ay);
-      ctx.lineTo(bx2, by2);
-      ctx.stroke();
-    }
     ctx.restore();
   }
 
   /** A thread of light from Wisp to the hand holding it. */
   private drawTether(look: Look): void {
-    const target = this.holdTarget();
+    const target = this.holding ? clampTarget({ x: this.pointer.x, y: this.pointer.y }, this.open) : this.remoteTarget;
     if (!target) return;
     const [tx, ty] = toScreen(this.cam, target.x, target.y);
     const d = Math.hypot(tx - look.x, ty - look.y);

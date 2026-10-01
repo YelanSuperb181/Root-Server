@@ -34,11 +34,13 @@ import {
   STEP,
   Trick,
   TrickKind,
+  Point,
   burstLaunch,
   clampTarget,
   idleTrick,
   isBursting,
   isSplash,
+  landingPoint,
   pokeImpulse,
   readMessage,
   sanitize,
@@ -50,6 +52,8 @@ import { read } from "../core/api";
 import { errMessage, log } from "../core/log";
 import { isPerson, nickname } from "../core/members";
 import { findBlockedWord } from "../logic/automod";
+import { think } from "./brain";
+import { recentTalk, rememberTalk } from "./memory";
 
 const TICK_MS = 1000 / 60;
 /** While someone holds Wisp, everyone else gets its position this often. */
@@ -62,6 +66,8 @@ const HOLD_TIMEOUT_MS = 3000;
 const IMPACT_BROADCAST_MS = 150;
 /** A message flies over to Wisp before it reacts, in seconds. */
 const REACT_DELAY = 0.7;
+/** Once Wisp has thought it over, how soon it reacts. */
+const ANSWER_DELAY = 0.15;
 /** Seconds between Wisp's own little tricks, when nobody's playing with it. */
 const IDLE_TRICK_MIN = 9;
 const IDLE_TRICK_SPREAD = 10;
@@ -80,19 +86,22 @@ interface Holder {
 }
 
 export interface Heard {
+  /** Ties the "thinking" announcement to the reaction that follows it. */
+  id: string;
   userId: string;
   nickname: string;
-  /** What they said, ready to show (empty to keep it private). */
+  /** What they said, ready to show. */
   text: string;
   /** Chat channel it came from; empty when typed in the domain. */
   channelName: string;
-  reaction: Reaction;
 }
 
 class Domain {
   body: Body = { x: 0, y: 0, vx: 0, vy: 0, strain: 0 };
   asleep = false;
   open = false;
+  /** In open space, the spot Wisp drifts around. */
+  anchor: Point = { x: 0, y: 0 };
   holder: Holder | undefined;
   trick: Trick | undefined;
   flingUntil = 0;
@@ -109,6 +118,8 @@ class Domain {
   private lastImpactBroadcast = 0;
   private nextIdleTrick = clock() + IDLE_TRICK_MIN;
   private lastSaid = new Map<string, number>();
+  /** Messages Wisp is still thinking about: when their mote lands in the domain. */
+  private listening = new Map<string, number>();
 
   state(): WispState {
     return {
@@ -131,6 +142,8 @@ class Domain {
       trickX: this.trick?.x ?? 0,
       trickY: this.trick?.y ?? 0,
       trickDir: this.trick?.dir ?? 1,
+      anchorX: this.anchor.x,
+      anchorY: this.anchor.y,
     };
   }
 
@@ -139,7 +152,7 @@ class Domain {
   }
 
   private forces(t: number): Forces {
-    return { t, target: this.holder?.target, asleep: this.asleep, flingUntil: this.flingUntil, trick: this.trick, open: this.open };
+    return { t, target: this.holder?.target, asleep: this.asleep, flingUntil: this.flingUntil, trick: this.trick, open: this.open, anchor: this.anchor };
   }
 
   /** Simulates up to now, in fixed steps. */
@@ -212,6 +225,7 @@ class Domain {
       this.trick = undefined;
       if (this.open) {
         this.open = false;
+        this.anchor = { x: 0, y: 0 };
         this.body = { ...sanitize(this.body), strain: 0 };
       }
     }
@@ -288,6 +302,8 @@ class Domain {
       this.body = { ...sanitize(thrown, this.open), strain: this.body.strain ?? 0 };
       if (Math.hypot(this.body.vx, this.body.vy) > FLING_SPEED) this.flingUntil = this.simulatedUntil + FLING_COAST;
     }
+    // Out in open space Wisp settles wherever it's flung or let go.
+    if (this.open) this.anchor = landingPoint(this.body);
     this.touch();
     this.announce("release", by.userId, by.nickname);
   }
@@ -310,6 +326,7 @@ class Domain {
     this.trick = undefined;
     burstLaunch(this.body);
     this.open = true;
+    this.anchor = landingPoint(this.body);
     this.flingUntil = this.simulatedUntil + BURST_COAST;
     this.lastInteraction = clock();
     log("info", "the bubble burst", { by: by?.nickname });
@@ -321,6 +338,7 @@ class Domain {
     if (!this.open) return;
     this.catchUp();
     this.open = false;
+    this.anchor = { x: 0, y: 0 };
     this.trick = undefined;
     const inside = sanitize(this.body);
     this.body = { x: inside.x, y: inside.y, vx: inside.vx * 0.3, vy: inside.vy * 0.3, strain: 0 };
@@ -336,26 +354,49 @@ class Domain {
     else this.startTrick("spin", 0, "summon", byUserId, byNickname);
   }
 
-  /** Someone said something to Wisp. Everyone in the domain sees it arrive and Wisp react. */
-  hear(h: Heard): void {
+  /** What Wisp's brain needs to know about Wisp right now. */
+  status(): { asleep: boolean; open: boolean; watching: number } {
+    return { asleep: this.asleep, open: this.open, watching: this.watchers.size };
+  }
+
+  /** Someone said something to Wisp: everyone in the domain sees it fly over while Wisp thinks. */
+  listen(h: Heard): void {
     if (this.watchers.size === 0) return;
     this.catchUp();
-    const reactAt = this.simulatedUntil + REACT_DELAY;
-    const message: MessageEvent = {
+    const landsAt = this.simulatedUntil + REACT_DELAY;
+    this.listening.set(h.id, landsAt);
+    this.broadcastMessage({
+      id: h.id,
+      thinking: true,
       fromUserId: h.userId,
       fromNickname: h.nickname,
       text: h.text,
       channelName: h.channelName,
-      mood: h.reaction.mood,
-      say: h.reaction.say,
+      mood: "",
+      say: "",
+      reactAt: landsAt,
+    });
+  }
+
+  /** Wisp's reaction to something it heard: its face, its words, and what it does. */
+  respond(h: Heard, reaction: Reaction): void {
+    const landsAt = this.listening.get(h.id);
+    this.listening.delete(h.id);
+    if (this.watchers.size === 0) return;
+    this.catchUp();
+    const reactAt = Math.max(this.simulatedUntil + ANSWER_DELAY, landsAt ?? this.simulatedUntil + REACT_DELAY);
+    this.broadcastMessage({
+      id: h.id,
+      thinking: false,
+      fromUserId: h.userId,
+      fromNickname: h.nickname,
+      text: h.text,
+      channelName: h.channelName,
+      mood: reaction.mood,
+      say: reaction.say,
       reactAt,
-    };
-    try {
-      domainService.broadcastMessage(message, "all");
-    } catch (err) {
-      log("warn", "message broadcast failed", { error: errMessage(err) });
-    }
-    if (h.reaction.mood === "sleepy") {
+    });
+    if (reaction.mood === "sleepy") {
       // Wisp yawns and dozes off where it is.
       this.trick = undefined;
       this.asleep = true;
@@ -364,17 +405,29 @@ class Domain {
       return;
     }
     this.touch();
-    if (!this.holder && h.reaction.trick) this.startTrick(h.reaction.trick, REACT_DELAY, "trick", h.userId, h.nickname);
+    if (!this.holder && reaction.trick) this.startTrick(reaction.trick, reactAt - this.simulatedUntil, "trick", h.userId, h.nickname);
   }
 
-  /** Something typed into the domain itself. */
-  say(userId: string, raw: string): void {
+  private broadcastMessage(message: MessageEvent): void {
+    try {
+      domainService.broadcastMessage(message, "all");
+    } catch (err) {
+      log("warn", "message broadcast failed", { error: errMessage(err) });
+    }
+  }
+
+  /** Something typed into the domain itself. Wisp thinks it over (with Claude when it can) and answers out loud. */
+  async say(userId: string, raw: string): Promise<void> {
     const now = Date.now();
     if (now - (this.lastSaid.get(userId) ?? 0) < SAY_COOLDOWN_MS) return;
     const text = raw.replace(/\s+/g, " ").trim().slice(0, MAX_SAY);
     if (!text || findBlockedWord(text, config.automod.blockedWords) !== undefined) return;
     this.lastSaid.set(userId, now);
-    this.hear({ userId, nickname: this.watchers.get(userId) ?? "someone", text, channelName: "", reaction: readMessage(text) });
+    const heard: Heard = { id: `domain-${now}-${Math.random().toString(36).slice(2, 8)}`, userId, nickname: this.watchers.get(userId) ?? "someone", text, channelName: "" };
+    this.listen(heard);
+    const smart = await think({ from: heard.nickname, text, channel: "", chat: [], memory: recentTalk("domain"), ...this.status() });
+    if (smart) rememberTalk("domain", heard.nickname, text, smart.say);
+    this.respond(heard, smart ?? readMessage(text));
   }
 }
 
@@ -408,7 +461,7 @@ class WispDomainService extends WispDomainServiceBase {
 
   async say(request: SayRequest, client: Client): Promise<void> {
     await domain.addWatcher(client.userId);
-    domain.say(client.userId, request.text ?? "");
+    void domain.say(client.userId, request.text ?? "").catch((err) => log("warn", "domain message failed", { error: errMessage(err) }));
   }
 
   async reform(_request: ReformRequest, client: Client): Promise<void> {

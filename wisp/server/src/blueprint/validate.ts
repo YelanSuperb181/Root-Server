@@ -101,6 +101,7 @@ export function validateReferences(bp: Blueprint): string[] {
   needChannel("config.suggestions.channel", config.suggestions.channel);
   config.automod.ignore.forEach((k) => needChannel("config.automod.ignore", k));
   config.domain.quietIn.forEach((k) => needChannel("config.domain.quietIn", k));
+  config.brain.skipIn.forEach((k) => needChannel("config.brain.skipIn", k));
   needChannel("config.modLog.channel", config.modLog.channel);
   needChannel("config.announcements.channel", config.announcements.channel);
   needRole("config.announcements.pingRole", config.announcements.pingRole);

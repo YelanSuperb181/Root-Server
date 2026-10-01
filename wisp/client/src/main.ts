@@ -2,6 +2,7 @@
 
 import { DomainView } from "./domain";
 import { connect } from "./net";
+import { viewerBrain } from "./sample";
 
 const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -24,6 +25,12 @@ async function main(): Promise<void> {
     const note = byId("note");
     note.textContent = "Not connected to Root, so this Wisp is just yours. Inside Root, everyone in the channel shares the same Wisp.";
     note.hidden = false;
+    // In the browser prototype, Wisp can think with the viewer's Claude.
+    void viewerBrain().then((brain) => {
+      if (!brain) return;
+      view.brain = brain;
+      note.textContent = "Not connected to Root, so this Wisp is just yours. Talk to it: it thinks with your Claude (you'll be asked once).";
+    });
   }
 
   // Talking to Wisp.
@@ -31,7 +38,7 @@ async function main(): Promise<void> {
   const input = byId<HTMLInputElement>("say-input");
   form.addEventListener("submit", (e) => {
     e.preventDefault();
-    view.say(input.value);
+    void view.say(input.value);
     input.value = "";
   });
 
@@ -53,6 +60,14 @@ async function main(): Promise<void> {
       if (active) void enterFullscreen();
     }
     if (!open && document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+  };
+  // Leave fullscreen before the universe folds back into the bubble, so the bubble lands in the right place.
+  view.beforeReform = async () => {
+    seal.hidden = true;
+    fullscreen.hidden = true;
+    if (!document.fullscreenElement) return;
+    await document.exitFullscreen().catch(() => undefined);
+    await new Promise((resolve) => setTimeout(resolve, 60));
   };
   fullscreen.addEventListener("click", () => void enterFullscreen());
   seal.addEventListener("click", () => view.seal());

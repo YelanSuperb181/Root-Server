@@ -98,11 +98,40 @@ export const config = {
     ignore: ["dyno-status"],
   },
 
+  /**
+   * Wisp's brain: Claude reads what people say to Wisp and decides how Wisp
+   * feels, what it does and what it says back. Needs an Anthropic API key in
+   * Wisp's App settings in Root (or ANTHROPIC_API_KEY in server/.env while
+   * developing). Without a key, or if Claude can't be reached, Wisp falls
+   * back to reading moods from keywords.
+   */
+  brain: {
+    enabled: true,
+    model: "claude-opus-5-5",
+    /** How hard Claude thinks before answering. "low" keeps chat snappy. */
+    effort: "low" as "low" | "medium" | "high",
+    /** Give up and use keywords after this long. */
+    timeoutSeconds: 20,
+    /** At most this many answers an hour, across the whole community; keywords after that. */
+    maxPerHour: 200,
+    /** Recent messages in the channel Wisp reads along with the one for it (0 = just that one). */
+    contextMessages: 12,
+    /** Exchanges with Wisp it remembers per channel. Memory lives only while Wisp runs. */
+    memory: 6,
+    /** At most one chat reply per channel this often. */
+    replyCooldownSeconds: 3,
+    /** Channels whose messages are never sent to Claude. Wisp answers there with keywords only. */
+    skipIn: ["the-vent-aka-hell"],
+  },
+
   /** Wisp's domain, and how Wisp answers people who talk to it in chat. */
   domain: {
     /** React when a message says "wisp", @mentions Wisp or replies to one of its messages. */
     listen: true,
-    /** Also answer in chat with a little line ("hii!! *hops happily*"), at most once per channel this often. */
+    /**
+     * Without the brain: also answer in chat with a little canned line
+     * ("hii!! *hops happily*"), at most once per channel this often.
+     */
     replyInChat: true,
     replyCooldownSeconds: 25,
     /** Channels whose messages never show up in the domain. Wisp still reacts to them in chat. */

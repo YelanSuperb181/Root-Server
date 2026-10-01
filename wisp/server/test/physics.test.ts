@@ -5,8 +5,7 @@ import {
   Body,
   LIMIT,
   MAX_FLING,
-  OPEN_HALF_H,
-  OPEN_HALF_W,
+  OPEN_LIMIT,
   ORB_RADIUS,
   REACH,
   STEP,
@@ -19,6 +18,7 @@ import {
   idleTrick,
   isBursting,
   isSplash,
+  landingPoint,
   pokeImpulse,
   sanitize,
   step,
@@ -153,18 +153,41 @@ test("throwing Wisp at the wall cracks it a little but never bursts it", () => {
   assert.ok(!isBursting(body));
 });
 
-test("the burst launches Wisp out through the wall, and the open arena holds it", () => {
+test("the burst launches Wisp out through the wall into open space with no walls", () => {
   const body: Body = { x: LIMIT, y: 0, vx: 0, vy: 0, strain: 1 };
   burstLaunch(body);
   assert.ok(body.vx > BURST_SPEED * 0.99 && Math.abs(body.vy) < 1e-9);
   assert.equal(body.strain, 0);
+  const anchor = landingPoint(body);
+  assert.ok(anchor.x > 5, "it will settle far out");
   let furthest = 0;
-  for (let i = 0; i < 120 * 4; i++) {
-    step(body, { t: i * STEP, asleep: false, flingUntil: 3, open: true });
-    furthest = Math.max(furthest, Math.abs(body.x));
-    assert.ok(Math.abs(body.x) <= OPEN_HALF_W - ORB_RADIUS + 1e-9 && Math.abs(body.y) <= OPEN_HALF_H - ORB_RADIUS + 1e-9);
+  for (let i = 0; i < 120 * 3; i++) {
+    const hit = step(body, { t: i * STEP, asleep: false, flingUntil: 2.2, open: true, anchor });
+    assert.equal(hit, undefined, "nothing to hit out here");
+    furthest = Math.max(furthest, body.x);
   }
-  assert.ok(furthest > LIMIT + 0.5, "flew well past where the bubble was");
+  assert.ok(furthest > LIMIT + 4, `flew well past where the bubble was (${furthest.toFixed(2)})`);
+  advance(body, 3, 40, { asleep: false, flingUntil: 0, open: true, anchor }, 40);
+  assert.ok(Math.hypot(body.x - anchor.x, body.y - anchor.y) < 1.5, "drifts around where it landed");
+});
+
+test("open space has a far-off safety limit and drifts home gently", () => {
+  const body: Body = { x: 0, y: 0, vx: 0, vy: 0 };
+  advance(body, 0, 2, { target: { x: 500, y: 0 }, asleep: false, flingUntil: 0, open: true }, 30);
+  assert.ok(Math.hypot(body.x, body.y) <= OPEN_LIMIT + 1e-9);
+  const lost: Body = { x: 50, y: 0, vx: 0, vy: 0 };
+  let top = 0;
+  for (let i = 0; i < 120 * 5; i++) {
+    step(lost, { t: i * STEP, asleep: false, flingUntil: 0, open: true });
+    top = Math.max(top, Math.hypot(lost.vx, lost.vy));
+  }
+  assert.ok(top < 1.2, `a gentle drift, not a rocket (${top.toFixed(2)})`);
+  assert.ok(lost.x < 50, "heading home");
+});
+
+test("a gentle release in open space settles right there", () => {
+  const p = landingPoint({ x: 3, y: -2, vx: 0.5, vy: 0 });
+  assert.deepEqual(p, { x: 3, y: -2 });
 });
 
 test("targets and throws are clamped to the bubble or the open arena", () => {
@@ -189,7 +212,7 @@ test("every trick stays inside, ends on time, and flies the same on every screen
         const b: Body = { ...a };
         for (let t = 5; t < 5 + TRICKS[kind]; t += STEP) {
           const p = trickTarget(trick, t, open)!;
-          if (open) assert.ok(Math.abs(p.x) < OPEN_HALF_W && Math.abs(p.y) < OPEN_HALF_H, `${kind} target left the arena`);
+          if (open) assert.ok(Math.hypot(p.x, p.y) < OPEN_LIMIT, `${kind} target left open space`);
           else assert.ok(Math.hypot(p.x, p.y) < LIMIT, `${kind} target left the bubble`);
         }
         advance(a, 5, 5 + TRICKS[kind], { asleep: false, flingUntil: 0, trick, open });

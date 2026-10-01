@@ -96,7 +96,22 @@ The numbers at the top of [`physics.ts`](../wisp/shared/src/physics.ts). Distanc
 
 The server and every window run this same file, so rebuild and re-upload everything after a change (`npm run package`). `npm test` checks that Wisp still can't escape the domain and that the wall takes about as long to burst as it should.
 
-### Teach Wisp new words
+### Change Wisp's personality (its brain)
+
+With Claude as Wisp's brain, who Wisp is lives in `personaPrompt` in [`brain.ts`](../wisp/shared/src/brain.ts): how it talks, what it knows about its world, and how it should answer. It's plain writing; change it like you'd brief a friend. Keep the "How to answer" part, since Wisp's server relies on those fields.
+
+In `config.ts` under `brain`:
+
+| Setting | What it does |
+| --- | --- |
+| `model` | Which Claude model answers (`claude-opus-5-5` by default) |
+| `effort` | How hard it thinks first: `"low"` is quick and cheap, `"medium"`/`"high"` are slower and more thoughtful |
+| `maxPerHour` | A cap on answers across the community; keywords after that |
+| `contextMessages`, `memory` | How much of the channel, and of its own past exchanges, Wisp reads |
+| `replyCooldownSeconds` | At most one chat reply per channel this often |
+| `skipIn` | Channels never sent to Claude |
+
+### Teach Wisp new words (the keyword fallback)
 
 [`mood.ts`](../wisp/shared/src/mood.ts) has the lists. `FEELINGS` maps words and emoji to a mood (checked top to bottom, first match wins), `REQUESTS` maps words to tricks ("spin", "dance"), and `LINES` holds what Wisp says back for each mood. `MOOD_EMOJI` is the reaction it leaves in chat; use the shortcode names Root uses for reactions (`two_hearts`, `sparkles`). Add a case to `wisp/server/test/mood.test.ts` for anything you add, so a later change can't quietly break it.
 

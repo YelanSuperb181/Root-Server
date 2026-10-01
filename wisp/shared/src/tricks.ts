@@ -65,13 +65,19 @@ function led(o: Point, u: number, lead: number, path: (v: number) => Point): Poi
   return path((u - lead) / (1 - lead));
 }
 
-/** The point Wisp is chasing during a trick at time `t`, or undefined when no trick is running. */
-export function trickTarget(trick: Trick, t: number, open: boolean): Point | undefined {
+/**
+ * The point Wisp is chasing during a trick at time `t`, or undefined when no
+ * trick is running. Paths that roam the whole domain are drawn around
+ * `center`: the middle of the bubble, or in open space wherever Wisp has
+ * settled.
+ */
+export function trickTarget(trick: Trick, t: number, open: boolean, center: Point = { x: 0, y: 0 }): Point | undefined {
   const age = trickAge(trick, t);
   if (age === undefined) return undefined;
   const u = age / TRICKS[trick.kind];
   const k = arenaScale(open);
-  const o = { x: trick.x, y: trick.y };
+  const c = open ? center : { x: 0, y: 0 };
+  const o = { x: trick.x - c.x, y: trick.y - c.y };
   const d = trick.dir < 0 ? -1 : 1;
   const TAU = Math.PI * 2;
   let p: Point;
@@ -129,7 +135,7 @@ export function trickTarget(trick: Trick, t: number, open: boolean): Point | und
       p = led(o, u, 0.45, (v) => ({ x: 0, y: 0.08 * k.y + 0.03 * Math.sin(TAU * 2 * v) }));
       break;
   }
-  return clampToArena(p, open, -0.03);
+  return clampToArena({ x: p.x + c.x, y: p.y + c.y }, open, -0.03);
 }
 
 /** Wisp's own idea of what to do next, when nobody's playing with it. Weighted toward small things. */

@@ -9,8 +9,9 @@ This takes you from "we're on Discord" to the same server on Root with Wisp runn
 - [3. Build and try it in your test community](#3-build-and-try-it-in-your-test-community)
 - [4. Upload Wisp and install it](#4-upload-wisp-and-install-it)
 - [5. Run setup in the real community](#5-run-setup-in-the-real-community)
-- [6. Finishing touches](#6-finishing-touches)
-- [7. Bring everyone over](#7-bring-everyone-over)
+- [6. Give Wisp its brain (optional)](#6-give-wisp-its-brain-optional)
+- [7. Finishing touches](#7-finishing-touches)
+- [8. Bring everyone over](#8-bring-everyone-over)
 - [Troubleshooting](#troubleshooting)
 
 ---
@@ -86,7 +87,23 @@ When it's done, the report lists what was created, the finishing touches below, 
 
 Later, `!setup status` shows what's in place, and `!setup permissions` re-applies the template's permissions if something was changed by hand.
 
-## 6. Finishing touches
+## 6. Give Wisp its brain (optional)
+
+Out of the box Wisp reacts to messages with keywords: it gets the mood right most of the time, but it can't really answer anyone. Give it an Anthropic API key and Claude becomes its brain: it reads what people say to it, keeps up with the conversation, answers in its own voice and acts it out in the domain.
+
+1. **Create a key** at [console.anthropic.com](https://console.anthropic.com) (Settings → API keys). The key belongs to whoever's Anthropic account it is, and so does the bill.
+2. **Paste it into Wisp's settings in Root.** Wisp adds a **Wisp's brain** section to its App settings in your community, with an **Anthropic API key** field. Save, and Wisp picks it up right away; no restart needed.
+3. **Try it:** say "hey wisp, what can you do?" in any channel.
+
+Things to know:
+
+- **Cost:** Wisp uses Claude Opus 5.5 at low effort, so most answers take a few seconds and cost around a cent each. To cap spending, Wisp answers at most 200 messages an hour (`brain.maxPerHour` in `config.ts`) and falls back to keywords after that. You can also set a spend limit in the Anthropic console, for example on a workspace just for Wisp.
+- **Privacy:** messages that mention Wisp, plus the last 12 messages in that channel, are sent to Anthropic's API. Wisp keeps no record of them; its memory lasts only while it runs. `#the-vent-aka-hell` is never sent (`brain.skipIn`). Let the group know before you turn it on.
+- **Who can see the key:** anyone who can manage Wisp's App settings in the community. Use a key made just for Wisp, so you can revoke it on its own.
+- **While developing:** put `ANTHROPIC_API_KEY=...` in `wisp/server/.env` (next to `DEV_TOKEN`) instead.
+- If Claude declines a message or can't be reached, Wisp quietly falls back to keywords for that message.
+
+## 7. Finishing touches
 
 These need you, not the bot:
 
@@ -96,7 +113,7 @@ These need you, not the bot:
 4. **Place the domain.** If you haven't yet, rename Wisp's channel to `wisps-domain` and move it into **Ze Social Place** (step 4).
 5. **Make it look like yours.** Upload a community icon and banner.
 
-## 7. Bring everyone over
+## 8. Bring everyone over
 
 Three posts for the Discord, ready to edit:
 
@@ -158,6 +175,8 @@ Wisp can't kick or ban. That stays with you. The domain needs no extra permissio
 | "Created without its special permissions" in the report | Root didn't let a bot hand out those powers. Open the role in **Settings → Roles** and tick them ([layout doc](SERVER-LAYOUT.md) lists what each should have). |
 | A channel or category got a slightly different name | Root rejected the original (for example `Important!!!`), so setup used a plain version. Rename it by hand if you like; Wisp remembers it by ID. |
 | Nothing happens on `!setup confirm` a second time | Everything already exists. That's expected; setup never duplicates. |
+| Wisp only answers with short canned lines | It has no brain yet, or the key isn't working. Check step 6; Wisp's log says "Claude rejected Wisp's API key" if the key is wrong. |
+| Wisp takes a few seconds to answer | That's Claude thinking; the domain shows a thought bubble meanwhile. Set `brain.effort` to `"low"` (the default) if you raised it. |
 | `Root is rate limiting me` | Root allows about five changes per second. Wisp queues and retries automatically; wait a moment and try again. |
 
 Still stuck? Root's developer docs: [docs.rootapp.com](https://docs.rootapp.com).

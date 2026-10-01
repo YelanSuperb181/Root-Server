@@ -13,10 +13,12 @@ import {
   MessageType,
   RootAppStartState,
 } from "@rootsdk/server-app";
+import { CommunityFacts } from "@wisp/shared";
 import { blueprint } from "./blueprint/layout";
 import { validateAll } from "./blueprint/validate";
 import { config } from "./config";
-import { handleCommand, register } from "./core/commands";
+import { read } from "./core/api";
+import { allCommands, handleCommand, register } from "./core/commands";
 import { directory } from "./core/directory";
 import { ensureDailyJob, initJobs } from "./core/jobs";
 import { errMessage, log } from "./core/log";
@@ -34,6 +36,7 @@ import { onStarReaction, starboardCommands } from "./features/starboard";
 import { captureSuggestion, suggestionCommands } from "./features/suggestions";
 import { staffCommands } from "./features/staff";
 import { initWelcome } from "./features/welcome";
+import { initBrain } from "./domain/brain";
 import { hearChat } from "./domain/chat";
 import { domainCommands } from "./domain/commands";
 import { domainService, initDomain } from "./domain/domain";
@@ -44,7 +47,8 @@ async function onMessage(evt: ChannelMessageCreatedEvent): Promise<void> {
     if (await screenMessage(evt)) return;
     if (await handleCommand(evt)) return;
     if (await captureSuggestion(evt)) return;
-    await hearChat(evt);
+    // Runs alongside: Wisp may take a few seconds to think, and XP shouldn't wait for it.
+    void hearChat(evt);
     await awardXp(evt);
   } catch (err) {
     log("error", "message handling failed", { error: errMessage(err) });
@@ -59,6 +63,26 @@ async function onReaction(evt: ChannelMessageReactionCreatedEvent | ChannelMessa
   } catch (err) {
     log("error", "reaction handling failed", { error: errMessage(err) });
   }
+}
+
+/** What Wisp's brain knows about the community: its name, channels (not the personal mailboxes) and public commands. */
+async function communityFacts(): Promise<CommunityFacts> {
+  let name = "this community";
+  try {
+    name = (await read("communities.get", () => rootServer.community.communities.get())).name || name;
+  } catch (err) {
+    log("warn", "couldn't read the community's name", { error: errMessage(err) });
+  }
+  return {
+    name,
+    prefix: config.prefix,
+    groups: blueprint.groups
+      .map((g) => ({ name: g.name, channels: g.channels.filter((c) => !c.key.startsWith("mail-")).map((c) => ({ name: c.name, topic: c.topic })) }))
+      .filter((g) => g.channels.length > 0),
+    commands: allCommands()
+      .filter((c) => c.level === "everyone")
+      .map((c) => ({ name: c.name, summary: c.summary })),
+  };
 }
 
 async function runDaily(): Promise<void> {
@@ -121,6 +145,7 @@ async function onStarting(state: RootAppStartState): Promise<void> {
   // The domain: the App's own channel, where Wisp floats around.
   rootServer.lifecycle.addService(domainService);
   await initDomain(state.channelId);
+  initBrain(await communityFacts(), state.globalSettings);
 
   const mapped = Object.keys(directory.saved()).length;
   log("info", `${config.botName} is up`, {

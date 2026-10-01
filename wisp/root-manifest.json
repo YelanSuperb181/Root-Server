@@ -1,14 +1,37 @@
 {
   "id": "your-app-id",
   "version": "1.0.0",
+  "settings": {
+    "groups": [
+      {
+        "key": "brain",
+        "title": "Wisp's brain",
+        "items": [
+          {
+            "key": "anthropicApiKey",
+            "title": "Anthropic API key",
+            "description": "Lets Wisp understand and answer messages with Claude. Create a key at console.anthropic.com. Messages that mention Wisp, plus the last few messages in that channel, are sent to Anthropic's API (never from the vent). Leave empty to keep Wisp on simple keyword reactions.",
+            "required": false,
+            "confirmation": "Save",
+            "text": {}
+          }
+        ]
+      }
+    ]
+  },
   "package": {
     "client": {
       "deploy": "client/dist"
     },
     "server": {
       "launch": "server/dist/main.js",
-      "deploy": ["server/dist", "networking/gen/server"],
-      "nodeModules": ["node_modules"]
+      "deploy": [
+        "server/dist",
+        "networking/gen/server"
+      ],
+      "nodeModules": [
+        "node_modules"
+      ]
     }
   },
   "permissions": {

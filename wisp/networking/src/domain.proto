@@ -35,6 +35,9 @@ message WispState {
   double trick_x = 17;
   double trick_y = 18;
   double trick_dir = 19;
+  // In open space, the spot Wisp drifts around.
+  double anchor_x = 20;
+  double anchor_y = 21;
 }
 
 message Watcher {
@@ -97,6 +100,10 @@ message MessageEvent {
   string say = 6;
   // Server time when Wisp starts reacting (the message flies over first).
   double react_at = 7;
+  // The same id arrives twice when Wisp has to think: first with thinking
+  // set (show the message, Wisp ponders), then with its reaction.
+  string id = 8;
+  bool thinking = 9;
 }
 
 message StateEvent {

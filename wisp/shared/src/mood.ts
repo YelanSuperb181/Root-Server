@@ -28,6 +28,8 @@ export interface Reaction {
   emoji: { code: string; glyph: string };
   /** What Wisp did, for a chat reply ("does a loop-de-loop"). */
   action: string;
+  /** A real answer to post in chat, when Wisp's brain wrote one. */
+  reply?: string;
 }
 
 type Feeling = Mood | "greet" | "thanks" | "bye";
@@ -127,7 +129,8 @@ export const MOOD_EMOJI: Record<Mood, { code: string; glyph: string }> = {
   sleepy: { code: "sleeping", glyph: "😴" },
 };
 
-const ACTIONS: Record<TrickKind, string> = {
+/** What each trick looks like, in words, for chat. */
+export const TRICK_ACTIONS: Record<TrickKind, string> = {
   zoom: "zooms around in circles",
   loop: "does a loop-de-loop",
   spin: "spins",
@@ -178,7 +181,7 @@ export function readMessage(raw: string, rand: () => number = Math.random): Reac
   const sulking = mood === "grumpy" || mood === "sad" || mood === "sleepy";
   const own = TRICK_OF[feeling];
   const trick = requested && !sulking ? requested : own.length > 0 ? pick(own, rand) : undefined;
-  let action = trick ? ACTIONS[trick] : mood === "sleepy" ? "curls up and dozes off" : "droops a little";
+  let action = trick ? TRICK_ACTIONS[trick] : mood === "sleepy" ? "curls up and dozes off" : "droops a little";
   if (trick === "approach" && mood === "comfort") action = "floats over for a hug";
   return { mood, trick, say: pick(LINES[feeling], rand), emoji: MOOD_EMOJI[mood], action };
 }

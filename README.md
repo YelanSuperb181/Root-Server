@@ -22,8 +22,8 @@ Root channel names can only use letters, digits and hyphens, so each channel's e
 
 | | |
 | --- | --- |
-| 🔮 **Its domain** | Wisp's own channel: a round, glowing window where it floats, zooms around and does tricks. Drag it, fling it, slam it, poke it, or pin it to the wall until the bubble bursts into fullscreen. Everyone inside sees the same Wisp, live. |
-| 💬 **Talk to it** | Say "wisp" in any chat (or @mention it, or reply to it) and Wisp reacts: an emoji on your message, a little line back, and in the domain everyone watches your message fly in and Wisp react to it. |
+| 🔮 **Its domain** | Wisp's own channel: a round, glowing bubble where it floats, zooms around and does tricks. Drag it, fling it, slam it, poke it, or pin it to the wall until the bubble shatters and opens into an endless universe you can fly it through. Everyone inside sees the same Wisp, live. |
+| 💬 **Talk to it** | Say "wisp" in any chat (or @mention it, or reply to it) and Wisp actually answers: with Claude as its brain it reads the conversation, replies in its own voice, reacts with an emoji, and acts out how it feels in the domain while everyone watches. |
 | 🛠️ **Builds the server** | `!setup` previews, `!setup confirm` builds every category, channel and role in a couple of minutes. It only ever creates (never deletes or renames), matches anything that already exists by name, and can be re-run anytime. |
 | 🗣️ **Quote wall** | React 🗣️ on anything someone says. At 2 reactions (not counting whoever said it) Wisp saves it to `#quotes` with a live count. `!quote` pulls a random one back up. Nothing from `#the-vent-aka-hell` is ever quoted. |
 | 🎂 **Birthdays** | `!birthday July 14`, then a shout-out in `#birthdays` and the **Birthday Bitch** role for 24 hours. No birth year is ever asked for. |
@@ -42,13 +42,16 @@ Type `!wisp` anywhere and Wisp replies with a link into its domain. Inside:
 - **Let go mid-swing** to fling it. It coasts, bounces off the rim, then drifts back to the middle.
 - **Slam it into the wall**, thrown or still in your hand: the rim ripples, Wisp squashes and goes `> <`. Hit it hard enough and it sees stars.
 - **Tap** to poke it. Poke it a few times fast and it gets the giggles; keep going and it gets grumpy. Rest your pointer on it to pet it.
-- **Talk to it** with the message box under the domain.
-- **Hold it against the wall… if you dare.** The wall bulges, cracks spread from where Wisp is pressing, Wisp strains and sweats, and after a couple of seconds the bubble shatters: glass flies, the window falls away, and the domain fills the whole screen (fullscreen, where Root allows it). **Seal the bubble** puts it back; it also re-forms on its own after two quiet minutes.
+- **Talk to it** with the message box under the domain. A thought bubble shows while it thinks.
+- **Hold it against the wall… if you dare.** The wall bulges, cracks spread from where Wisp is pressing, and Wisp strains and sweats. Let go and the cracks slowly heal. Keep pushing for a couple of seconds and the bubble shatters: everything slows for a heartbeat, glass flies, the window breaks away and the universe opens out from where the bubble was, filling the screen (fullscreen, where Root allows it).
+- **Out in the universe** there are no walls: deep space in layers that slide past as the camera follows Wisp (nebulae, galaxies, a ringed planet, shooting stars). Fling Wisp and it streaks off with the stars blurring behind it, then settles wherever it lands; carry it to the edge of the screen to travel. **Seal the bubble** folds the universe back in and the window gathers around it; it also re-forms on its own after two quiet minutes.
 - Leave it alone and it does tricks on its own: loop-de-loops, spins, hops, zooming laps, the odd heart drawn in the air. After a while it dozes off. Any touch wakes it.
 
 ### Talking to Wisp
 
-Wisp reads the mood of what you say and acts it out. Some of what it picks up on:
+With an Anthropic API key in Wisp's App settings (see the [setup guide](docs/SETUP-GUIDE.md#6-give-wisp-its-brain-optional)), Claude is Wisp's brain. It reads your message along with the last few messages in the channel and Wisp's recent conversation there, then decides how Wisp feels, which trick it does, what it says in the domain and what it replies in chat. You can ask it things ("wisp where do i post minecraft screenshots?", "wisp settle this: is a hotdog a sandwich"), tease it, hype it up or vent to it. It knows the channels and commands, keeps the group's crude-but-affectionate vibe, and drops the bit when someone sounds genuinely not okay.
+
+Without a key, or if Claude can't be reached, Wisp falls back to reading the mood from keywords. Either way it acts it out. Some of what it picks up on:
 
 | Say something like… | Wisp… |
 | --- | --- |
@@ -63,9 +66,11 @@ Wisp reads the mood of what you say and acts it out. Some of what it picks up on
 | "gn wisp" | yawns and falls asleep |
 | "wisp spin", "do a loop", "dance", "zoomies" | does the trick (unless it's sulking) |
 
-In chat, Wisp leaves a matching emoji on your message and, at most once every 25 seconds per channel, a little line back ("hii!! *floats closer*"). In the domain, everyone sees your message arrive at the top and fly over to Wisp. Messages from `#the-vent-aka-hell` never show up in the domain; Wisp only reacts to them in chat.
+In chat, Wisp leaves a matching emoji on your message and replies (with the keyword fallback: a little canned line, at most once every 25 seconds per channel). In the domain, everyone sees your message arrive at the top and fly over to Wisp, a thought bubble while it thinks, then its reaction.
 
-One person holds Wisp at a time; everyone else sees who's carrying it. If Wisp's server can't be reached (or you open the domain outside Root), it runs solo: the same Wisp, just yours. **[Try it in your browser](https://claude.ai/artifact/JjoXEpCC6r2eeme9ZjCi57)**.
+**Privacy:** with a key set, messages that mention Wisp, plus the last 12 messages in that channel, are sent to Anthropic's API to work out the answer. Nothing is stored by Wisp; its memory lives only while it runs. `#the-vent-aka-hell` is never sent and never shows up in the domain; Wisp reacts there with keywords only. Change any of this under `brain` and `domain` in [`config.ts`](wisp/server/src/config.ts).
+
+One person holds Wisp at a time; everyone else sees who's carrying it. If Wisp's server can't be reached (or you open the domain outside Root), it runs solo: the same Wisp, just yours. **[Try it in your browser](https://claude.ai/artifact/JjoXEpCC6r2eeme9ZjCi57)**: there, Wisp thinks with your own Claude (it asks you once).
 
 Root Apps live inside their own channel, so the domain is a channel rather than a window over the rest of Root. Bursting the bubble is how it gets as big as Root lets it.
 
@@ -105,7 +110,8 @@ Two smaller differences from Discord: there's one `#bot-commands` instead of two
 | [`wisp/server/src/config.ts`](wisp/server/src/config.ts) | Prefix, quote emoji and threshold, levels, birthdays, auto-mod, where things get posted |
 | [`wisp/server/src/content/lines.ts`](wisp/server/src/content/lines.ts) | Wisp's welcome lines, level-up lines and 8-ball answers |
 | [`wisp/shared/src/physics.ts`](wisp/shared/src/physics.ts) | How Wisp moves in its domain: drift, drag, bounce, slam, how fast the wall cracks |
-| [`wisp/shared/src/mood.ts`](wisp/shared/src/mood.ts) | The words Wisp reacts to, its lines back, and its chat emoji |
+| [`wisp/shared/src/brain.ts`](wisp/shared/src/brain.ts) | Wisp's personality: what Claude is told about who Wisp is and how it talks |
+| [`wisp/shared/src/mood.ts`](wisp/shared/src/mood.ts) | The keyword fallback: words Wisp reacts to, its canned lines, and its chat emoji |
 | [`wisp/shared/src/tricks.ts`](wisp/shared/src/tricks.ts) | Wisp's tricks: loops, spins, zooms, the heart |
 | [`wisp/client/src/style.css`](wisp/client/src/style.css) | The domain window's look |
 
@@ -118,14 +124,15 @@ wisp/
 ├── root-manifest.json          App ID, version and the permissions Wisp asks for
 ├── networking/src/domain.proto the domain's live messages (grab, drag, throw, poke, state)
 ├── shared/src/                 run identically by the server and every window:
-│   ├── physics.ts              Wisp's physics, the wall cracking and the burst
+│   ├── physics.ts              Wisp's physics, the wall cracking, the burst and open space
 │   ├── tricks.ts               loops, spins, zooms, hops, the heart
-│   └── mood.ts                 how Wisp reads what people say to it
+│   ├── brain.ts                Wisp's persona and the answer format Claude fills in
+│   └── mood.ts                 the keyword fallback for reading what people say
 ├── server/                     the App's server: everything that happens in chat, plus the shared Wisp
 │   ├── src/
 │   │   ├── blueprint/          ⭐ the server template (layout, posts, permissions, validation, setup planner)
 │   │   ├── config.ts           ⭐ settings
-│   │   ├── domain/             the one true Wisp, who's holding it, its tricks, the burst, chat reactions and !wisp
+│   │   ├── domain/             the one true Wisp, its tricks and the burst; its brain (Claude), memory, chat answers and !wisp
 │   │   ├── content/            Wisp's lines, 8-ball answers, a question pool (question of the day is off)
 │   │   ├── core/               rate-limited API calls, commands, storage, IDs, jobs
 │   │   ├── features/           setup, welcome, quote wall, levels, birthdays, polls, automod, staff, fun
@@ -133,8 +140,8 @@ wisp/
 │   │   └── main.ts             wiring
 │   ├── test/                   unit tests (node:test)
 │   └── scripts/render-layout.ts  generates docs/SERVER-LAYOUT.md
-└── client/                     the domain window, shown in Wisp's channel: faces, effects, cracks, the shatter
+└── client/                     the domain window, shown in Wisp's channel: faces, effects, cracks, the shatter, the universe
 docs/                           setup guide, commands, customizing, layout
 ```
 
-Built on the official [Root SDK](https://docs.rootapp.com) 0.21 (`@rootsdk/server-app` and `@rootsdk/client-app`). Root runs Wisp for you once it's uploaded, and each community gets its own private data store.
+Built on the official [Root SDK](https://docs.rootapp.com) 0.21 (`@rootsdk/server-app` and `@rootsdk/client-app`), with Claude (`@anthropic-ai/sdk`) as Wisp's brain. Root runs Wisp for you once it's uploaded, and each community gets its own private data store.

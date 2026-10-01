@@ -6,7 +6,7 @@
 // Speeds are in radii per second, time in seconds. Rendering scales
 // everything to pixels.
 
-import { LIMIT, OPEN_HALF_H, OPEN_HALF_W, ORB_RADIUS, Point, arenaScale, clampToArena } from "./arena";
+import { LIMIT, OPEN_LIMIT, Point, arenaScale, clampToArena } from "./arena";
 import { Trick, trickTarget } from "./tricks";
 
 /** Fixed simulation step. Variable frame times are split into these. */
@@ -52,8 +52,10 @@ export interface Forces {
   flingUntil: number;
   /** A trick Wisp is doing (or about to do). Ignored while held or asleep. */
   trick?: Trick;
-  /** The bubble has burst: Wisp has the whole open arena. */
+  /** The bubble has burst: Wisp is loose in open space. */
   open?: boolean;
+  /** In open space, the spot Wisp drifts around (where it was last flung or let go). */
+  anchor?: Point;
 }
 
 export interface Impact {
@@ -83,6 +85,10 @@ const STRAIN_MIN_PUSH = 0.04;
 const STRAIN_HEAL = 0.18;
 /** Thrown hits can crack the wall a little, but never this far on their own. */
 const STRAIN_FREE_CAP = 0.5;
+/** In open space the drift pulls gently, however far Wisp is from its anchor. */
+const OPEN_PULL_MAX = 0.9;
+/** How far a throw in open space carries, as seconds of its speed: where Wisp will settle. */
+const OPEN_CARRY = 0.8;
 
 /** The slowly moving point Wisp drifts around when nobody is holding it. */
 export function wanderPoint(t: number, open = false): Point {
@@ -99,8 +105,7 @@ function springTo(body: Body, p: Point, k: number, damping: number, dt: number):
 }
 
 function touchingWall(body: Body, open: boolean): boolean {
-  if (open) return Math.abs(body.x) >= OPEN_HALF_W - ORB_RADIUS - 1e-9 || Math.abs(body.y) >= OPEN_HALF_H - ORB_RADIUS - 1e-9;
-  return Math.hypot(body.x, body.y) >= LIMIT - 1e-9;
+  return !open && Math.hypot(body.x, body.y) >= LIMIT - 1e-9;
 }
 
 /** Keeps Wisp inside its space; returns the hit if it was moving into a wall. */
@@ -109,23 +114,18 @@ function contain(body: Body, open: boolean, held: boolean, fresh: boolean): Impa
   let nx = 0;
   let ny = 0;
   if (open) {
-    const mx = OPEN_HALF_W - ORB_RADIUS;
-    const my = OPEN_HALF_H - ORB_RADIUS;
-    if (Math.abs(body.x) > mx) {
-      nx = Math.sign(body.x);
-      body.x = nx * mx;
+    // No walls out here; only a far-off limit that quietly stops Wisp drifting forever.
+    const far = Math.hypot(body.x, body.y);
+    if (far > OPEN_LIMIT) {
+      body.x *= OPEN_LIMIT / far;
+      body.y *= OPEN_LIMIT / far;
+      const out = (body.vx * body.x + body.vy * body.y) / OPEN_LIMIT;
+      if (out > 0) {
+        body.vx -= (out * body.x) / OPEN_LIMIT;
+        body.vy -= (out * body.y) / OPEN_LIMIT;
+      }
     }
-    if (Math.abs(body.y) > my) {
-      ny = Math.sign(body.y);
-      body.y = ny * my;
-    }
-    if (nx === 0 && ny === 0) return undefined;
-    const into = Math.max(nx * body.vx, ny * body.vy, 0);
-    if (nx !== 0 && nx * body.vx > 0) body.vx = -e * body.vx;
-    if (ny !== 0 && ny * body.vy > 0) body.vy = -e * body.vy;
-    if (into <= 0) return undefined;
-    const n = Math.hypot(nx, ny);
-    return { nx: nx / n, ny: ny / n, speed: into, held, fresh };
+    return undefined;
   }
 
   const d = Math.hypot(body.x, body.y);
@@ -164,7 +164,8 @@ export function step(body: Body, f: Forces): Impact | undefined {
   const dt = STEP;
   const open = f.open === true;
   const held = f.target !== undefined;
-  const trickAt = !held && !f.asleep && f.trick ? trickTarget(f.trick, f.t, open) : undefined;
+  const center = open && f.anchor ? f.anchor : { x: 0, y: 0 };
+  const trickAt = !held && !f.asleep && f.trick ? trickTarget(f.trick, f.t, open, center) : undefined;
   const wasTouching = touchingWall(body, open);
   if (f.target) {
     // A spring toward the pointer, even past the rim, so a hard shove slams Wisp into the wall.
@@ -175,8 +176,15 @@ export function step(body: Body, f: Forces): Impact | undefined {
     const calm = f.asleep ? 0.25 : 1;
     const pull = f.t < f.flingUntil ? 0.08 : 1;
     const w = wanderPoint(f.t, open);
-    body.vx += (w.x - body.x) * 0.55 * calm * pull * dt;
-    body.vy += ((w.y - body.y) * 0.55 * calm * pull + Math.sin(f.t * 1.6) * 0.024 * calm) * dt;
+    let ax = (w.x + center.x - body.x) * 0.55 * calm * pull;
+    let ay = (w.y + center.y - body.y) * 0.55 * calm * pull;
+    const a = Math.hypot(ax, ay);
+    if (open && a > OPEN_PULL_MAX) {
+      ax *= OPEN_PULL_MAX / a;
+      ay *= OPEN_PULL_MAX / a;
+    }
+    body.vx += ax * dt;
+    body.vy += (ay + Math.sin(f.t * 1.6) * 0.024 * calm) * dt;
     const drag = Math.exp(-(f.asleep ? 1.8 : 0.9) * dt);
     body.vx *= drag;
     body.vy *= drag;
@@ -223,6 +231,15 @@ export function burstLaunch(body: Body): void {
   body.vx = nx * BURST_SPEED;
   body.vy = ny * BURST_SPEED;
   body.strain = 0;
+}
+
+/**
+ * Where Wisp will settle in open space after being let go: a hard throw
+ * carries it far, a gentle release leaves it where it is.
+ */
+export function landingPoint(body: Body): Point {
+  const fast = Math.hypot(body.vx, body.vy) > FLING_SPEED;
+  return clampToArena(fast ? { x: body.x + body.vx * OPEN_CARRY, y: body.y + body.vy * OPEN_CARRY } : { x: body.x, y: body.y }, true);
 }
 
 /**
