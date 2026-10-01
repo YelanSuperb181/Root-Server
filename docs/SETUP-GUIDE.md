@@ -138,7 +138,7 @@ These are the permissions in [`root-manifest.json`](../wisp/root-manifest.json).
 | Manage roles | Creating the template's roles; giving Bitches to newcomers and Birthday Bitch on birthdays |
 | Create channel groups | Creating the categories during setup |
 | Channel full control | Creating channels and their permissions |
-| View, read history, post, mention, react | Posting welcomes, how-to notes, polls and quotes; seeding reactions |
+| View, read history, post, mention, react | Posting welcomes, how-to notes, polls and quotes; seeding reactions; reacting when someone talks to Wisp |
 | Delete others' messages | Auto-mod and `!clear` |
 | Manage pins | Pinning the how-to notes |
 

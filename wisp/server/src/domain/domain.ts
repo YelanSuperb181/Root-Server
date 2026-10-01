@@ -1,8 +1,9 @@
 // Wisp's domain, server side. The server owns the one true Wisp: it runs the
-// shared physics, decides who's holding it, and tells every open domain
-// window what happened. Windows predict motion with the same physics between
-// messages, so the server only speaks when something changes (a grab, a
-// throw, a poke, a hit on the rim) plus a gentle keyframe every few seconds.
+// shared physics, decides who's holding it, picks its tricks, cracks and
+// bursts its bubble, and tells every open domain window what happened.
+// Windows predict motion with the same physics between messages, so the
+// server only speaks when something changes (a grab, a throw, a poke, a hit,
+// a trick, a burst) plus a gentle keyframe every few seconds.
 
 import { rootServer, ChannelGuid, Client, ClientEvent } from "@rootsdk/server-app";
 import { WispDomainServiceBase } from "@wisp/gen-server";
@@ -12,27 +13,43 @@ import {
   GrabResponse,
   JoinRequest,
   JoinResponse,
+  MessageEvent,
   PokeRequest,
+  ReformRequest,
   ReleaseRequest,
+  SayRequest,
   StateEvent,
   Watcher,
   WispState,
 } from "@wisp/gen-shared";
 import {
+  BURST_COAST,
   Body,
   FLING_COAST,
   FLING_SPEED,
-  LIMIT,
+  Forces,
+  OPEN_FOR,
+  Reaction,
   SLEEP_AFTER,
   STEP,
+  Trick,
+  TrickKind,
+  burstLaunch,
+  clampTarget,
+  idleTrick,
+  isBursting,
   isSplash,
   pokeImpulse,
+  readMessage,
   sanitize,
   step,
+  trickAge,
 } from "@wisp/shared";
+import { config } from "../config";
 import { read } from "../core/api";
 import { errMessage, log } from "../core/log";
 import { isPerson, nickname } from "../core/members";
+import { findBlockedWord } from "../logic/automod";
 
 const TICK_MS = 1000 / 60;
 /** While someone holds Wisp, everyone else gets its position this often. */
@@ -43,6 +60,15 @@ const KEYFRAME_MS = 2500;
 const HOLD_TIMEOUT_MS = 3000;
 /** Rim hits are announced at most this often. */
 const IMPACT_BROADCAST_MS = 150;
+/** A message flies over to Wisp before it reacts, in seconds. */
+const REACT_DELAY = 0.7;
+/** Seconds between Wisp's own little tricks, when nobody's playing with it. */
+const IDLE_TRICK_MIN = 9;
+const IDLE_TRICK_SPREAD = 10;
+/** One message into the domain per person this often, in ms. */
+const SAY_COOLDOWN_MS = 1200;
+/** Longest message shown in the domain. */
+export const MAX_SAY = 160;
 
 const clock = () => performance.now() / 1000;
 
@@ -53,10 +79,22 @@ interface Holder {
   lastSeen: number;
 }
 
+export interface Heard {
+  userId: string;
+  nickname: string;
+  /** What they said, ready to show (empty to keep it private). */
+  text: string;
+  /** Chat channel it came from; empty when typed in the domain. */
+  channelName: string;
+  reaction: Reaction;
+}
+
 class Domain {
-  body: Body = { x: 0, y: 0, vx: 0, vy: 0 };
+  body: Body = { x: 0, y: 0, vx: 0, vy: 0, strain: 0 };
   asleep = false;
+  open = false;
   holder: Holder | undefined;
+  trick: Trick | undefined;
   flingUntil = 0;
   lastInteraction = clock();
   seq = 0;
@@ -69,6 +107,8 @@ class Domain {
   private lastHeldBroadcast = 0;
   private lastKeyframe = 0;
   private lastImpactBroadcast = 0;
+  private nextIdleTrick = clock() + IDLE_TRICK_MIN;
+  private lastSaid = new Map<string, number>();
 
   state(): WispState {
     return {
@@ -84,11 +124,22 @@ class Domain {
       targetY: this.holder?.target.y ?? 0,
       flingUntil: this.flingUntil,
       seq: ++this.seq,
+      strain: this.body.strain ?? 0,
+      open: this.open,
+      trick: this.trick?.kind ?? "",
+      trickStart: this.trick?.start ?? 0,
+      trickX: this.trick?.x ?? 0,
+      trickY: this.trick?.y ?? 0,
+      trickDir: this.trick?.dir ?? 1,
     };
   }
 
   watcherList(): Watcher[] {
     return [...this.watchers].map(([userId, nick]) => ({ userId, nickname: nick }));
+  }
+
+  private forces(t: number): Forces {
+    return { t, target: this.holder?.target, asleep: this.asleep, flingUntil: this.flingUntil, trick: this.trick, open: this.open };
   }
 
   /** Simulates up to now, in fixed steps. */
@@ -97,18 +148,18 @@ class Domain {
     // Nobody was watching: don't replay the gap, just carry on from here.
     if (now - this.simulatedUntil > 2) this.simulatedUntil = now - STEP;
     while (this.simulatedUntil + STEP <= now) {
-      const hit = step(this.body, {
-        t: this.simulatedUntil,
-        target: this.holder?.target,
-        asleep: this.asleep,
-        flingUntil: this.flingUntil,
-      });
+      const hit = step(this.body, this.forces(this.simulatedUntil));
       this.simulatedUntil += STEP;
+      if (!this.open && this.holder && isBursting(this.body)) {
+        this.burst();
+        continue;
+      }
       if (hit && isSplash(hit) && now * 1000 - this.lastImpactBroadcast > IMPACT_BROADCAST_MS) {
         this.lastImpactBroadcast = now * 1000;
         this.announce("impact");
       }
     }
+    if (this.trick && this.simulatedUntil > this.trick.start && trickAge(this.trick, this.simulatedUntil) === undefined) this.trick = undefined;
   }
 
   touch(): void {
@@ -121,11 +172,17 @@ class Domain {
 
   tick(): void {
     this.catchUp();
-    const nowMs = clock() * 1000;
+    const now = clock();
+    const nowMs = now * 1000;
     if (this.holder && nowMs - this.holder.lastSeen * 1000 > HOLD_TIMEOUT_MS) this.release(this.holder.userId);
-    if (!this.holder && !this.asleep && clock() - this.lastInteraction > SLEEP_AFTER) {
+    if (this.open && !this.holder && now - this.lastInteraction > OPEN_FOR) this.reform();
+    if (!this.holder && !this.asleep && now - this.lastInteraction > SLEEP_AFTER) {
       this.asleep = true;
+      this.trick = undefined;
       this.announce("sleep");
+    }
+    if (!this.holder && !this.asleep && !this.trick && now > this.nextIdleTrick) {
+      this.startTrick(idleTrick(), 0, "trick");
     }
     if (this.holder && nowMs - this.lastHeldBroadcast > HELD_BROADCAST_MS) {
       this.lastHeldBroadcast = nowMs;
@@ -150,6 +207,13 @@ class Domain {
     } else if (this.watchers.size === 0 && this.timer) {
       clearInterval(this.timer);
       this.timer = undefined;
+      // Everyone left: the next visitor finds Wisp back in a whole bubble.
+      this.holder = undefined;
+      this.trick = undefined;
+      if (this.open) {
+        this.open = false;
+        this.body = { ...sanitize(this.body), strain: 0 };
+      }
     }
   }
 
@@ -186,11 +250,19 @@ class Domain {
     this.ensureRunning();
   }
 
+  /** Starts a trick `delay` seconds from now, from wherever Wisp is. */
+  startTrick(kind: TrickKind, delay: number, cause: string, byUserId = "", byNickname = ""): void {
+    this.trick = { kind, start: this.simulatedUntil + delay, x: this.body.x, y: this.body.y, dir: Math.random() < 0.5 ? -1 : 1 };
+    this.nextIdleTrick = clock() + delay + IDLE_TRICK_MIN + Math.random() * IDLE_TRICK_SPREAD;
+    this.announce(cause, byUserId, byNickname);
+  }
+
   grab(userId: string, at: { x: number; y: number }): boolean {
     this.catchUp();
     if (this.holder && this.holder.userId !== userId) return false;
     this.touch();
-    this.holder = { userId, nickname: this.watchers.get(userId) ?? "someone", target: clampTarget(at), lastSeen: clock() };
+    this.trick = undefined;
+    this.holder = { userId, nickname: this.watchers.get(userId) ?? "someone", target: clampTarget(at, this.open), lastSeen: clock() };
     this.announce("grab", userId, this.holder.nickname);
     return true;
   }
@@ -198,7 +270,9 @@ class Domain {
   drag(userId: string, target: { x: number; y: number }): void {
     if (this.holder?.userId !== userId) return;
     this.catchUp();
-    this.holder.target = clampTarget(target);
+    // The catch-up may have burst the bubble and knocked Wisp out of their hand.
+    if (this.holder?.userId !== userId) return;
+    this.holder.target = clampTarget(target, this.open);
     this.holder.lastSeen = clock();
     this.lastInteraction = clock();
   }
@@ -207,10 +281,11 @@ class Domain {
   release(userId: string, thrown?: Body): void {
     if (this.holder?.userId !== userId) return;
     this.catchUp();
+    if (this.holder?.userId !== userId) return;
     const by = this.holder;
     this.holder = undefined;
     if (thrown) {
-      this.body = sanitize(thrown);
+      this.body = { ...sanitize(thrown, this.open), strain: this.body.strain ?? 0 };
       if (Math.hypot(this.body.vx, this.body.vy) > FLING_SPEED) this.flingUntil = this.simulatedUntil + FLING_COAST;
     }
     this.touch();
@@ -221,27 +296,86 @@ class Domain {
     if (this.holder) return;
     this.catchUp();
     this.touch();
+    this.trick = undefined;
     const push = pokeImpulse(Number.isFinite(angle) ? angle : 0);
     this.body.vx += push.vx;
     this.body.vy += push.vy;
     this.announce("poke", userId, this.watchers.get(userId) ?? "someone");
   }
 
-  /** `!wisp` in chat: everyone already inside sees Wisp light up. */
+  /** The wall gave way: the bubble bursts, knocks Wisp out of the holder's hand and flings it free. */
+  private burst(): void {
+    const by = this.holder;
+    this.holder = undefined;
+    this.trick = undefined;
+    burstLaunch(this.body);
+    this.open = true;
+    this.flingUntil = this.simulatedUntil + BURST_COAST;
+    this.lastInteraction = clock();
+    log("info", "the bubble burst", { by: by?.nickname });
+    this.announce("burst", by?.userId ?? "", by?.nickname ?? "");
+  }
+
+  /** Puts the bubble back together around Wisp, wherever it is. */
+  reform(byUserId = "", byNickname = ""): void {
+    if (!this.open) return;
+    this.catchUp();
+    this.open = false;
+    this.trick = undefined;
+    const inside = sanitize(this.body);
+    this.body = { x: inside.x, y: inside.y, vx: inside.vx * 0.3, vy: inside.vy * 0.3, strain: 0 };
+    if (this.holder) this.holder.target = clampTarget(this.holder.target);
+    this.announce("reform", byUserId, byNickname);
+  }
+
+  /** `!wisp` in chat: everyone already inside sees Wisp light up and spin. */
   summon(byUserId: string, byNickname: string): void {
     this.catchUp();
     this.touch();
-    this.announce("summon", byUserId, byNickname);
+    if (this.holder) this.announce("summon", byUserId, byNickname);
+    else this.startTrick("spin", 0, "summon", byUserId, byNickname);
   }
-}
 
-/** A pointer may be outside the domain (that's how you slam Wisp), but not absurdly far. */
-function clampTarget(p: { x: number; y: number }): { x: number; y: number } {
-  const x = Number.isFinite(p.x) ? p.x : 0;
-  const y = Number.isFinite(p.y) ? p.y : 0;
-  const d = Math.hypot(x, y);
-  const max = LIMIT + 0.6;
-  return d > max ? { x: (x * max) / d, y: (y * max) / d } : { x, y };
+  /** Someone said something to Wisp. Everyone in the domain sees it arrive and Wisp react. */
+  hear(h: Heard): void {
+    if (this.watchers.size === 0) return;
+    this.catchUp();
+    const reactAt = this.simulatedUntil + REACT_DELAY;
+    const message: MessageEvent = {
+      fromUserId: h.userId,
+      fromNickname: h.nickname,
+      text: h.text,
+      channelName: h.channelName,
+      mood: h.reaction.mood,
+      say: h.reaction.say,
+      reactAt,
+    };
+    try {
+      domainService.broadcastMessage(message, "all");
+    } catch (err) {
+      log("warn", "message broadcast failed", { error: errMessage(err) });
+    }
+    if (h.reaction.mood === "sleepy") {
+      // Wisp yawns and dozes off where it is.
+      this.trick = undefined;
+      this.asleep = true;
+      this.lastInteraction = clock();
+      this.announce("sleep", h.userId, h.nickname);
+      return;
+    }
+    this.touch();
+    if (!this.holder && h.reaction.trick) this.startTrick(h.reaction.trick, REACT_DELAY, "trick", h.userId, h.nickname);
+  }
+
+  /** Something typed into the domain itself. */
+  say(userId: string, raw: string): void {
+    const now = Date.now();
+    if (now - (this.lastSaid.get(userId) ?? 0) < SAY_COOLDOWN_MS) return;
+    const text = raw.replace(/\s+/g, " ").trim().slice(0, MAX_SAY);
+    if (!text || findBlockedWord(text, config.automod.blockedWords) !== undefined) return;
+    this.lastSaid.set(userId, now);
+    this.hear({ userId, nickname: this.watchers.get(userId) ?? "someone", text, channelName: "", reaction: readMessage(text) });
+  }
 }
 
 export const domain = new Domain();
@@ -270,6 +404,16 @@ class WispDomainService extends WispDomainServiceBase {
   async poke(request: PokeRequest, client: Client): Promise<void> {
     await domain.addWatcher(client.userId);
     domain.poke(client.userId, request.angle);
+  }
+
+  async say(request: SayRequest, client: Client): Promise<void> {
+    await domain.addWatcher(client.userId);
+    domain.say(client.userId, request.text ?? "");
+  }
+
+  async reform(_request: ReformRequest, client: Client): Promise<void> {
+    await domain.addWatcher(client.userId);
+    domain.reform(client.userId, domain.watchers.get(client.userId) ?? "someone");
   }
 }
 

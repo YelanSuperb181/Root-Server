@@ -34,6 +34,7 @@ import { onStarReaction, starboardCommands } from "./features/starboard";
 import { captureSuggestion, suggestionCommands } from "./features/suggestions";
 import { staffCommands } from "./features/staff";
 import { initWelcome } from "./features/welcome";
+import { hearChat } from "./domain/chat";
 import { domainCommands } from "./domain/commands";
 import { domainService, initDomain } from "./domain/domain";
 
@@ -43,6 +44,7 @@ async function onMessage(evt: ChannelMessageCreatedEvent): Promise<void> {
     if (await screenMessage(evt)) return;
     if (await handleCommand(evt)) return;
     if (await captureSuggestion(evt)) return;
+    await hearChat(evt);
     await awardXp(evt);
   } catch (err) {
     log("error", "message handling failed", { error: errMessage(err) });

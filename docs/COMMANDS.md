@@ -30,7 +30,8 @@ Commands start with `!` (change it with `prefix` in [`config.ts`](../wisp/server
 | React 🗣️ on a message | At 2 reactions from people other than the author, saves it to `#quotes` with a live count. Never from `#the-vent-aka-hell`. |
 | Join the community | Gives you **Bitches** and welcomes you in `#bitches-yapping`. |
 | Chat | Earns 15-25 XP, at most once a minute (not in `#bot-commands`, `#the-vent-aka-hell` or `#dyno-status`). Level-ups are announced in `#bot-commands`. |
-| Open Wisp's domain | Drag Wisp to carry it, let go to fling it, slam it into the wall, tap to poke it (arrow keys and space work too). Everyone inside shares the same Wisp. |
+| Say "wisp" (or @mention it, or reply to it) | Reacts with an emoji that matches your mood, sometimes answers with a little line, and acts it out in the domain for everyone watching. See [the README](../README.md#talking-to-wisp) for what it picks up on. |
+| Open Wisp's domain | Drag Wisp to carry it, let go to fling it, slam it into the wall, tap to poke it (arrow keys and space work too), or type to it. Hold it against the wall long enough and the bubble bursts into fullscreen. Everyone inside shares the same Wisp. |
 | Have a birthday | A shout-out in `#birthdays` and **Birthday Bitch** for the day (16:00 UTC). |
 
 ## For the Bitchiest Bitch (and admins)

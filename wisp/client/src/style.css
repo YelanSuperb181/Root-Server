@@ -1,6 +1,9 @@
 /* Layout: one floating glass window on a night ground, as large as the app's
-   channel allows — title bar, the round domain where Wisp lives, a hint row.
-   A single dark look on purpose: the domain is night, whatever Root's theme. */
+   channel allows — title bar, the round domain where Wisp lives, a message
+   box, a hint row. When the bubble bursts (body.open) the window falls away
+   and the domain fills the whole frame, with the bar and message box floating
+   on top. A single dark look on purpose: the domain is night, whatever
+   Root's theme. */
 @import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@1,500;1,600&family=Figtree:wght@400;500;600&display=swap");
 
 :root {
@@ -34,7 +37,7 @@ body {
 
 .window {
   /* Leave room for the title bar and hints so the round domain always fits on screen. */
-  width: min(100%, 860px, max(300px, calc(100vh - 190px)));
+  width: min(100%, 860px, max(300px, calc(100vh - 250px)));
   min-width: min(100%, 300px);
   background: var(--glass);
   border: 1px solid var(--glass-line);
@@ -63,6 +66,47 @@ body {
 
 .domain { position: relative; width: 100%; aspect-ratio: 1 / 1; touch-action: none; }
 canvas { display: block; width: 100%; height: 100%; }
+
+.say { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--glass-line); }
+.say input { flex: 1; min-width: 0; font: inherit; font-size: 14px; color: var(--ink); background: rgba(6, 9, 20, 0.55); border: 1px solid var(--glass-line); border-radius: 10px; padding: 7px 12px; }
+.say input::placeholder { color: var(--muted); }
+.say input:focus-visible { outline: 2px solid var(--halo); outline-offset: 1px; }
+
+/* A message arriving for Wisp: floats in at the top of the domain, then fades. */
+.card { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: max-content; max-width: min(420px, calc(100% - 32px));
+  padding: 9px 14px; border-radius: 14px; background: rgba(14, 20, 38, 0.88); border: 1px solid rgba(127, 227, 255, 0.3);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), 0 0 24px rgba(127, 227, 255, 0.12); pointer-events: none; text-align: center; }
+.card[hidden] { display: none; }
+.card p { margin: 0; overflow-wrap: anywhere; }
+.card-from { font-size: 12px; color: var(--muted); }
+.card-from b { color: var(--halo); font-weight: 600; }
+.card-text { font-size: 14.5px; margin-top: 2px !important; }
+.card.show { animation: card 6s ease both; }
+@keyframes card {
+  0% { opacity: 0; transform: translate(-50%, -10px) scale(0.96); }
+  6% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  85% { opacity: 1; transform: translate(-50%, 0); }
+  100% { opacity: 0; transform: translate(-50%, -6px); }
+}
+
+/* The bubble burst: the domain is the whole frame now. */
+body.open { overflow: hidden; }
+body.open .stage { padding: 0; }
+body.open .window { position: fixed; inset: 0; width: auto; min-width: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none;
+  backdrop-filter: none; -webkit-backdrop-filter: none; display: block; }
+body.open .domain { position: absolute; inset: 0; aspect-ratio: auto; }
+body.open .bar { position: absolute; top: 0; left: 0; right: 0; z-index: 2; border: 0; padding-top: max(14px, env(safe-area-inset-top));
+  background: linear-gradient(rgba(6, 9, 20, 0.75), rgba(6, 9, 20, 0)); pointer-events: none; animation: settle 0.6s 0.45s both; }
+body.open .bar .btn { pointer-events: auto; }
+body.open .card { top: 76px; }
+body.open .say { position: absolute; z-index: 2; left: 50%; bottom: max(16px, env(safe-area-inset-bottom)); transform: translateX(-50%);
+  width: min(520px, calc(100% - 32px)); border: 1px solid var(--glass-line); border-radius: 14px; background: var(--glass);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); animation: settle 0.6s 0.55s both; }
+body.open .hints, body.open .note { display: none; }
+@keyframes settle { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .card.show, body.open .bar, body.open .say { animation-duration: 0.01s; animation-delay: 0s; }
+}
 
 .hints { display: flex; flex-wrap: wrap; gap: 6px 18px; justify-content: center; padding: 12px 18px 16px; border-top: 1px solid var(--glass-line); color: var(--muted); font-size: 13px; }
 .hints b { color: var(--ink); font-weight: 600; }

@@ -24,6 +24,17 @@ message WispState {
   // Until this server time, Wisp is still coasting from a throw.
   double fling_until = 11;
   uint32 seq = 12;
+  // How close the bubble's wall is to bursting, 0 to 1.
+  double strain = 13;
+  // The bubble has burst: Wisp has the whole open arena.
+  bool open = 14;
+  // The trick Wisp is doing (empty for none), when it starts, where Wisp
+  // was when it began, and which way round (1 or -1).
+  string trick = 15;
+  double trick_start = 16;
+  double trick_x = 17;
+  double trick_y = 18;
+  double trick_dir = 19;
 }
 
 message Watcher {
@@ -64,9 +75,34 @@ message PokeRequest {
   double angle = 1;
 }
 
+// Something typed into the domain, for Wisp.
+message SayRequest {
+  string text = 1;
+}
+
+// Put the bubble back together after it burst.
+message ReformRequest {}
+
+// Someone said something to Wisp, in chat or in the domain, and how Wisp took it.
+message MessageEvent {
+  string from_user_id = 1;
+  string from_nickname = 2;
+  // What they said, trimmed (empty when it came from a private channel).
+  string text = 3;
+  // The chat channel it came from; empty when typed in the domain.
+  string channel_name = 4;
+  // happy, love, shy, laugh, excited, curious, comfort, grumpy, sad, scared, sleepy
+  string mood = 5;
+  // Wisp's little line back.
+  string say = 6;
+  // Server time when Wisp starts reacting (the message flies over first).
+  double react_at = 7;
+}
+
 message StateEvent {
   WispState state = 1;
-  // grab, drag, release, poke, impact, keyframe, sleep, wake, summon
+  // grab, drag, release, poke, impact, keyframe, sleep, wake, summon,
+  // trick, burst, reform
   string cause = 2;
   string by_user_id = 3;
   string by_nickname = 4;
@@ -82,7 +118,10 @@ service WispDomainService {
   rpc Drag(DragRequest) returns (rootsdk.Void);
   rpc Release(ReleaseRequest) returns (rootsdk.Void);
   rpc Poke(PokeRequest) returns (rootsdk.Void);
+  rpc Say(SayRequest) returns (rootsdk.Void);
+  rpc Reform(ReformRequest) returns (rootsdk.Void);
 
   rpc BroadcastState(StateEvent) returns (rootsdk.Void);
   rpc BroadcastWatchers(WatchersEvent) returns (rootsdk.Void);
+  rpc BroadcastMessage(MessageEvent) returns (rootsdk.Void);
 }

@@ -18,13 +18,22 @@
           </div>
           <div class="actions">
             <span class="status" role="status" aria-live="polite"><span class="dot" aria-hidden="true"></span><span id="status">summoning…</span></span>
-            <button class="btn" type="button" id="expand" hidden>Expand</button>
+            <button class="btn" type="button" id="fullscreen" hidden>Fullscreen</button>
+            <button class="btn" type="button" id="seal" hidden>Seal the bubble</button>
           </div>
         </div>
         <div class="domain" id="domain">
           <canvas id="canvas" tabindex="0" aria-label="Wisp, a glowing spirit floating in a round domain. Drag it to carry it, let go to fling it, slam it into the wall, tap it to poke it. Arrow keys nudge it; space pokes it."></canvas>
+          <div class="card" id="card" hidden aria-live="polite">
+            <p class="card-from"><b id="card-name"></b> <span id="card-where"></span></p>
+            <p class="card-text" id="card-text"></p>
+          </div>
         </div>
-        <div class="hints"><span><b>Drag</b> to carry</span><span><b>Let go</b> to fling</span><span><b>Slam</b> it into the wall</span><span><b>Tap</b> to poke</span></div>
+        <form class="say" id="say" autocomplete="off">
+          <input id="say-input" type="text" maxlength="160" placeholder="Say something to Wisp…" aria-label="Say something to Wisp" enterkeyhint="send" />
+          <button class="btn" type="submit">Send</button>
+        </form>
+        <div class="hints"><span><b>Drag</b> to carry</span><span><b>Let go</b> to fling</span><span><b>Slam</b> it into the wall</span><span><b>Tap</b> to poke</span><span><b>Hold it</b> against the wall… if you dare</span></div>
       </section>
       <p class="note" id="note" hidden></p>
     </div>

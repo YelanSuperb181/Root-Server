@@ -89,9 +89,20 @@ The numbers at the top of [`physics.ts`](../wisp/shared/src/physics.ts). Distanc
 | `IMPACT_MIN_FREE` / `IMPACT_MIN_HELD` | How hard a hit on the rim must be to ripple and bonk, thrown / while held |
 | `POKE_SPEED` | How hard a poke pushes |
 | `SLEEP_AFTER` | Seconds without a touch before Wisp dozes off |
+| `OPEN_FOR` | Seconds without a touch before a burst bubble re-forms |
+| `BURST_SPEED`, `BURST_COAST` | How hard the bursting bubble launches Wisp, and for how long |
+| `STRAIN_BASE`, `STRAIN_PUSH`, `STRAIN_HEAL` | How fast the wall cracks while Wisp is pinned to it (about two seconds of hard shoving), and how fast it heals |
 | `SPRING`, `BOUNCE_FREE`, `BOUNCE_HELD` | How tightly Wisp follows your pointer, and how bouncy the rim is |
 
-The server and every window run this same file, so rebuild and re-upload everything after a change (`npm run package`). `npm test` checks that Wisp still can't escape the domain.
+The server and every window run this same file, so rebuild and re-upload everything after a change (`npm run package`). `npm test` checks that Wisp still can't escape the domain and that the wall takes about as long to burst as it should.
+
+### Teach Wisp new words
+
+[`mood.ts`](../wisp/shared/src/mood.ts) has the lists. `FEELINGS` maps words and emoji to a mood (checked top to bottom, first match wins), `REQUESTS` maps words to tricks ("spin", "dance"), and `LINES` holds what Wisp says back for each mood. `MOOD_EMOJI` is the reaction it leaves in chat; use the shortcode names Root uses for reactions (`two_hearts`, `sparkles`). Add a case to `wisp/server/test/mood.test.ts` for anything you add, so a later change can't quietly break it.
+
+### Quiet Wisp down in chat
+
+In `config.ts` under `domain`: `replyInChat: false` keeps the emoji reactions but drops the little lines back, `replyCooldownSeconds` spaces them out, `listen: false` turns chat reactions off entirely, and `quietIn` lists channels whose messages never show up in the domain (the vent, to start with).
 
 ## How permissions work
 

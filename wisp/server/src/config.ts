@@ -98,6 +98,17 @@ export const config = {
     ignore: ["dyno-status"],
   },
 
+  /** Wisp's domain, and how Wisp answers people who talk to it in chat. */
+  domain: {
+    /** React when a message says "wisp", @mentions Wisp or replies to one of its messages. */
+    listen: true,
+    /** Also answer in chat with a little line ("hii!! *hops happily*"), at most once per channel this often. */
+    replyInChat: true,
+    replyCooldownSeconds: 25,
+    /** Channels whose messages never show up in the domain. Wisp still reacts to them in chat. */
+    quietIn: ["the-vent-aka-hell"],
+  },
+
   modLog: {
     /** Dyno doesn't exist on Root, so Wisp takes over its status channel. */
     channel: "dyno-status",

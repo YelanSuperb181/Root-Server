@@ -4,7 +4,7 @@
 
 import { rootClient } from "@rootsdk/client-app";
 import { WispDomainServiceClientEvent, wispDomainServiceClient } from "@wisp/gen-client";
-import type { JoinResponse, StateEvent, Watcher } from "@wisp/gen-shared";
+import type { JoinResponse, MessageEvent, StateEvent, Watcher } from "@wisp/gen-shared";
 import type { Body } from "@wisp/shared";
 
 export interface DomainLink {
@@ -15,8 +15,13 @@ export interface DomainLink {
   drag(x: number, y: number): void;
   release(body: Body): void;
   poke(angle: number): void;
+  /** Something typed into the domain, for Wisp. */
+  say(text: string): void;
+  /** Put the burst bubble back together. */
+  reform(): void;
   onState(listener: (event: StateEvent) => void): void;
   onWatchers(listener: (watchers: Watcher[]) => void): void;
+  onMessage(listener: (message: MessageEvent) => void): void;
 }
 
 function soloLink(): DomainLink {
@@ -27,8 +32,11 @@ function soloLink(): DomainLink {
     drag: () => undefined,
     release: () => undefined,
     poke: () => undefined,
+    say: () => undefined,
+    reform: () => undefined,
     onState: () => undefined,
     onWatchers: () => undefined,
+    onMessage: () => undefined,
   };
 }
 
@@ -99,8 +107,11 @@ export async function connect(timeoutMs = 4000): Promise<{ link: DomainLink; joi
     drag: throttle(1000 / 15, (x, y) => void quiet(svc.drag({ targetX: x, targetY: y }))),
     release: (b) => void quiet(svc.release({ x: b.x, y: b.y, vx: b.vx, vy: b.vy })),
     poke: (angle) => void quiet(svc.poke({ angle })),
+    say: (text) => void quiet(svc.say({ text })),
+    reform: () => void quiet(svc.reform({})),
     onState: (listener) => void svc.on(WispDomainServiceClientEvent.State, listener),
     onWatchers: (listener) => void svc.on(WispDomainServiceClientEvent.Watchers, (e) => listener(e.watchers)),
+    onMessage: (listener) => void svc.on(WispDomainServiceClientEvent.Message, listener),
   };
   return { link, joined };
 }
