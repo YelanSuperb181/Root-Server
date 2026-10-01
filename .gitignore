@@ -8,4 +8,5 @@ build-test/
 *.zip
 .DS_Store
 wisp.rootpkg
-bot/src/blueprint/mailboxes.local.ts
+wisp/server/src/blueprint/mailboxes.local.ts
+wisp/networking/gen/

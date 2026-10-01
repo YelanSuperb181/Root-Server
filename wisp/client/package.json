@@ -1,0 +1,16 @@
+{
+  "name": "@wisp/client",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@wisp/shared": "*"
+  },
+  "devDependencies": {
+    "vite": "^5.4.10"
+  },
+  "scripts": {
+    "build": "tsc && vite build",
+    "client": "vite"
+  }
+}

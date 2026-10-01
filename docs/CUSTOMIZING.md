@@ -3,9 +3,9 @@
 The whole server is defined in a few files. After any change:
 
 ```bash
-cd bot
-npm test          # catches typos: unknown roles, bad channel names, broken references
+cd wisp
 npm run build
+npm test          # catches typos: unknown roles, bad channel names, broken references
 npm run docs      # optional: regenerates docs/SERVER-LAYOUT.md
 ```
 
@@ -13,16 +13,18 @@ Then restart Wisp (or upload a new version, remembering to bump the version numb
 
 | File | Change it to… |
 | --- | --- |
-| [`bot/src/blueprint/layout.ts`](../bot/src/blueprint/layout.ts) | add, remove or rename categories, channels and roles; change colors and permissions |
-| [`bot/src/blueprint/content.ts`](../bot/src/blueprint/content.ts) | rewrite the pinned how-to notes |
-| [`bot/src/config.ts`](../bot/src/config.ts) | tune features: prefix, quote wall, XP, birthdays, auto-mod, where things post |
-| [`bot/src/content/lines.ts`](../bot/src/content/lines.ts) | Wisp's welcome lines, level-up lines and 8-ball answers |
+| [`wisp/server/src/blueprint/layout.ts`](../wisp/server/src/blueprint/layout.ts) | add, remove or rename categories, channels and roles; change colors and permissions |
+| [`wisp/server/src/blueprint/content.ts`](../wisp/server/src/blueprint/content.ts) | rewrite the pinned how-to notes |
+| [`wisp/server/src/config.ts`](../wisp/server/src/config.ts) | tune features: prefix, quote wall, XP, birthdays, auto-mod, where things post |
+| [`wisp/server/src/content/lines.ts`](../wisp/server/src/content/lines.ts) | Wisp's welcome lines, level-up lines and 8-ball answers |
+| [`wisp/shared/src/physics.ts`](../wisp/shared/src/physics.ts) | how Wisp moves in its domain |
+| [`wisp/client/src/`](../wisp/client/src/) | the domain window: its look (`style.css`) and how Wisp is drawn (`domain.ts`) |
 
 ## Recipes
 
 ### Add a mailbox for someone new
 
-In `bot/src/blueprint/mailboxes.local.ts` (kept off GitHub; copy it from `mailboxes.local.example.ts` if you don't have it yet), add a line:
+In `wisp/server/src/blueprint/mailboxes.local.ts` (kept off GitHub; copy it from `mailboxes.local.example.ts` if you don't have it yet), add a line:
 
 ```ts
 { key: "mail-sam", name: "sam-the-new-guy", type: "text", topic: "🌻 Sam's mailbox." },
@@ -69,15 +71,31 @@ Add them to `automod.blockedWords` in `config.ts`. Matching is whole-word and ca
 
 ### Change Wisp's personality
 
-Edit [`content/lines.ts`](../bot/src/content/lines.ts). `{user}` becomes a mention and `{community}` the server's name; one line is picked at random each time.
+Edit [`content/lines.ts`](../wisp/server/src/content/lines.ts). `{user}` becomes a mention and `{community}` the server's name; one line is picked at random each time.
 
 ### Use a different command prefix
 
 `prefix` in `config.ts`, for example `"?"` if another bot already uses `!`.
 
+### Change how Wisp moves in its domain
+
+The numbers at the top of [`physics.ts`](../wisp/shared/src/physics.ts). Distances are fractions of the domain's radius (the rim is at 1), times are in seconds:
+
+| Setting | What it does |
+| --- | --- |
+| `ORB_RADIUS` | How big Wisp is |
+| `MAX_FLING` | The fastest throw counts as this fast |
+| `FLING_COAST` | How long a hard throw flies before Wisp drifts back to the middle |
+| `IMPACT_MIN_FREE` / `IMPACT_MIN_HELD` | How hard a hit on the rim must be to ripple and bonk, thrown / while held |
+| `POKE_SPEED` | How hard a poke pushes |
+| `SLEEP_AFTER` | Seconds without a touch before Wisp dozes off |
+| `SPRING`, `BOUNCE_FREE`, `BOUNCE_HELD` | How tightly Wisp follows your pointer, and how bouncy the rim is |
+
+The server and every window run this same file, so rebuild and re-upload everything after a change (`npm run package`). `npm test` checks that Wisp still can't escape the domain.
+
 ## How permissions work
 
-Each category and channel can have **access rules**: per-role "allow" or "deny" switches that sit on top of a role's normal permissions. The template uses presets from [`permissions.ts`](../bot/src/blueprint/permissions.ts):
+Each category and channel can have **access rules**: per-role "allow" or "deny" switches that sit on top of a role's normal permissions. The template uses presets from [`permissions.ts`](../wisp/server/src/blueprint/permissions.ts):
 
 | Preset | Effect |
 | --- | --- |
@@ -86,7 +104,7 @@ Each category and channel can have **access rules**: per-role "allow" or "deny" 
 | `HIDE` / `SHOW` | Can't / can see the channel |
 | `LISTEN_ONLY` / `CAN_SPEAK` | Voice: can't / can talk and stream |
 
-A channel with its own `access` stops sharing its category's permissions (Root ignores channel rules otherwise), so Wisp copies the category's rules onto it first and then adds the channel's own. [`rules.ts`](../bot/src/blueprint/rules.ts) has the logic and [`blueprint.test.ts`](../bot/test/blueprint.test.ts) shows the expected results.
+A channel with its own `access` stops sharing its category's permissions (Root ignores channel rules otherwise), so Wisp copies the category's rules onto it first and then adds the channel's own. [`rules.ts`](../wisp/server/src/blueprint/rules.ts) has the logic and [`blueprint.test.ts`](../wisp/server/test/blueprint.test.ts) shows the expected results.
 
 There's also an optional **onboarding gate** (`onboarding.gate` in `config.ts`): categories marked `membersOnly: true` stay hidden until a newcomer reacts ✅ on a rules post. It's off, since this is a friend group.
 

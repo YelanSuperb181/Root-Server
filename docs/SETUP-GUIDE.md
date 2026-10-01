@@ -17,7 +17,7 @@ This takes you from "we're on Discord" to the same server on Root with Wisp runn
 
 ## 1. Create the Root community
 
-First, list everyone's mailbox channel in `bot/src/blueprint/mailboxes.local.ts` (see the [README](../README.md#before-you-build-the-mailboxes)). It stays on your computer and is never uploaded to GitHub.
+First, list everyone's mailbox channel in `wisp/server/src/blueprint/mailboxes.local.ts` (see the [README](../README.md#before-you-build-the-mailboxes)). It stays on your computer and is never uploaded to GitHub.
 
 Then pick one of two routes:
 
@@ -28,12 +28,12 @@ A brand-new Root community comes with an **Admin** role (yours) and a default `#
 
 ## 2. Register Wisp
 
-Root Bots are registered in the **Root Developer Portal**. Root's guide walks through it with screenshots: [Set up Root and your dev machine](https://docs.rootapp.com/docs/bot-docs/get-started/setup-root-and-dev-machine/).
+Wisp is a Root **App**: a bot with a screen of its own (its domain). Apps are registered in the **Root Developer Portal**; Root's developer docs walk through it with screenshots: [docs.rootapp.com](https://docs.rootapp.com).
 
 1. Turn on **Developer Mode** in Root's settings, then open the **Developer Portal**.
-2. Create a new **Bot** project called **Wisp**.
-3. Copy the project's **App ID** into [`bot/root-manifest.json`](../bot/root-manifest.json), replacing `your-bot-id`.
-4. Generate a **DEV_TOKEN** (My bots → Wisp → Settings → Generate new dev token) and save it in a new file `bot/.env` (copy [`bot/.env.example`](../bot/.env.example)):
+2. Create a new **App** project called **Wisp**. (Not a Bot project: a plain bot can't have the domain.)
+3. Copy the project's **App ID** into [`wisp/root-manifest.json`](../wisp/root-manifest.json), replacing `your-app-id`.
+4. Generate a **DEV_TOKEN** for the project and save it in a new file `wisp/server/.env` (copy [`wisp/server/.env.example`](../wisp/server/.env.example)):
    ```
    DEV_TOKEN=paste-your-token-here
    ```
@@ -44,11 +44,11 @@ Root Bots are registered in the **Root Developer Portal**. Root's guide walks th
 ## 3. Build and try it in your test community
 
 ```bash
-cd bot
-npm install      # installs the Root SDK
+cd wisp
+npm install      # installs the Root SDK and the domain's tools
+npm run build    # networking, physics, server and the domain client
 npm test         # checks the template and runs the unit tests
-npm run build
-npm run bot      # starts Wisp on your computer, connected to your test community
+npm run server   # starts Wisp on your computer, connected to your test community
 ```
 
 Leave that terminal running and open your **test community** in Root:
@@ -57,22 +57,26 @@ Leave that terminal running and open your **test community** in Root:
 2. Type **`!setup confirm`**. Wisp builds everything in a minute or two, then replaces its progress message with a report.
 3. Look around: try `!help`, `!rank`, `!poll Lunch? | Pizza | Salad`, `!birthday July 14`, and react 🗣️ on a message from a second account.
 
-Want to change something? Edit the template or config (see [CUSTOMIZING.md](CUSTOMIZING.md)), run `npm test && npm run build`, restart `npm run bot`, and run `!setup` again. It only adds what's new.
+**The domain:** in a second terminal (also in `wisp/`), run `npm run client`. It opens the domain in your browser, and Root's dev tools connect it to the Wisp running in the first terminal. Open it in two tabs and drag Wisp in one: the other should follow. If the domain says it's running solo, it couldn't reach the server.
+
+Want to change something? Edit the template or config (see [CUSTOMIZING.md](CUSTOMIZING.md)), run `npm run build && npm test`, restart `npm run server`, and run `!setup` again. It only adds what's new.
 
 ## 4. Upload Wisp and install it
 
-While `npm run bot` runs, Wisp lives on your computer. To keep it running 24/7, upload it to Root's cloud. Root's guide: [Upload your code](https://docs.rootapp.com/docs/bot-docs/publish/upload/).
+While `npm run server` runs, Wisp lives on your computer. To keep it running 24/7, upload it to Root's cloud; Root's developer docs cover publishing in detail.
 
-1. **Bump the version** in `root-manifest.json` (for example `1.0.0` → `1.0.1`). Root refuses a version it already has, so do this before every upload.
+1. **Bump the version** in `wisp/root-manifest.json` (for example `1.0.0` → `1.0.1`). Root refuses a version it already has, so do this before every upload.
 2. **Package it:**
    ```bash
-   npm run package          # builds and writes wisp.rootpkg
+   npm run package          # builds everything and writes wisp.rootpkg (server, domain client and manifest)
    ```
 3. **Upload it** with the publishing token from the Developer Portal (a different token from `DEV_TOKEN`):
    ```bash
    npx rootsdk upload package -f wisp.rootpkg -a YOUR_AUTH_TOKEN
    ```
 4. **Install Wisp in the real community** from Root's app directory, like any App or Bot: [Install Apps and Bots](https://support.rootapp.com/docs/leader/apps/install-apps/). Root shows the permissions Wisp asks for (see [below](#what-wisp-can-do-and-why)) before you approve.
+
+   Installing an App gives it a channel of its own: that's **Wisp's domain**. Rename it to `wisps-domain` and drag it into **Ze Social Place** (or wherever you like). `!wisp` links to it under whatever name it has.
 
 ## 5. Run setup in the real community
 
@@ -89,7 +93,8 @@ These need you, not the bot:
 1. **Give out Bitchiest Bitch.** Open the person's profile and add the role. ([Manage members](https://support.rootapp.com/docs/leader/members-and-invites/manage-members/)) Everyone already in the community got **Bitches** from setup; newcomers get it when they join.
 2. **Order the roles.** In **Settings → Roles**, drag **Bitchiest Bitch** up right below **Admin**. ([Manage roles](https://support.rootapp.com/docs/leader/roles-permissions/role-tasks/))
 3. **Pick a home for system messages.** In community settings, set `#bitches-yapping` as the default channel. Root posts its own notices there (like "someone joined").
-4. **Make it look like yours.** Upload a community icon and banner.
+4. **Place the domain.** If you haven't yet, rename Wisp's channel to `wisps-domain` and move it into **Ze Social Place** (step 4).
+5. **Make it look like yours.** Upload a community icon and banner.
 
 ## 7. Bring everyone over
 
@@ -108,7 +113,7 @@ Same channels, same chaos, new app. Voice, video and screen share are all there,
 **Moving day: the invite**
 ```
 ✨ We're live on Root: <INVITE LINK>
-Everything's where you left it. Say hi to Wisp in #bot-commands with !help, and react 🗣️ on anything quote-worthy.
+Everything's where you left it. Say hi to Wisp in #bot-commands with !help, summon it with !wisp, and react 🗣️ on anything quote-worthy.
 ```
 
 **A few days later: the last call**
@@ -126,7 +131,7 @@ Tips:
 
 ## What Wisp can do, and why
 
-These are the permissions in [`root-manifest.json`](../bot/root-manifest.json). Root shows them when you install the bot.
+These are the permissions in [`root-manifest.json`](../wisp/root-manifest.json). Root shows them when you install Wisp.
 
 | Permission | Used for |
 | --- | --- |
@@ -137,20 +142,22 @@ These are the permissions in [`root-manifest.json`](../bot/root-manifest.json). 
 | Delete others' messages | Auto-mod and `!clear` |
 | Manage pins | Pinning the how-to notes |
 
-Wisp can't kick or ban. That stays with you.
+Wisp can't kick or ban. That stays with you. The domain needs no extra permissions: it lives in the channel Root gives the App.
 
 ## Troubleshooting
 
 | What you see | What to do |
 | --- | --- |
-| `Unable to find .env with a DEV_TOKEN` | Create `bot/.env` with `DEV_TOKEN=...` from the Developer Portal (step 2). |
-| `Manifest validation error: id is not an app id` | Put your App ID in `root-manifest.json` instead of `your-bot-id`. |
+| `Unable to find .env with a DEV_TOKEN` | Create `wisp/server/.env` with `DEV_TOKEN=...` from the Developer Portal (step 2). |
+| `Manifest validation error: id is not an app id` | Put your App ID in `wisp/root-manifest.json` instead of `your-app-id`. |
 | The upload is refused because of the version | Bump `"version"` in `root-manifest.json`; it must go up on every upload. |
-| Wisp doesn't answer commands | Is it running (`npm run bot`) or installed? Commands start with `!`. Wisp ignores other bots, so test from your own account. |
+| Wisp doesn't answer commands | Is it running (`npm run server`) or installed? Commands start with `!`. Wisp ignores other bots, so test from your own account. |
+| The domain says "just yours" (solo) | It couldn't reach Wisp's server. Inside Root: is Wisp installed and running? In development: is `npm run server` still running? Solo Wisp still works, it just isn't shared. |
+| `!wisp` says the domain isn't set up | Wisp didn't get its App channel. Make sure it was installed as an App (step 2) and reinstall it. |
 | `🔒 … is for admins only` | `!setup` needs the community owner or a role with Manage Community / Full Control. |
 | "Created without its special permissions" in the report | Root didn't let a bot hand out those powers. Open the role in **Settings → Roles** and tick them ([layout doc](SERVER-LAYOUT.md) lists what each should have). |
 | A channel or category got a slightly different name | Root rejected the original (for example `Important!!!`), so setup used a plain version. Rename it by hand if you like; Wisp remembers it by ID. |
 | Nothing happens on `!setup confirm` a second time | Everything already exists. That's expected; setup never duplicates. |
 | `Root is rate limiting me` | Root allows about five changes per second. Wisp queues and retries automatically; wait a moment and try again. |
 
-Still stuck? Root's developer docs: [Root Bots FAQ](https://docs.rootapp.com/docs/bot-docs/faq/).
+Still stuck? Root's developer docs: [docs.rootapp.com](https://docs.rootapp.com).

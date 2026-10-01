@@ -1,0 +1,106 @@
+// The domain's connection to Wisp's server. Inside Root, every open domain
+// shares one Wisp through it. Anywhere else (a plain browser, or if the
+// server doesn't answer) the domain runs solo: same Wisp, just yours.
+
+import { rootClient } from "@rootsdk/client-app";
+import { WispDomainServiceClientEvent, wispDomainServiceClient } from "@wisp/gen-client";
+import type { JoinResponse, StateEvent, Watcher } from "@wisp/gen-shared";
+import type { Body } from "@wisp/shared";
+
+export interface DomainLink {
+  mode: "live" | "solo";
+  /** This viewer's user ID ("" when solo). */
+  me: string;
+  grab(x: number, y: number): Promise<{ ok: boolean; event?: StateEvent }>;
+  drag(x: number, y: number): void;
+  release(body: Body): void;
+  poke(angle: number): void;
+  onState(listener: (event: StateEvent) => void): void;
+  onWatchers(listener: (watchers: Watcher[]) => void): void;
+}
+
+function soloLink(): DomainLink {
+  return {
+    mode: "solo",
+    me: "",
+    grab: async () => ({ ok: true }),
+    drag: () => undefined,
+    release: () => undefined,
+    poke: () => undefined,
+    onState: () => undefined,
+    onWatchers: () => undefined,
+  };
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("timed out")), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
+/** Sends at most every `ms`, always delivering the latest value. */
+function throttle(ms: number, send: (x: number, y: number) => void): (x: number, y: number) => void {
+  let last = 0;
+  let pending: [number, number] | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const flush = () => {
+    timer = undefined;
+    if (!pending) return;
+    last = performance.now();
+    send(...pending);
+    pending = undefined;
+  };
+  return (x, y) => {
+    pending = [x, y];
+    const wait = ms - (performance.now() - last);
+    if (wait <= 0) flush();
+    else if (!timer) timer = setTimeout(flush, wait);
+  };
+}
+
+const quiet = (p: Promise<unknown>) => p.catch(() => undefined);
+
+export async function connect(timeoutMs = 4000): Promise<{ link: DomainLink; joined?: JoinResponse }> {
+  let me = "";
+  try {
+    me = rootClient.users.getCurrentUserId();
+  } catch {
+    return { link: soloLink() };
+  }
+  let joined: JoinResponse;
+  try {
+    joined = await withTimeout(wispDomainServiceClient.join({}), timeoutMs);
+  } catch {
+    return { link: soloLink() };
+  }
+
+  const svc = wispDomainServiceClient;
+  const link: DomainLink = {
+    mode: "live",
+    me,
+    async grab(x, y) {
+      try {
+        const res = await withTimeout(svc.grab({ x, y }), timeoutMs);
+        return { ok: res.ok, event: res.state ? { state: res.state, cause: "grab", byUserId: "", byNickname: "" } : undefined };
+      } catch {
+        return { ok: false };
+      }
+    },
+    drag: throttle(1000 / 15, (x, y) => void quiet(svc.drag({ targetX: x, targetY: y }))),
+    release: (b) => void quiet(svc.release({ x: b.x, y: b.y, vx: b.vx, vy: b.vy })),
+    poke: (angle) => void quiet(svc.poke({ angle })),
+    onState: (listener) => void svc.on(WispDomainServiceClientEvent.State, listener),
+    onWatchers: (listener) => void svc.on(WispDomainServiceClientEvent.Watchers, (e) => listener(e.watchers)),
+  };
+  return { link, joined };
+}

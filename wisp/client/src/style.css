@@ -1,0 +1,70 @@
+/* Layout: one floating glass window on a night ground, as large as the app's
+   channel allows — title bar, the round domain where Wisp lives, a hint row.
+   A single dark look on purpose: the domain is night, whatever Root's theme. */
+@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@1,500;1,600&family=Figtree:wght@400;500;600&display=swap");
+
+:root {
+  --night: #060914;
+  --glass: rgba(14, 20, 38, 0.78);
+  --glass-line: rgba(160, 196, 255, 0.16);
+  --ink: #e7edfb;
+  --muted: #8e99b8;
+  --halo: #7fe3ff;
+  --display: "Cormorant Garamond", "Iowan Old Style", Georgia, serif;
+  --body: "Figtree", "Segoe UI", system-ui, sans-serif;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background:
+    radial-gradient(1200px 700px at 50% 30%, #101935 0%, rgba(16, 25, 53, 0) 70%),
+    radial-gradient(900px 600px at 80% 110%, #1a1033 0%, rgba(26, 16, 51, 0) 70%),
+    var(--night);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 15px;
+  line-height: 1.5;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.stage { min-height: 100%; display: grid; place-items: center; padding-inline: 16px; padding-block: 16px; }
+
+.window {
+  /* Leave room for the title bar and hints so the round domain always fits on screen. */
+  width: min(100%, 860px, max(300px, calc(100vh - 190px)));
+  min-width: min(100%, 300px);
+  background: var(--glass);
+  border: 1px solid var(--glass-line);
+  border-radius: 22px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55), 0 0 60px rgba(127, 227, 255, 0.06);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  overflow: hidden;
+  display: grid;
+}
+
+.bar { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--glass-line); flex-wrap: wrap; }
+.sigil { width: 30px; height: 30px; border-radius: 50%; flex: none;
+  background: radial-gradient(circle at 50% 45%, #fff 0%, #bff3ff 30%, rgba(127, 227, 255, 0.25) 62%, rgba(127, 227, 255, 0) 72%); }
+.titles { min-width: 0; flex: 1 1 180px; }
+.titles h1 { margin: 0; font-family: var(--display); font-style: italic; font-weight: 600; font-size: 26px; line-height: 1.05; letter-spacing: 0.01em; }
+.titles p { margin: 2px 0 0; font-size: 12.5px; color: var(--muted); letter-spacing: 0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.actions { display: flex; align-items: center; gap: 10px; }
+.status { font-size: 12.5px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--glass-line); white-space: nowrap; display: inline-flex; align-items: center; gap: 7px; }
+.status .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--halo); box-shadow: 0 0 8px var(--halo); }
+.btn { font: inherit; font-size: 13px; font-weight: 600; color: var(--ink); background: rgba(127, 227, 255, 0.08); border: 1px solid rgba(127, 227, 255, 0.28); border-radius: 10px; padding: 6px 12px; cursor: pointer; }
+.btn:hover { background: rgba(127, 227, 255, 0.16); }
+.btn[hidden] { display: none; }
+.btn:focus-visible, canvas:focus-visible { outline: 2px solid var(--halo); outline-offset: 3px; }
+@media (max-width: 520px) { .actions { flex: 1 1 100%; justify-content: space-between; } }
+
+.domain { position: relative; width: 100%; aspect-ratio: 1 / 1; touch-action: none; }
+canvas { display: block; width: 100%; height: 100%; }
+
+.hints { display: flex; flex-wrap: wrap; gap: 6px 18px; justify-content: center; padding: 12px 18px 16px; border-top: 1px solid var(--glass-line); color: var(--muted); font-size: 13px; }
+.hints b { color: var(--ink); font-weight: 600; }
+.note { max-width: 62ch; text-align: center; color: var(--muted); font-size: 12.5px; margin: 14px auto 0; }
+.note[hidden] { display: none; }

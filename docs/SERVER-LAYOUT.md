@@ -1,6 +1,6 @@
 # Server layout
 
-> Generated from [`bot/src/blueprint/layout.ts`](../bot/src/blueprint/layout.ts) by `npm run docs`. Edit the blueprint, not this file.
+> Generated from [`wisp/server/src/blueprint/layout.ts`](../wisp/server/src/blueprint/layout.ts) by `npm run docs`. Edit the blueprint, not this file.
 
 **7 channel groups · 30 text channels · 1 voice channel · 4 roles**
 
