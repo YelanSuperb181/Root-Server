@@ -1,0 +1,27 @@
+{
+  "name": "@sprout/bot",
+  "author": "",
+  "description": "Sprout: the setup and community Bot for this Root community",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@rootsdk/server-bot": "^0.21.3"
+  },
+  "devDependencies": {
+    "@rootsdk/dev-tools": "^0.21.3",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.8.2"
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "node clean.js",
+    "bot": "rootsdk start devhost",
+    "test": "tsc -p tsconfig.test.json && node --test build-test/test/*.test.js",
+    "check": "tsc --noEmit && npm test",
+    "docs": "tsc -p tsconfig.test.json && node build-test/scripts/render-layout.js ../docs/SERVER-LAYOUT.md",
+    "package": "npm run build && rootsdk build package -o sprout.rootpkg"
+  }
+}

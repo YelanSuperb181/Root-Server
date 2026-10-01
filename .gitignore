@@ -1,0 +1,10 @@
+node_modules/
+dist/
+build-test/
+*.tsbuildinfo
+.env
+*.sqlite3
+*.db
+*.zip
+.DS_Store
+sprout.rootpkg
