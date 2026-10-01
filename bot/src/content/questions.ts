@@ -1,4 +1,4 @@
-// Question of the Day pool. Sprout walks through it in order (it's already
+// Question of the Day pool. Wisp walks through it in order (it's already
 // mixed up), then starts over. Staff can queue their own with `!qotd add`,
 // which always go first. Add as many as you like.
 

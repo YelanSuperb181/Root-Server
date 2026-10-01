@@ -1,15 +1,17 @@
-// The Hall of Fame: when a message collects enough ⭐ from other members it's
-// reposted to #hall-of-fame, and the count there stays live.
+// The quote board: when a message collects enough of the configured reaction
+// (🗣️ here) from people other than its author, it's saved to the board
+// channel with a live count. `!quote` pulls a random saved one back up.
 
 import { config } from "../config";
+import { Command } from "../core/commands";
 import { directory } from "../core/directory";
 import { serialize } from "../core/lock";
 import { errMessage, log } from "../core/log";
 import { isPerson, nickname } from "../core/members";
 import { edit, getMessage, messageLink, send } from "../core/messaging";
 import { kv } from "../core/store";
-import { E, isEmoji } from "../logic/emoji";
-import { defuseMentions, quote, truncate } from "../logic/text";
+import { Emoji, isEmoji } from "../logic/emoji";
+import { defuseMentions, pick, quote, truncate } from "../logic/text";
 
 interface StarEntry {
   boardMessageId: string;
@@ -23,21 +25,23 @@ export interface StarReaction {
   shortcode: string;
 }
 
-function starGlyph(count: number): string {
-  if (count >= 20) return "✨";
-  if (count >= 10) return "💫";
-  if (count >= 5) return "🌟";
-  return "⭐";
+const EMOJI: Emoji = config.starboard.emoji;
+
+/** The board emoji, with a little extra flair as the count climbs. */
+function countGlyph(count: number): string {
+  if (count >= 10) return `${EMOJI.glyph}🔥`;
+  if (count >= 5) return `${EMOJI.glyph}✨`;
+  return EMOJI.glyph;
 }
 
 function header(count: number, channelId: string): string {
   const key = directory.channelKey(channelId);
   const where = key ? directory.channelMention(key) : "a channel";
-  return `${starGlyph(count)} **${count}** · ${where}`;
+  return `${countGlyph(count)} **${count}** · ${where}`;
 }
 
 export async function onStarReaction(evt: StarReaction): Promise<void> {
-  if (!config.starboard.enabled || !isEmoji(evt.shortcode, E.star)) return;
+  if (!config.starboard.enabled || !isEmoji(evt.shortcode, EMOJI)) return;
   const boardId = directory.channelId(config.starboard.channel);
   const channelKey = directory.channelKey(evt.channelId);
   if (!boardId || evt.channelId === boardId) return;
@@ -48,7 +52,7 @@ export async function onStarReaction(evt: StarReaction): Promise<void> {
       const msg = await getMessage(evt.channelId, evt.messageId);
       if (!msg || !isPerson(msg.userId)) return;
       const stars = new Set(
-        msg.reactions.filter((r) => isEmoji(r.shortcode, E.star) && r.userId !== msg.userId && isPerson(r.userId)).map((r) => r.userId),
+        msg.reactions.filter((r) => isEmoji(r.shortcode, EMOJI) && r.userId !== msg.userId && isPerson(r.userId)).map((r) => r.userId),
       ).size;
 
       const saved = await kv.get<StarEntry>(`star:${msg.id}`);
@@ -75,3 +79,22 @@ export async function onStarReaction(evt: StarReaction): Promise<void> {
     }
   });
 }
+
+export const starboardCommands: Command[] = [
+  {
+    name: "quote",
+    summary: "A random message from the quote board.",
+    level: "everyone",
+    category: "Community",
+    async run(ctx) {
+      const saved = await kv.entries<StarEntry>("star:");
+      if (saved.length === 0) {
+        await ctx.reply(
+          `${EMOJI.glyph} Nothing on the board yet. React ${EMOJI.glyph} on something someone says; at ${config.starboard.threshold} reactions it's saved in ${directory.channelMention(config.starboard.channel)}.`,
+        );
+        return;
+      }
+      await ctx.reply(`${EMOJI.glyph} **From the archives**\n${pick(saved).value.body}`);
+    },
+  },
+];

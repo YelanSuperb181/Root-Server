@@ -1,6 +1,6 @@
 # Making it yours
 
-The whole community is defined in three files. After any change:
+The whole server is defined in a few files. After any change:
 
 ```bash
 cd bot
@@ -9,74 +9,67 @@ npm run build
 npm run docs      # optional: regenerates docs/SERVER-LAYOUT.md
 ```
 
-Then restart Sprout (or upload a new version, remembering to bump the version number) and run `!setup` in Root. Setup **only adds** what's missing. It never deletes, renames or re-permissions things that already exist, so it's safe to run as often as you like.
+Then restart Wisp (or upload a new version, remembering to bump the version number) and run `!setup` in Root. Setup **only adds** what's missing. It never deletes, renames or re-permissions things that already exist, so it's safe to run as often as you like.
 
 | File | Change it to… |
 | --- | --- |
-| [`bot/src/blueprint/layout.ts`](../bot/src/blueprint/layout.ts) | add, remove or rename channels, groups and roles; change colors and permissions |
-| [`bot/src/blueprint/content.ts`](../bot/src/blueprint/content.ts) | rewrite the welcome guide and rules; change the role pickers |
-| [`bot/src/config.ts`](../bot/src/config.ts) | tune features: prefix, gate, XP, stars, daily time, auto-mod |
-| [`bot/src/content/`](../bot/src/content/) | add questions of the day, welcome lines, 8-ball answers |
+| [`bot/src/blueprint/layout.ts`](../bot/src/blueprint/layout.ts) | add, remove or rename categories, channels and roles; change colors and permissions |
+| [`bot/src/blueprint/content.ts`](../bot/src/blueprint/content.ts) | rewrite the pinned how-to notes |
+| [`bot/src/config.ts`](../bot/src/config.ts) | tune features: prefix, quote wall, XP, birthdays, auto-mod, where things post |
+| [`bot/src/content/lines.ts`](../bot/src/content/lines.ts) | Wisp's welcome lines, level-up lines and 8-ball answers |
 
 ## Recipes
 
-### Describe your community in the welcome post
+### Add a mailbox for someone new
 
-Open `content.ts`, find the post with `key: "welcome"`, and replace the "This is a friendly corner of the internet…" line with a sentence about your community. Run `!setup refresh` to update the post in place.
+In `bot/src/blueprint/mailboxes.local.ts` (kept off GitHub; copy it from `mailboxes.local.example.ts` if you don't have it yet), add a line:
 
-### Add a hobby channel with a pingable role
+```ts
+{ key: "mail-sam", name: "sam-the-new-guy", type: "text", topic: "🌻 Sam's mailbox." },
+```
 
-Say you want a book club:
-
-1. In `layout.ts`, add a channel to the `interests` group:
-   ```ts
-   { key: "books", name: "book-club", type: "text", topic: "📚 What are you reading? Monthly picks and spoiler-free reviews." },
-   ```
-2. Add a role in the Interests section:
-   ```ts
-   { key: "bookworm", name: "Bookworm", category: "interest", description: "Always reading something.", mentionable: true, selfAssignable: true },
-   ```
-3. In `content.ts`, add it to the `interests` picker (the emoji needs both its [shortcode name](https://github.com/iamcal/emoji-data) and the character):
-   ```ts
-   { emoji: emoji("books", "📚"), role: "bookworm" },
-   ```
-4. `npm test`, build, restart, then `!setup confirm` (creates the channel and role) and `!setup refresh` (adds 📚 to the picker).
+Keys just need to be unique; names can only use letters, digits and single hyphens (a Root rule; `npm test` checks it). Then `!setup confirm`.
 
 ### Rename things
 
-Rename freely **in Root**: Sprout remembers everything by ID, not by name. To rename in the blueprint too (so the docs and a future fresh setup match), change `name` but keep the `key` the same. Channel names can only use letters, digits and single hyphens (a Root rule; `npm test` checks it).
+Rename freely **in Root**: Wisp remembers everything by ID, not by name. To rename in the template too (so the docs and a future fresh setup match), change `name` but keep the `key` the same.
 
-### Turn off the onboarding gate
+### Change the quote wall
 
-In `config.ts`, set `onboarding.gate: false`. New members then see everything right away and get welcomed when they join. Best done **before** your first `!setup`. If setup already ran, also open each members-only group's permissions in Root and remove the rule that stops EVERYONE from viewing it.
+In `config.ts` under `starboard`:
+- `threshold`: how many reactions (not counting the author's own) it takes. Default 2.
+- `emoji`: the reaction that counts. It needs both the [shortcode name](https://github.com/iamcal/emoji-data) and the character, like `{ code: "star", glyph: "⭐" }`.
+- `ignore`: channels that can never be quoted. Keep `the-vent-aka-hell` in there.
 
-### Change when the daily question posts
+### Give out roles for levels
 
-`daily.hourUtc` in `config.ts`, as a UTC hour (0-23). 16 is 9am in Los Angeles, noon in New York and 6pm in Berlin (summer time). Sprout reschedules itself on the next start.
+Add a role to `layout.ts`:
 
-### Change the level rewards
+```ts
+{ key: "yapper", name: "Certified Yapper", color: "#5EB1EF", category: "level", description: "Reached level 10.", mentionable: false, selfAssignable: false },
+```
 
-Edit `levels.rewards` in `config.ts`. Each reward needs a role in `layout.ts` with `category: "level"`. Set `stackRewards: true` if members should keep every reward instead of only their highest.
+then point a reward at it in `config.ts`: `rewards: [{ level: 10, role: "yapper" }]`. Set `stackRewards: true` if people should keep every reward instead of only their highest.
 
-### Change the star threshold or where level-ups are announced
+### Turn on the question of the day
 
-`starboard.threshold`, and `levels.announceIn` (a channel key, or `null` to announce in the channel where it happened).
+Add a channel for it in `layout.ts` (or reuse one), then in `config.ts` set `questionOfTheDay.enabled: true` and `channel` to that channel's key. 115 questions are built in; the team can queue their own with `!qotd add`.
+
+### Make a channel read-only
+
+Give it the same `access` as `#announcements` in `layout.ts` (`access: staffPost`), then run `!setup permissions`.
+
+### Change when birthdays are announced
+
+`daily.hourUtc` in `config.ts`, as a UTC hour (0-23). 16 is 9am in Los Angeles and noon in New York (summer time). Wisp reschedules itself on the next start.
 
 ### Block words
 
-Add them to `automod.blockedWords` in `config.ts`. Matching is whole-word and case-insensitive; end a word with `*` to also match longer forms (`scam*` catches "scammer"). Staff are never filtered.
+Add them to `automod.blockedWords` in `config.ts`. Matching is whole-word and case-insensitive; end a word with `*` to also match longer forms (`scam*` catches "scammer"). The Bitchiest Bitch and admins are never filtered.
 
-### Allow invite links
+### Change Wisp's personality
 
-`automod.blockInviteLinks: false`.
-
-### Add your own daily questions
-
-Add lines to [`content/questions.ts`](../bot/src/content/questions.ts), or queue them live with `!qotd add …` (queued questions go first).
-
-### Rename the bot
-
-Change `botName` in `config.ts` (used in messages and the docs). The name members see on the bot's profile comes from the Root Developer Portal, so change it there too.
+Edit [`content/lines.ts`](../bot/src/content/lines.ts). `{user}` becomes a mention and `{community}` the server's name; one line is picked at random each time.
 
 ### Use a different command prefix
 
@@ -84,15 +77,17 @@ Change `botName` in `config.ts` (used in messages and the docs). The name member
 
 ## How permissions work
 
-Each group and channel can have **access rules**: per-role "allow" or "deny" switches that sit on top of a role's normal permissions. The blueprint uses a few presets from [`permissions.ts`](../bot/src/blueprint/permissions.ts):
+Each category and channel can have **access rules**: per-role "allow" or "deny" switches that sit on top of a role's normal permissions. The template uses presets from [`permissions.ts`](../bot/src/blueprint/permissions.ts):
 
 | Preset | Effect |
 | --- | --- |
 | `READ_ONLY` | Can read and react, but not post |
-| `CAN_POST` | Can post (and pin), used for staff in read-only channels |
+| `CAN_POST` | Can post (and pin); used for the Bitchiest Bitch in read-only channels |
 | `HIDE` / `SHOW` | Can't / can see the channel |
 | `LISTEN_ONLY` / `CAN_SPEAK` | Voice: can't / can talk and stream |
 
-Groups marked `membersOnly: true` get the onboarding gate: hidden from EVERYONE, shown to **Member** and **Moderator**. A channel with its own `access` stops sharing its group's permissions (Root ignores channel rules otherwise), so Sprout copies the group's rules onto it first and then adds the channel's own. [`rules.ts`](../bot/src/blueprint/rules.ts) has the logic and [`blueprint.test.ts`](../bot/test/blueprint.test.ts) shows the expected results.
+A channel with its own `access` stops sharing its category's permissions (Root ignores channel rules otherwise), so Wisp copies the category's rules onto it first and then adds the channel's own. [`rules.ts`](../bot/src/blueprint/rules.ts) has the logic and [`blueprint.test.ts`](../bot/test/blueprint.test.ts) shows the expected results.
+
+There's also an optional **onboarding gate** (`onboarding.gate` in `config.ts`): categories marked `membersOnly: true` stay hidden until a newcomer reacts ✅ on a rules post. It's off, since this is a friend group.
 
 Admins have full control and see everything regardless of rules.

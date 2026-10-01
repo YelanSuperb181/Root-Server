@@ -88,9 +88,11 @@ export function validateReferences(bp: Blueprint): string[] {
   };
 
   needChannel("config.onboarding.greetIn", config.onboarding.greetIn);
+  needRole("config.onboarding.autoRole", config.onboarding.autoRole);
   needChannel("config.levels.announceIn", config.levels.announceIn);
   config.levels.noXpIn.forEach((k) => needChannel("config.levels.noXpIn", k));
   needChannel("config.starboard.channel", config.starboard.channel);
+  if (!/^[a-z0-9_+-]+$/.test(config.starboard.emoji.code)) problems.push(`config.starboard.emoji.code "${config.starboard.emoji.code}" should be a shortcode name like "star".`);
   config.starboard.ignore.forEach((k) => needChannel("config.starboard.ignore", k));
   needChannel("config.questionOfTheDay.channel", config.questionOfTheDay.channel);
   needRole("config.questionOfTheDay.pingRole", config.questionOfTheDay.pingRole);

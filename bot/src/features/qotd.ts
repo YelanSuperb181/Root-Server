@@ -17,7 +17,7 @@ export async function postQuestion(force: boolean): Promise<boolean> {
   if (!config.questionOfTheDay.enabled && !force) return false;
   const today = utcDateKey(Date.now());
   if (!force && (await kv.get<string>("qotd:last")) === today) return false;
-  const channelId = directory.channelId(config.questionOfTheDay.channel);
+  const channelId = config.questionOfTheDay.channel ? directory.channelId(config.questionOfTheDay.channel) : undefined;
   if (!channelId) return false;
 
   const queue = (await kv.get<string[]>(QUEUE)) ?? [];
@@ -48,9 +48,8 @@ export const qotdCommands: Command[] = [
       const sub = (ctx.args[0] ?? "").toLowerCase();
       const staff = ctx.level !== "everyone";
       if (sub === "" || !staff) {
-        await ctx.reply(
-          `🌞 A new question lands in ${directory.channelMention(config.questionOfTheDay.channel)} every day at ${String(config.daily.hourUtc).padStart(2, "0")}:00 UTC.`,
-        );
+        const where = config.questionOfTheDay.channel ? directory.channelMention(config.questionOfTheDay.channel) : "its channel";
+        await ctx.reply(`🌞 A new question lands in ${where} every day at ${String(config.daily.hourUtc).padStart(2, "0")}:00 UTC.`);
         return;
       }
       if (sub === "now") {

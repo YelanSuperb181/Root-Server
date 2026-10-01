@@ -1,158 +1,143 @@
 # Moving to Root: the step-by-step guide
 
-This takes you from "we're on Discord" to a finished Root community with Sprout running in it. Plan for about an hour the first time, most of it reading.
+This takes you from "we're on Discord" to the same server on Root with Wisp running in it. Plan for about an hour the first time, most of it reading.
 
 **You'll need:** a Root account and the Root **desktop** app (some developer and import features aren't on mobile), [Node.js](https://nodejs.org) 22 or newer, and this repository on your computer.
 
-- [1. Create your Root community](#1-create-your-root-community)
-- [2. Register Sprout as your bot](#2-register-sprout-as-your-bot)
+- [1. Create the Root community](#1-create-the-root-community)
+- [2. Register Wisp](#2-register-wisp)
 - [3. Build and try it in your test community](#3-build-and-try-it-in-your-test-community)
-- [4. Upload Sprout and install it](#4-upload-sprout-and-install-it)
-- [5. Run setup in your real community](#5-run-setup-in-your-real-community)
+- [4. Upload Wisp and install it](#4-upload-wisp-and-install-it)
+- [5. Run setup in the real community](#5-run-setup-in-the-real-community)
 - [6. Finishing touches](#6-finishing-touches)
 - [7. Bring everyone over](#7-bring-everyone-over)
 - [Troubleshooting](#troubleshooting)
 
 ---
 
-## 1. Create your Root community
+## 1. Create the Root community
 
-In Root, select the **+** button in the tab bar at the top, then **Create community**. Pick a name, color and image.
+First, list everyone's mailbox channel in `bot/src/blueprint/mailboxes.local.ts` (see the [README](../README.md#before-you-build-the-mailboxes)). It stays on your computer and is never uploaded to GitHub.
 
-> **Start fresh rather than importing your Discord template.** Root can [import a Discord server template](https://support.rootapp.com/docs/leader/community/import-discord-template/), but that copies your *old* layout. Sprout builds the new one, and mixing the two leaves duplicates. If you'd rather keep your Discord names, import the template and then rename the channels in [`layout.ts`](../bot/src/blueprint/layout.ts) to match: setup matches existing channels and roles by name and won't create a second copy.
+Then pick one of two routes:
 
-A brand-new Root community comes with two roles (**EVERYONE** and **Admin**, which you have) and a default `#general`. Setup reuses both and moves `#general` into the new **Community** group.
+- **Fresh (recommended):** in Root, select **+** in the tab bar, then **Create community**. Wisp's `!setup` builds everything.
+- **Import, then fill gaps:** Root can [import your Discord server template](https://support.rootapp.com/docs/leader/community/import-discord-template/) (in Discord: Server Settings → Server Template). That copies categories, channels and roles. Wisp's `!setup` then recognizes them by name, emoji and all, adds what's missing, and leaves the rest alone. This only works if the names in `mailboxes.local.ts` match Discord exactly; otherwise you get a second copy of each mailbox.
 
-## 2. Register Sprout as your bot
+A brand-new Root community comes with an **Admin** role (yours) and a default `#general`. Setup leaves `#general` alone; delete it afterwards if you don't want it.
 
-Root Bots are registered in the **Root Developer Portal**. Root's own guide walks through it with screenshots: [Set up Root and your dev machine](https://docs.rootapp.com/docs/bot-docs/get-started/setup-root-and-dev-machine/).
+## 2. Register Wisp
+
+Root Bots are registered in the **Root Developer Portal**. Root's guide walks through it with screenshots: [Set up Root and your dev machine](https://docs.rootapp.com/docs/bot-docs/get-started/setup-root-and-dev-machine/).
 
 1. Turn on **Developer Mode** in Root's settings, then open the **Developer Portal**.
-2. Create a new **Bot** project. Call it whatever you like; "Sprout" fits the welcome messages.
-3. Copy the project's **App ID** into [`bot/root-manifest.json`](../bot/root-manifest.json), replacing `your-bot-id`:
-   ```json
-   { "id": "AbCdEf...your-app-id", "version": "1.0.0", ... }
-   ```
-4. Generate a **DEV_TOKEN** and save it in a new file `bot/.env` (copy [`bot/.env.example`](../bot/.env.example)):
+2. Create a new **Bot** project called **Wisp**.
+3. Copy the project's **App ID** into [`bot/root-manifest.json`](../bot/root-manifest.json), replacing `your-bot-id`.
+4. Generate a **DEV_TOKEN** (My bots → Wisp → Settings → Generate new dev token) and save it in a new file `bot/.env` (copy [`bot/.env.example`](../bot/.env.example)):
    ```
    DEV_TOKEN=paste-your-token-here
    ```
-   Root creates a private **test community** for you the first time you generate a token. Your bot runs there while you develop, so you can try everything without touching your real community.
+   Root creates a private **test community** for you the first time you generate a token. Wisp runs there while you develop, so you can try everything without touching the real server.
 
-> `.env` is in `.gitignore`. Never commit or share your token.
+> `.env` is in `.gitignore`. Never commit or share your token; whoever has it can act as Wisp.
 
 ## 3. Build and try it in your test community
 
 ```bash
 cd bot
 npm install      # installs the Root SDK
-npm test         # checks the blueprint and runs the unit tests
+npm test         # checks the template and runs the unit tests
 npm run build
-npm run bot      # starts Sprout on your computer, connected to your test community
+npm run bot      # starts Wisp on your computer, connected to your test community
 ```
 
 Leave that terminal running and open your **test community** in Root:
 
-1. In any channel, type **`!setup`**. Sprout replies with a preview of what it will create. Nothing has changed yet.
-2. Type **`!setup confirm`**. Sprout posts a progress message and builds everything in a minute or two, then replaces the progress message with a report.
-3. Look around: read `#welcome`, react on the role pickers in `#roles`, try `!help`, `!rank`, `!poll Lunch? | Pizza | Salad` and `!8ball Will this be awesome?`.
+1. In any channel, type **`!setup`**. Wisp replies with a preview of what it will create. Nothing has changed yet.
+2. Type **`!setup confirm`**. Wisp builds everything in a minute or two, then replaces its progress message with a report.
+3. Look around: try `!help`, `!rank`, `!poll Lunch? | Pizza | Salad`, `!birthday July 14`, and react 🗣️ on a message from a second account.
 
-Want to change something? Edit the blueprint or config (see [CUSTOMIZING.md](CUSTOMIZING.md)), run `npm test && npm run build`, restart `npm run bot`, and run `!setup` again. It only adds what's new.
+Want to change something? Edit the template or config (see [CUSTOMIZING.md](CUSTOMIZING.md)), run `npm test && npm run build`, restart `npm run bot`, and run `!setup` again. It only adds what's new.
 
-## 4. Upload Sprout and install it
+## 4. Upload Wisp and install it
 
-While `npm run bot` runs, Sprout lives on your computer. To keep it running 24/7, upload it to Root's cloud. Root's guide: [Upload your code](https://docs.rootapp.com/docs/bot-docs/publish/upload/).
+While `npm run bot` runs, Wisp lives on your computer. To keep it running 24/7, upload it to Root's cloud. Root's guide: [Upload your code](https://docs.rootapp.com/docs/bot-docs/publish/upload/).
 
 1. **Bump the version** in `root-manifest.json` (for example `1.0.0` → `1.0.1`). Root refuses a version it already has, so do this before every upload.
 2. **Package it:**
    ```bash
-   npm run package          # builds and writes sprout.rootpkg
+   npm run package          # builds and writes wisp.rootpkg
    ```
 3. **Upload it** with the publishing token from the Developer Portal (a different token from `DEV_TOKEN`):
    ```bash
-   npx rootsdk upload package -f sprout.rootpkg -a YOUR_AUTH_TOKEN
+   npx rootsdk upload package -f wisp.rootpkg -a YOUR_AUTH_TOKEN
    ```
-4. **Install Sprout in your real community** from Root's app directory, the same way you'd add any App or Bot: [Install Apps and Bots](https://support.rootapp.com/docs/leader/apps/install-apps/). Root shows the permissions Sprout asks for (see [below](#what-sprout-can-do-and-why)) before you approve.
+4. **Install Wisp in the real community** from Root's app directory, like any App or Bot: [Install Apps and Bots](https://support.rootapp.com/docs/leader/apps/install-apps/). Root shows the permissions Wisp asks for (see [below](#what-wisp-can-do-and-why)) before you approve.
 
-## 5. Run setup in your real community
+## 5. Run setup in the real community
 
-Same as in the test community: `!setup` to preview, then `!setup confirm`. Run it in a channel where you'll see the report (the default `#general` is fine).
+Same as in the test community: `!setup` to preview, then `!setup confirm`.
 
-When it's done, the report lists:
-- what was created and moved,
-- the finishing touches below,
-- any **heads up** items: things Root didn't let a bot do, which you can finish by hand in a few clicks.
+When it's done, the report lists what was created, the finishing touches below, and any **heads up** items: things Root didn't let a bot do, which you can finish by hand in a few clicks.
 
-Later, `!setup status` shows what's in place, and `!setup permissions` re-applies the blueprint's permissions if something was changed by hand.
+Later, `!setup status` shows what's in place, and `!setup permissions` re-applies the template's permissions if something was changed by hand.
 
 ## 6. Finishing touches
 
 These need you, not the bot:
 
-1. **Give your team their roles.** Open a member's profile and add **Moderator** (or **Event Host**). Staff should have **Member** too. ([Manage members](https://support.rootapp.com/docs/leader/members-and-invites/manage-members/))
-2. **Order the roles.** In **Settings → Roles**, drag **Moderator** and **Event Host** up right below **Admin**. ([Manage roles](https://support.rootapp.com/docs/leader/roles-permissions/role-tasks/))
-3. **Pick a home for system messages.** In your community settings, set `#welcome` as the default channel. Root posts its own notices there (like "someone joined"), right next to the welcome guide.
-4. **Make it look like yours.** Upload a community icon and banner, and edit the welcome text in [`content.ts`](../bot/src/blueprint/content.ts) to describe your community in your own words. Then `!setup refresh` updates the posts in place.
-5. **Consider raid protection.** In community settings, requiring a verified email and throttling joins both slow down spam waves. Sprout's gate and auto-mod handle the rest.
-6. **Delete leftovers.** If your community started with extra groups (like an empty "Text Channels"), the report names them. Deleting them is up to you.
+1. **Give out Bitchiest Bitch.** Open the person's profile and add the role. ([Manage members](https://support.rootapp.com/docs/leader/members-and-invites/manage-members/)) Everyone already in the community got **Bitches** from setup; newcomers get it when they join.
+2. **Order the roles.** In **Settings → Roles**, drag **Bitchiest Bitch** up right below **Admin**. ([Manage roles](https://support.rootapp.com/docs/leader/roles-permissions/role-tasks/))
+3. **Pick a home for system messages.** In community settings, set `#bitches-yapping` as the default channel. Root posts its own notices there (like "someone joined").
+4. **Make it look like yours.** Upload a community icon and banner.
 
 ## 7. Bring everyone over
 
-A move goes best with a heads-up, a clear day, and a reason to show up. Here are three posts for your Discord, ready to edit.
+Three posts for the Discord, ready to edit:
 
 **A week before: the heads-up**
 ```
-📣 Big news: we're moving to Root! 🌱
+📣 We're moving to Root! ✨
 
-Root is a community app like Discord, with voice, video and screen share, plus apps built right into the community.
-
-Our new home is already set up: themed channels, a daily question, levels, birthday shout-outs, a hall of fame for the best posts and more.
+Same channels, same chaos, new app. Voice, video and screen share are all there, plus Wisp: quote wall, birthdays, polls, levels.
 
 🗓️ Moving day: <DATE>
 🔗 Get Root early: https://www.rootapp.com
-Questions? Ask here!
 ```
 
 **Moving day: the invite**
 ```
-🌱 We're live on Root! Come on in: <INVITE LINK>
-
-When you arrive:
-1️⃣ Read #rules and react ✅ to unlock everything
-2️⃣ Pick your interests, pronouns, pings and name color in #roles
-3️⃣ Say hi in #introductions
-
-First game night on the Stage is <DAY/TIME>. See you there! 🎉
+✨ We're live on Root: <INVITE LINK>
+Everything's where you left it. Say hi to Wisp in #bot-commands with !help, and react 🗣️ on anything quote-worthy.
 ```
 
 **A few days later: the last call**
 ```
-⏰ Last call! This Discord goes read-only on <DATE>. Everything happens on Root now: <INVITE LINK>
-Your Discord levels are coming with you. Post your rank in #help-desk and a mod will carry it over.
+⏰ This Discord goes read-only on <DATE>. Everything happens on Root now: <INVITE LINK>
+Post your old level in #bot-commands and it'll be carried over.
 ```
 
 Tips:
-- **Carry levels over.** Ask members to post a screenshot of their old rank, then `!setxp @member level 12` sets their level and hands out the matching role.
-- **Host something on day one.** A game night on the `stage` or a "first ones here" thread in `#general` gives people a reason to stick around.
-- **Make the old server read-only** a week or two after the move and pin the invite in every channel, rather than deleting it right away.
-- **Recreate custom emoji** in Root's community settings; they work in reactions too.
+- **Carry levels over.** Ask people to post their old rank, then an admin runs `!setxp @someone level 12`.
+- **Message history doesn't move.** Save anything precious (pinned messages, `#quotes`) before the Discord goes quiet.
+- **Make the old server read-only** a week or two after the move rather than deleting it right away.
 
 ---
 
-## What Sprout can do, and why
+## What Wisp can do, and why
 
 These are the permissions in [`root-manifest.json`](../bot/root-manifest.json). Root shows them when you install the bot.
 
 | Permission | Used for |
 | --- | --- |
-| Manage roles | Creating the blueprint's roles; giving Member, level, color, pick-your-role and birthday roles |
-| Create channel groups | Creating the groups during setup |
-| Channel full control | Creating channels and their permissions, and seeing private channels (the mod log) |
-| View, read history, post, mention, react | Posting welcomes and starter posts, pinging opt-in roles, seeding reactions on role pickers and polls |
-| Delete others' messages | Auto-mod, `!clear`, and tidying `#suggestions` |
-| Manage pins | Pinning the welcome guide, rules and how-tos |
+| Manage roles | Creating the template's roles; giving Bitches to newcomers and Birthday Bitch on birthdays |
+| Create channel groups | Creating the categories during setup |
+| Channel full control | Creating channels and their permissions |
+| View, read history, post, mention, react | Posting welcomes, how-to notes, polls and quotes; seeding reactions |
+| Delete others' messages | Auto-mod and `!clear` |
+| Manage pins | Pinning the how-to notes |
 
-Sprout can't kick or ban. Moderation decisions stay with your team.
+Wisp can't kick or ban. That stays with you.
 
 ## Troubleshooting
 
@@ -161,13 +146,11 @@ Sprout can't kick or ban. Moderation decisions stay with your team.
 | `Unable to find .env with a DEV_TOKEN` | Create `bot/.env` with `DEV_TOKEN=...` from the Developer Portal (step 2). |
 | `Manifest validation error: id is not an app id` | Put your App ID in `root-manifest.json` instead of `your-bot-id`. |
 | The upload is refused because of the version | Bump `"version"` in `root-manifest.json`; it must go up on every upload. |
-| Sprout doesn't answer commands | Is it running (`npm run bot`) or installed? Commands start with `!` (see `prefix` in [`config.ts`](../bot/src/config.ts)). Sprout ignores other bots, so test from your own account. |
+| Wisp doesn't answer commands | Is it running (`npm run bot`) or installed? Commands start with `!`. Wisp ignores other bots, so test from your own account. |
 | `🔒 … is for admins only` | `!setup` needs the community owner or a role with Manage Community / Full Control. |
-| "Created without its special permissions" in the report | Root didn't let a bot hand out those powers. Open the role in **Settings → Roles** and tick them (the [layout doc](SERVER-LAYOUT.md) lists what each role should have). |
-| New members say they can only see Start Here | That's the gate working: they need to react ✅ on the rules post. If they did and still can't, check that **Member** exists (`!setup status`). |
-| A staff member can't see members-only channels | Give them **Member** too, or make sure their role is Moderator. |
+| "Created without its special permissions" in the report | Root didn't let a bot hand out those powers. Open the role in **Settings → Roles** and tick them ([layout doc](SERVER-LAYOUT.md) lists what each should have). |
+| A channel or category got a slightly different name | Root rejected the original (for example `Important!!!`), so setup used a plain version. Rename it by hand if you like; Wisp remembers it by ID. |
 | Nothing happens on `!setup confirm` a second time | Everything already exists. That's expected; setup never duplicates. |
-| `Root is rate limiting me` | Root allows about five changes per second. Sprout queues and retries automatically; wait a moment and try again. |
-| The daily question comes at a bad time | Change `daily.hourUtc` in [`config.ts`](../bot/src/config.ts) and re-upload; the schedule updates itself. |
+| `Root is rate limiting me` | Root allows about five changes per second. Wisp queues and retries automatically; wait a moment and try again. |
 
 Still stuck? Root's developer docs: [Root Bots FAQ](https://docs.rootapp.com/docs/bot-docs/faq/).

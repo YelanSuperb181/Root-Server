@@ -1,4 +1,4 @@
-// Sprout: builds this Root community from its blueprint, then keeps it lively.
+// Wisp: builds this Root community from its blueprint, then keeps it lively.
 
 import {
   rootServer,
@@ -27,9 +27,9 @@ import { infoCommands } from "./features/info";
 import { awardXp, levelCommands } from "./features/levels";
 import { initPolls, pollCommands } from "./features/polls";
 import { postQuestion, qotdCommands } from "./features/qotd";
-import { loadPanels, onPanelReaction, roleCommands } from "./features/roles";
+import { loadPanels, onPanelReaction } from "./features/roles";
 import { setupCommands } from "./features/setup";
-import { onStarReaction } from "./features/starboard";
+import { onStarReaction, starboardCommands } from "./features/starboard";
 import { captureSuggestion, suggestionCommands } from "./features/suggestions";
 import { staffCommands } from "./features/staff";
 import { initWelcome } from "./features/welcome";
@@ -84,14 +84,15 @@ async function onStarting(state: RootBotStartState): Promise<void> {
   initWelcome();
   initAutomod();
 
+  // Features switched off in config.ts don't get their commands at all.
   register(
     ...infoCommands,
-    ...roleCommands,
-    ...levelCommands,
-    ...qotdCommands,
-    ...birthdayCommands,
+    ...(config.levels.enabled ? levelCommands : []),
+    ...(config.starboard.enabled ? starboardCommands : []),
+    ...(config.questionOfTheDay.enabled ? qotdCommands : []),
+    ...(config.birthdays.enabled ? birthdayCommands : []),
     ...pollCommands,
-    ...suggestionCommands,
+    ...(config.suggestions.enabled ? suggestionCommands : []),
     ...funCommands,
     ...staffCommands,
     ...setupCommands,

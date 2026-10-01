@@ -1,7 +1,7 @@
 {
-  "name": "@sprout/bot",
+  "name": "@wisp/bot",
   "author": "",
-  "description": "Sprout: the setup and community Bot for this Root community",
+  "description": "Wisp: the setup and community Bot for Bich ass bitchess on Root",
   "version": "1.0.0",
   "private": true,
   "engines": {
@@ -22,6 +22,6 @@
     "test": "tsc -p tsconfig.test.json && node --test build-test/test/*.test.js",
     "check": "tsc --noEmit && npm test",
     "docs": "tsc -p tsconfig.test.json && node build-test/scripts/render-layout.js ../docs/SERVER-LAYOUT.md",
-    "package": "npm run build && rootsdk build package -o sprout.rootpkg"
+    "package": "npm run build && rootsdk build package -o wisp.rootpkg"
   }
 }

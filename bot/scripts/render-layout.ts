@@ -4,10 +4,12 @@
 import { writeFileSync } from "node:fs";
 import { rolePanels } from "../src/blueprint/content";
 import { blueprint } from "../src/blueprint/layout";
+import { mailboxes } from "../src/blueprint/mailboxes";
 import { EVERYONE, SELF } from "../src/blueprint/permissions";
 import { channelRules, groupRules } from "../src/blueprint/rules";
 import type { AccessRuleSpec, RoleCategory } from "../src/blueprint/types";
 import { config } from "../src/config";
+import { plural } from "../src/logic/text";
 
 const gate = config.onboarding.gate;
 
@@ -63,10 +65,10 @@ function render(): string {
   out.push("");
   out.push("> Generated from [`bot/src/blueprint/layout.ts`](../bot/src/blueprint/layout.ts) by `npm run docs`. Edit the blueprint, not this file.");
   out.push("");
+  const text = channels.filter((c) => c.type === "text").length;
+  const voice = channels.filter((c) => c.type === "voice").length;
   out.push(
-    `**${blueprint.groups.length} channel groups · ${channels.filter((c) => c.type === "text").length} text channels · ${
-      channels.filter((c) => c.type === "voice").length
-    } voice channels · ${blueprint.roles.length} roles**`,
+    `**${plural(blueprint.groups.length, "channel group")} · ${plural(text, "text channel")} · ${plural(voice, "voice channel")} · ${plural(blueprint.roles.length, "role")}**`,
   );
   out.push("");
   if (gate) {
@@ -86,11 +88,17 @@ function render(): string {
     out.push("");
     out.push("| Channel | Type | What it's for | Access |");
     out.push("| --- | --- | --- | --- |");
-    for (const c of group.channels) {
+    // Mailboxes name people, and this doc is committed to a public repo: count them, don't list them.
+    const hidden = new Set(mailboxes.map((m) => m.key));
+    for (const c of group.channels.filter((ch) => !hidden.has(ch.key))) {
       const cr = channelRules(group, c, gate);
       const access = cr.inherit ? "same as group" : describe(cr.rules);
       const type = c.type === "voice" ? "🔊 voice" : "💬 text";
       out.push(`| \`${c.name}\` | ${type} | ${c.topic.replace(/\|/g, "\\|")} | ${access} |`);
+    }
+    const privateCount = group.channels.filter((ch) => hidden.has(ch.key)).length;
+    if (privateCount > 0) {
+      out.push(`| _${privateCount} personal mailboxes_ | 💬 text | One per person, listed in \`mailboxes.local.ts\` (kept off GitHub) | same as group |`);
     }
   }
 

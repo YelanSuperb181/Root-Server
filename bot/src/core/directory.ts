@@ -1,4 +1,4 @@
-// Maps blueprint keys ("general", "moderator") to real Root IDs. IDs are
+// Maps blueprint keys ("bitches-yapping", "moderator") to real Root IDs. IDs are
 // saved when setup creates something, and anything built by hand (or by an
 // imported Discord template) is matched by name, so features work either way
 // and keep working after a channel or role is renamed in Root.

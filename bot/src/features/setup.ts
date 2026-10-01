@@ -26,6 +26,7 @@ import {
 import { blueprint } from "../blueprint/layout";
 import { channelPermission, communityPermission, hasElevatedPermissions, SELF } from "../blueprint/permissions";
 import { ChannelStep, countPlan, planSetup, savedKey, SetupPlan } from "../blueprint/plan";
+import { rulesGate } from "../blueprint/content";
 import { channelRules, groupRules } from "../blueprint/rules";
 import type { AccessRuleSpec, ChannelSpec, GroupSpec, RoleSpec } from "../blueprint/types";
 import { validateAll } from "../blueprint/validate";
@@ -92,7 +93,7 @@ async function exclusive(work: () => Promise<void>): Promise<void> {
 async function preview(ctx: CommandContext): Promise<void> {
   const plan = planSetup(blueprint, await fetchExistingState());
   const counts = countPlan(plan);
-  const lines = ["🌱 **Setup preview** (nothing has changed yet)", ""];
+  const lines = ["✨ **Setup preview** (nothing has changed yet)", ""];
 
   lines.push(`**Roles:** create ${counts.create.roles}${counts.keep.roles ? `, keep ${counts.keep.roles} that already exist` : ""}`);
   lines.push(`**Channel groups:** create ${counts.create.groups}${counts.keep.groups ? `, keep ${counts.keep.groups}` : ""}`);
@@ -103,8 +104,8 @@ async function preview(ctx: CommandContext): Promise<void> {
   lines.push("");
   lines.push(
     config.onboarding.gate
-      ? "Then I'll post the welcome guide, the rules with the ✅ gate and the role pickers, and give **Member** to everyone already here so nobody gets locked out."
-      : "Then I'll post the welcome guide, the rules and the role pickers.",
+      ? `Then I'll post and pin the how-to notes, and give **${directory.roleName("member")}** to everyone already here so nobody gets locked out of the members-only areas.`
+      : "Then I'll post and pin the how-to notes in the channels where I do things.",
   );
   if (counts.missing.length > 0) {
     lines.push("", `⚠️ I couldn't find Root's built-in role(s): ${counts.missing.join(", ")}. If you renamed it, that's fine.`);
@@ -141,7 +142,7 @@ async function progressMessage(channelId: string, first: string): Promise<Progre
 
 async function build(ctx: CommandContext): Promise<void> {
   // Posting first also teaches the bot its own member ID, used for "@self" rules.
-  const progress = await progressMessage(ctx.channelId, "🌱 **Building your community…** reading what's already here");
+  const progress = await progressMessage(ctx.channelId, "✨ **Building your community…** reading what's already here");
   const notes: string[] = [];
 
   try {
@@ -149,21 +150,23 @@ async function build(ctx: CommandContext): Promise<void> {
     const plan = planSetup(blueprint, state);
     const counts = countPlan(plan);
 
-    await progress.update(`🌱 **Building your community…** creating ${plural(counts.create.roles, "role")}`);
+    await progress.update(`✨ **Building your community…** creating ${plural(counts.create.roles, "role")}`);
     await buildRoles(plan, notes);
 
-    await progress.update("🌱 **Building your community…** channel groups and channels");
+    await progress.update("✨ **Building your community…** channel groups and channels");
     const createdGroups = await buildGroupsAndChannels(plan, notes);
     await moveChannels(plan, notes);
     await orderNewGroups(plan, createdGroups, state.groups.length > 0 && counts.keep.groups === 0);
 
+    // Everyone already here gets the role newcomers get: the gate's role, or the auto role.
+    const everyoneRole = config.onboarding.gate ? rulesGate.role : config.onboarding.autoRole;
     let unlocked = 0;
-    if (config.onboarding.gate) {
-      await progress.update("🌱 **Building your community…** letting everyone who's already here in");
-      unlocked = await giveExistingMembersAccess(notes);
+    if (everyoneRole) {
+      await progress.update(`✨ **Building your community…** giving **${directory.roleName(everyoneRole)}** to everyone already here`);
+      unlocked = await giveExistingMembers(everyoneRole, notes);
     }
 
-    await progress.update("🌱 **Building your community…** posting the welcome guide, rules and role pickers");
+    await progress.update("✨ **Building your community…** posting and pinning the how-to notes");
     const posts = await publishContent(false);
     await directory.sync();
 
@@ -390,9 +393,9 @@ async function orderNewGroups(plan: SetupPlan, created: Set<string>, freshSetup:
   }
 }
 
-/** With the gate on, existing members get the Member role so nobody is locked out. */
-async function giveExistingMembersAccess(notes: string[]): Promise<number> {
-  const roleId = directory.roleId("member");
+/** Gives `roleKey` to every person already in the community who doesn't have it. */
+async function giveExistingMembers(roleKey: string, notes: string[]): Promise<number> {
+  const roleId = directory.roleId(roleKey);
   if (!roleId) return 0;
   const members = await read("communityMembers.listAll", () => rootServer.community.communityMembers.listAll());
   const missing = members
@@ -406,7 +409,7 @@ async function giveExistingMembersAccess(notes: string[]): Promise<number> {
       );
       for (const id of batch) noteRoleChange(id, roleId, true);
     } catch (err) {
-      notes.push(`Couldn't give Member to ${plural(batch.length, "existing member")}: ${describeError(err)}`);
+      notes.push(`Couldn't give ${directory.roleName(roleKey)} to ${plural(batch.length, "existing member")}: ${describeError(err)}`);
     }
   }
   return missing.length;
@@ -418,18 +421,21 @@ function buildReport(plan: SetupPlan, counts: ReturnType<typeof countPlan>, post
     "✅ **Your community is ready!**",
     "",
     `Created ${plural(c.roles, "role")}, ${plural(c.groups, "channel group")} and ${plural(c.channels, "channel")} · posted ${plural(posts.posted.length, "message")}${
-      unlocked > 0 ? ` · let ${plural(unlocked, "existing member")} in` : ""
+      unlocked > 0 ? ` · gave ${plural(unlocked, "person", "people")} already here their role` : ""
     }.`,
   ];
   if (counts.moves > 0) lines.push(`Moved ${plural(counts.moves, "existing channel")} into place.`);
 
-  lines.push("", "**A few finishing touches only you can do:**");
-  lines.push(`1. Give your team their roles: **Moderator** for mods, **Event Host** for people who run events. Staff should have **Member** too.`);
-  lines.push("2. In **Settings → Roles**, drag Moderator and Event Host up near Admin. Role order decides who can manage whom.");
-  lines.push(`3. In community settings, set ${directory.channelMention("welcome")} as the default channel, so Root's join notices appear next to the welcome guide.`);
-  lines.push("4. Add a community icon and banner, then post your first announcement!");
+  const staff = `**${directory.roleName("moderator")}**`;
+  const touches = [
+    `Give ${staff} to whoever runs the place.`,
+    `In **Settings → Roles**, drag ${staff} up right below Admin. Role order decides who can manage whom.`,
+    `In community settings, set ${directory.channelMention(config.onboarding.greetIn)} as the default channel, so Root's join notices land where people chat.`,
+    "Add a community icon and banner, then post your first announcement!",
+  ];
   const empty = plan.leftovers.groups.filter((g) => g.channels.every((ch) => plan.groups.some((s) => s.channels.some((c) => c.action === "keep" && c.id === ch.id))));
-  if (empty.length > 0) lines.push(`5. These old groups are now empty and can be deleted: ${empty.map((g) => `**${g.name}**`).join(", ")}.`);
+  if (empty.length > 0) touches.push(`These old groups are now empty and can be deleted: ${empty.map((g) => `**${g.name}**`).join(", ")}.`);
+  lines.push("", "**A few finishing touches only you can do:**", ...touches.map((text, i) => `${i + 1}. ${text}`));
 
   const problems = [...new Set([...notes, ...posts.failed.map((key) => `Couldn't post "${key}".`)])];
   if (problems.length > 0) {

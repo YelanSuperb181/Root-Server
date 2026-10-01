@@ -1,33 +1,37 @@
 // ┌─────────────────────────────────────────────────────────────────────────┐
-// │ THE COMMUNITY BLUEPRINT                                                   │
+// │ THE COMMUNITY BLUEPRINT: Bich ass bitchess, moved over from Discord       │
 // │                                                                           │
-// │ Everything `!setup` builds lives here. Rename channels, add interests,   │
-// │ recolor roles: edit this file, run `npm test` (it validates the          │
-// │ blueprint), then `!setup` again. Setup only creates what's missing and    │
-// │ never deletes or renames anything you already have.                       │
+// │ Same categories and channels as the Discord server. Root channel names   │
+// │ can only use letters, digits and hyphens, so each channel's emoji lives   │
+// │ at the start of its description instead.                                  │
+// │                                                                           │
+// │ Edit this file, run `npm test` (it validates the blueprint), then         │
+// │ `!setup` again. Setup only creates what's missing and never deletes or    │
+// │ renames anything you already have.                                        │
 // └─────────────────────────────────────────────────────────────────────────┘
 
-import { BOT_ACCESS, CAN_POST, CAN_SPEAK, EVERYONE, HIDE, LISTEN_ONLY, READ_ONLY, SELF, SHOW, rule } from "./permissions";
+import { CAN_POST, EVERYONE, READ_ONLY, SELF, rule } from "./permissions";
+import { mailboxes } from "./mailboxes";
 import type { Blueprint, RoleSpec } from "./types";
 
-// Roles, highest first. Keys are what the code and config refer to.
+// Roles, highest first. Keys are what the code and config refer to; names are
+// what everyone sees. "moderator" and "member" are the keys the bot relies on.
 const roles: RoleSpec[] = [
-  // ── Staff ───────────────────────────────────────────────────────────────
   {
     key: "admin",
     name: "Admin",
     category: "staff",
     builtIn: true,
-    description: "Runs the place. Root gives this role (full control) to the community's creator.",
+    description: "Root gives this role (full control) to whoever creates the community.",
     mentionable: false,
     selfAssignable: false,
   },
   {
     key: "moderator",
-    name: "Moderator",
-    color: "#2ED3A0",
+    name: "Bitchiest Bitch",
+    color: "#F23F6F",
     category: "staff",
-    description: "Keeps things friendly: can remove messages, kick, ban and manage voice.",
+    description: "Top of the food chain: posts announcements, removes messages, kicks, bans and runs voice.",
     mentionable: true,
     selfAssignable: false,
     community: {
@@ -47,204 +51,108 @@ const roles: RoleSpec[] = [
     },
   },
   {
-    key: "event-host",
-    name: "Event Host",
-    color: "#E879F9",
-    category: "staff",
-    description: "Runs game nights and watch parties: posts in #events and speaks on the Stage.",
+    key: "member",
+    name: "Bitches",
+    color: "#B07CF0",
+    category: "member",
+    description: "Everyone. Wisp hands it out when someone joins.",
     mentionable: true,
     selfAssignable: false,
-    channel: {
-      channelManagePinnedMessages: true,
-      channelVoiceMuteOther: true,
-      channelMoveUserOther: true,
-    },
   },
-
-  // ── Everyone who accepted the rules ────────────────────────────────────
-  {
-    key: "member",
-    name: "Member",
-    category: "member",
-    description: "Given automatically when someone reacts ✅ to the rules. Unlocks the community.",
-    mentionable: false,
-    selfAssignable: false,
-  },
-
-  // ── Earned by chatting (see config.levels) ─────────────────────────────
-  {
-    key: "legend",
-    name: "Legend",
-    color: "#FFB800",
-    category: "level",
-    description: "Reached level 30. A pillar of the community.",
-    mentionable: false,
-    selfAssignable: false,
-  },
-  {
-    key: "veteran",
-    name: "Veteran",
-    color: "#9B8AFB",
-    category: "level",
-    description: "Reached level 15. Been here, seen things.",
-    mentionable: false,
-    selfAssignable: false,
-  },
-  {
-    key: "regular",
-    name: "Regular",
-    color: "#5EB1EF",
-    category: "level",
-    description: "Reached level 5. A familiar face.",
-    mentionable: false,
-    selfAssignable: false,
-  },
-
-  // ── Special ─────────────────────────────────────────────────────────────
   {
     key: "birthday",
-    name: "Birthday Star",
-    color: "#FF8FAB",
+    name: "Birthday Bitch",
+    color: "#FF8FC7",
     category: "special",
-    description: "Worn for 24 hours on your birthday (set it with !birthday).",
+    description: "Worn for 24 hours on your birthday (save yours with !birthday).",
     mentionable: false,
     selfAssignable: false,
   },
-
-  // ── Name colors (pick one in #roles) ────────────────────────────────────
-  { key: "color-ruby", name: "Ruby", color: "#FF5C5C", category: "color", description: "Red name color.", mentionable: false, selfAssignable: true },
-  { key: "color-amber", name: "Amber", color: "#FF9F43", category: "color", description: "Orange name color.", mentionable: false, selfAssignable: true },
-  { key: "color-citrine", name: "Citrine", color: "#FFD93D", category: "color", description: "Yellow name color.", mentionable: false, selfAssignable: true },
-  { key: "color-jade", name: "Jade", color: "#3DDC84", category: "color", description: "Green name color.", mentionable: false, selfAssignable: true },
-  { key: "color-sapphire", name: "Sapphire", color: "#4C8DFF", category: "color", description: "Blue name color.", mentionable: false, selfAssignable: true },
-  { key: "color-amethyst", name: "Amethyst", color: "#A66CFF", category: "color", description: "Purple name color.", mentionable: false, selfAssignable: true },
-  { key: "color-rose", name: "Rose", color: "#FF7EC8", category: "color", description: "Pink name color.", mentionable: false, selfAssignable: true },
-
-  // ── Interests (pingable, so "@Gamer anyone up for a match?" works) ──────
-  { key: "gamer", name: "Gamer", category: "interest", description: "Games of every kind. Pinged for squads and game nights.", mentionable: true, selfAssignable: true },
-  { key: "creator", name: "Creator", category: "interest", description: "Artists, writers, musicians and makers.", mentionable: true, selfAssignable: true },
-  { key: "techie", name: "Techie", category: "interest", description: "Code, gadgets and builds.", mentionable: true, selfAssignable: true },
-  { key: "music-lover", name: "Music Lover", category: "interest", description: "Always has a recommendation ready.", mentionable: true, selfAssignable: true },
-  { key: "movie-buff", name: "Movie Buff", category: "interest", description: "Movies, series and anime.", mentionable: true, selfAssignable: true },
-  { key: "foodie", name: "Foodie", category: "interest", description: "Cooks, bakers and snack critics.", mentionable: true, selfAssignable: true },
-
-  // ── Notification pings (opt in) ─────────────────────────────────────────
-  { key: "ping-announcements", name: "Announcements Ping", category: "ping", description: "Get pinged for important news.", mentionable: true, selfAssignable: true },
-  { key: "ping-events", name: "Events Ping", category: "ping", description: "Get pinged when an event is announced.", mentionable: true, selfAssignable: true },
-  { key: "ping-qotd", name: "Daily Question Ping", category: "ping", description: "Get pinged for the question of the day.", mentionable: true, selfAssignable: true },
-
-  // ── Pronouns ────────────────────────────────────────────────────────────
-  { key: "pronoun-he", name: "he/him", category: "pronoun", description: "Pronouns: he/him.", mentionable: false, selfAssignable: true },
-  { key: "pronoun-she", name: "she/her", category: "pronoun", description: "Pronouns: she/her.", mentionable: false, selfAssignable: true },
-  { key: "pronoun-they", name: "they/them", category: "pronoun", description: "Pronouns: they/them.", mentionable: false, selfAssignable: true },
-  { key: "pronoun-any", name: "any pronouns", category: "pronoun", description: "Any pronouns are fine.", mentionable: false, selfAssignable: true },
-  { key: "pronoun-ask", name: "ask my pronouns", category: "pronoun", description: "Ask before assuming.", mentionable: false, selfAssignable: true },
 ];
+
+const staffPost = [rule(EVERYONE, READ_ONLY), rule("moderator", CAN_POST), rule(SELF, CAN_POST)];
 
 export const blueprint: Blueprint = {
   roles,
   groups: [
     {
-      key: "start-here",
-      name: "Start Here",
-      description: "The front door: what this place is, the rules, news and events. Everyone can read it; only the team posts.",
+      key: "important",
+      name: "Important!!!",
+      description: "The stuff that matters (and the stuff that really doesn't).",
       membersOnly: false,
-      access: [rule(EVERYONE, READ_ONLY), rule("moderator", CAN_POST), rule(SELF, CAN_POST)],
       channels: [
-        { key: "welcome", name: "welcome", type: "text", topic: "👋 New here? Start with this channel: it explains everything." },
-        { key: "rules", name: "rules", type: "text", topic: "📜 The house rules. React ✅ on the rules post to unlock the community." },
-        { key: "announcements", name: "announcements", type: "text", topic: "📣 News from the team. Pick the Announcements Ping role to be notified." },
-        {
-          key: "events",
-          name: "events",
-          type: "text",
-          topic: "📅 Game nights, watch parties and community events. Pick the Events Ping role to be notified.",
-          access: [rule("event-host", CAN_POST)],
-        },
-        {
-          key: "roles",
-          name: "roles",
-          type: "text",
-          topic: "🎭 Pick your pronouns, interests, pings and name color by reacting.",
-          membersOnly: true,
-        },
+        { key: "announcements", name: "announcements", type: "text", topic: "‼️ Big news. Only the Bitchiest Bitch posts here.", access: staffPost },
+        { key: "polls", name: "polls", type: "text", topic: "📊 Settle it democratically. Start one with !poll" },
+        { key: "freakiest-freakstars", name: "freakiest-freakstars", type: "text", topic: "👅 Freakiest freakstars only." },
+        { key: "jockie-music-status", name: "jockie-music-status", type: "text", topic: "🎵 What's playing." },
+        { key: "dyno-status", name: "dyno-status", type: "text", topic: "🤖 Wisp's log: joins, leaves and anything auto-mod removed.", access: staffPost },
+        { key: "birthdays", name: "birthdays", type: "text", topic: "🎂 Birthday shout-outs. Save yours with !birthday" },
+        { key: "personality-types", name: "personality-types", type: "text", topic: "🧬 MBTI, enneagram, star signs, all of it." },
+        { key: "quotes", name: "quotes", type: "text", topic: "🗣️ Things that should never have been said. React 🗣️ on any message to send it here." },
       ],
     },
     {
-      key: "community",
-      name: "Community",
-      description: "Where most of the talking happens.",
-      membersOnly: true,
-      channels: [
-        { key: "general", name: "general", type: "text", topic: "💬 The main hangout. Chat about anything." },
-        { key: "introductions", name: "introductions", type: "text", topic: "🙋 New? Tell us about yourself! There's a template in the pins." },
-        { key: "daily-question", name: "daily-question", type: "text", topic: "🌞 A new question every day. Answer it, then read everyone else's." },
-        { key: "show-and-tell", name: "show-and-tell", type: "text", topic: "📸 Pets, photos, setups, wins and things you made." },
-        { key: "memes", name: "memes", type: "text", topic: "😂 Memes, jokes and good vibes. Keep it kind." },
-        { key: "celebrations", name: "celebrations", type: "text", topic: "🎉 Birthdays, level-ups and wins worth cheering for." },
-        {
-          key: "hall-of-fame",
-          name: "hall-of-fame",
-          type: "text",
-          topic: "⭐ The best messages, voted by you. React ⭐ on any message to nominate it.",
-          access: [rule(EVERYONE, READ_ONLY), rule(SELF, CAN_POST)],
-        },
-        { key: "bot-commands", name: "bot-commands", type: "text", topic: "🤖 Play with Sprout here: !help, !rank, !8ball and more." },
-      ],
-    },
-    {
-      key: "interests",
-      name: "Interests",
-      description: "One channel per hobby. Each has a matching pingable role in #roles.",
-      membersOnly: true,
-      channels: [
-        { key: "gaming", name: "gaming", type: "text", topic: "🎮 What are you playing? Clips, LFG and hot takes. Ping @Gamer for a squad." },
-        { key: "creative-corner", name: "creative-corner", type: "text", topic: "🎨 Art, writing, music and crafts. Share what you make and cheer each other on." },
-        { key: "tech-talk", name: "tech-talk", type: "text", topic: "💻 Code, gadgets, setups and tech help." },
-        { key: "music", name: "music", type: "text", topic: "🎧 Recs, playlists, concerts and the song stuck in your head." },
-        { key: "movies-and-shows", name: "movies-and-shows", type: "text", topic: "🍿 Movies, series and anime. Please mark spoilers!" },
-        { key: "food-and-drink", name: "food-and-drink", type: "text", topic: "🍜 Recipes, food pics and late-night snack debates." },
-      ],
-    },
-    {
-      key: "voice",
-      name: "Voice",
-      description: "Drop-in voice rooms. No invite needed: just join.",
-      membersOnly: true,
-      channels: [
-        { key: "lounge", name: "lounge", type: "voice", topic: "🛋️ Drop in and hang out." },
-        { key: "gaming-room", name: "gaming-room", type: "voice", topic: "🎮 Squad up and play together." },
-        { key: "music-and-chill", name: "music-and-chill", type: "voice", topic: "🎶 Listen together, low-key vibes." },
-        { key: "focus-room", name: "focus-room", type: "voice", topic: "📚 Co-working and study. Mics muted, cameras optional." },
-        {
-          key: "stage",
-          name: "stage",
-          type: "voice",
-          topic: "🎤 Community events. Hosts speak, everyone else listens.",
-          access: [rule(EVERYONE, LISTEN_ONLY), rule("event-host", CAN_SPEAK), rule("moderator", CAN_SPEAK)],
-        },
-      ],
-    },
-    {
-      key: "feedback",
-      name: "Feedback and Help",
-      description: "Shape the community and get help from the team.",
-      membersOnly: true,
-      channels: [
-        { key: "suggestions", name: "suggestions", type: "text", topic: "💡 Type an idea here and Sprout turns it into a vote." },
-        { key: "help-desk", name: "help-desk", type: "text", topic: "🆘 Questions about the community? Ask here and the team will help." },
-      ],
-    },
-    {
-      key: "staff",
-      name: "Staff",
-      description: "Private to Moderators and Admins.",
+      key: "social",
+      name: "Ze Social Place",
+      description: "Where the yapping happens.",
       membersOnly: false,
-      access: [rule(EVERYONE, HIDE), rule("moderator", SHOW), rule(SELF, BOT_ACCESS)],
       channels: [
-        { key: "staff-chat", name: "staff-chat", type: "text", topic: "🛡️ Private chat for the team." },
-        { key: "mod-log", name: "mod-log", type: "text", topic: "📋 Sprout's log: auto-mod actions, joins and leaves, setup reports." },
-        { key: "staff-room", name: "staff-room", type: "voice", topic: "🔒 Private voice for the team." },
+        { key: "bitches-yapping", name: "bitches-yapping", type: "text", topic: "✨ The main chat." },
+        { key: "games", name: "games", type: "text", topic: "🎮 Games, clips and who's getting on tonight." },
+        { key: "fm-bot", name: "fm-bot", type: "text", topic: "🎶 Music stats and now playing." },
+        { key: "bot-commands", name: "bot-commands", type: "text", topic: "💡 Talk to Wisp here: !help" },
+        { key: "availability", name: "availability", type: "text", topic: "🗓️ Who's free, who's busy, who's asleep." },
+      ],
+    },
+    {
+      key: "mailing",
+      name: "Bitch Mailing Service",
+      description: "A mailbox channel for each of you, plus one for everyone. The mailboxes live in mailboxes.local.ts.",
+      membersOnly: false,
+      channels: [
+        { key: "to-all-bitches", name: "to-all-bitches", type: "text", topic: "📬 Mail for everyone." },
+        ...mailboxes,
+      ],
+    },
+    {
+      key: "minecraft",
+      name: "Bitches Playing Minecraft",
+      description: "Everything Minecraft and the Realm.",
+      membersOnly: false,
+      channels: [
+        { key: "minecraft-chat", name: "minecraft-chat", type: "text", topic: "⛏️ Minecraft talk." },
+        { key: "minecraft-pics", name: "minecraft-pics", type: "text", topic: "📷 Builds, views and crimes against architecture." },
+        { key: "minecraft-coords", name: "minecraft-coords", type: "text", topic: "🗺️ Where everything is." },
+        { key: "realm-finance", name: "realm-finance", type: "text", topic: "💸 Who's paying for the Realm this month." },
+      ],
+    },
+    {
+      key: "terraria",
+      name: "Bitches Playing Terraria",
+      description: "Everything Terraria.",
+      membersOnly: false,
+      channels: [
+        { key: "yappity-yap", name: "yappity-yap", type: "text", topic: "🫧 Terraria talk." },
+        { key: "terraria-info", name: "info", type: "text", topic: "😳 World info, seeds and boss progress." },
+      ],
+    },
+    {
+      key: "voices",
+      name: "Yap... With Your Voices",
+      description: "Voice and the music that goes with it.",
+      membersOnly: false,
+      channels: [
+        { key: "music", name: "music", type: "text", topic: "💫 Song requests and what's on." },
+        { key: "voice-chat", name: "bitches-endlessly-bitching", type: "voice", topic: "🌟 Bitches endlessly bitching." },
+      ],
+    },
+    {
+      key: "other",
+      name: "Other",
+      description: "Everything else.",
+      membersOnly: false,
+      channels: [
+        { key: "the-vent-aka-hell", name: "the-vent-aka-hell", type: "text", topic: "👁️ Vent freely. Nothing here gets quoted or earns XP." },
       ],
     },
   ],

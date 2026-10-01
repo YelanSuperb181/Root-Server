@@ -1,10 +1,9 @@
-// Reaction roles: the ✅ on the rules post unlocks the community, and the
-// panels in #roles hand out interests, pings, pronouns and name colors.
+// Reaction roles: the ✅ on the rules post unlocks the community (gate on),
+// and any role pickers from blueprint/content.ts hand out roles by reaction.
 
 import { rootServer, CommunityRoleGuid, UserGuid } from "@rootsdk/server-bot";
 import { rolePanels, rulesGate } from "../blueprint/content";
 import { config } from "../config";
-import { Command } from "../core/commands";
 import { write } from "../core/api";
 import { directory } from "../core/directory";
 import { serialize } from "../core/lock";
@@ -99,15 +98,3 @@ async function onRolePanel(panelKey: string, evt: ReactionInput, added: boolean)
     }
   }
 }
-
-export const roleCommands: Command[] = [
-  {
-    name: "roles",
-    summary: "Where to pick your roles.",
-    level: "everyone",
-    category: "Community",
-    async run(ctx) {
-      await ctx.reply(`🎭 Head to ${directory.channelMention("roles")} and react to pick interests, pings, pronouns and a name color.`);
-    },
-  },
-];

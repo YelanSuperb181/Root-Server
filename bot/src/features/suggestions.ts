@@ -51,7 +51,7 @@ function render(s: Suggestion): string {
 }
 
 async function createSuggestion(authorId: string, rawText: string): Promise<Suggestion | undefined> {
-  const channelId = directory.channelId(config.suggestions.channel);
+  const channelId = config.suggestions.channel ? directory.channelId(config.suggestions.channel) : undefined;
   if (!channelId) return undefined;
   const text = truncate(defuseMentions(rawText).trim(), 1500);
   const id = await kv.next("suggestionstate:count");
@@ -69,7 +69,7 @@ async function createSuggestion(authorId: string, rawText: string): Promise<Sugg
  * under a card) and the team's messages are left as they are.
  */
 export async function captureSuggestion(evt: ChannelMessageCreatedEvent): Promise<boolean> {
-  if (!config.suggestions.enabled) return false;
+  if (!config.suggestions.enabled || !config.suggestions.channel) return false;
   if (evt.channelId !== directory.channelId(config.suggestions.channel)) return false;
   if (evt.parentMessages.length > 0) return false;
   const text = (evt.messageContent ?? "").trim();
@@ -135,7 +135,8 @@ export const suggestionCommands: Command[] = [
         await ctx.reply("⚠️ The suggestions channel doesn't exist yet.");
         return;
       }
-      await ctx.reply(`💡 Thanks! Your idea is up for votes as **Suggestion #${created.id}** in ${directory.channelMention(config.suggestions.channel)}.`);
+      const where = config.suggestions.channel ? directory.channelMention(config.suggestions.channel) : "the suggestions channel";
+      await ctx.reply(`💡 Thanks! Your idea is up for votes as **Suggestion #${created.id}** in ${where}.`);
     },
   },
   reviewCommand("approve", "approved", [], "Mark a suggestion approved."),

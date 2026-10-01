@@ -39,7 +39,7 @@ export const infoCommands: Command[] = [
         await ctx.reply(`${usageOf(cmd)}\n${cmd.summary}${aka}`);
         return;
       }
-      const lines = [`🌱 **${config.botName} commands**`];
+      const lines = [`✨ **${config.botName} commands**`];
       for (const category of CATEGORY_ORDER) {
         const inCategory = commands.filter((c) => c.category === category);
         if (inCategory.length === 0) continue;
@@ -52,11 +52,11 @@ export const infoCommands: Command[] = [
   },
   {
     name: "ping",
-    summary: "Check that Sprout is awake.",
+    summary: `Check that ${config.botName} is awake.`,
     level: "everyone",
     category: "Fun",
     async run(ctx) {
-      await ctx.reply("🏓 Pong! 🌱");
+      await ctx.reply("🏓 Pong! ✨");
     },
   },
   {
@@ -68,12 +68,12 @@ export const infoCommands: Command[] = [
     async run(ctx) {
       const community = await read("communities.get", () => rootServer.community.communities.get());
       const channels = blueprint.groups.flatMap((g) => g.channels).filter((c) => directory.channelId(c.key)).length;
-      const lines = [`🌱 **${community.name}**`];
+      const lines = [`✨ **${community.name}**`];
       if (community.description) lines.push(`_${community.description}_`);
       lines.push(
         "",
         `👥 ${formatNumber(knownPeople().length)} members · 💬 ${channels} channels · 🎭 ${blueprint.roles.length} roles`,
-        `Start here: ${directory.channelMention("welcome")} · Pick roles: ${directory.channelMention("roles")}`,
+        `Main chat: ${directory.channelMention(config.onboarding.greetIn)} · Talk to ${config.botName}: ${directory.channelMention("bot-commands")}`,
       );
       await ctx.reply(lines.join("\n"));
     },

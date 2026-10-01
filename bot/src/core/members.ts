@@ -122,7 +122,7 @@ async function owner(): Promise<string | undefined> {
   return ownerId;
 }
 
-/** Admin: owner, or a role that can manage the community. Mod: a role that can kick/ban, or the blueprint's Moderator. */
+/** Admin: owner, or a role that can manage the community. Mod: a role that can kick/ban, or the blueprint's "moderator" role. */
 export async function accessLevel(userId: string): Promise<AccessLevel> {
   if (!isPerson(userId)) return "everyone";
   if (userId === (await owner())) return "admin";

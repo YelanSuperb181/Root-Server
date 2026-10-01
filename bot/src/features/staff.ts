@@ -46,7 +46,7 @@ export const staffCommands: Command[] = [
   {
     name: "say",
     usage: "[#channel] <message>",
-    summary: "Post a message as Sprout.",
+    summary: `Post a message as ${config.botName}.`,
     level: "mod",
     category: "Staff",
     async run(ctx) {

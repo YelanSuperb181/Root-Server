@@ -4,7 +4,7 @@
 type Level = "info" | "warn" | "error";
 
 export function log(level: Level, message: string, details?: Record<string, unknown>): void {
-  const line = `[sprout] ${level.toUpperCase()} ${message}${details ? " " + JSON.stringify(details, bigintSafe) : ""}`;
+  const line = `[wisp] ${level.toUpperCase()} ${message}${details ? " " + JSON.stringify(details, bigintSafe) : ""}`;
   if (level === "error") console.error(line);
   else if (level === "warn") console.warn(line);
   else console.log(line);

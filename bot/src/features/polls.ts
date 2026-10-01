@@ -1,5 +1,5 @@
 // Reaction polls with optional timers. When a timed poll closes, the message
-// turns into a results card and Sprout announces the winner.
+// turns into a results card and Wisp announces the winner.
 
 import { config } from "../config";
 import { Command, UsageError } from "../core/commands";

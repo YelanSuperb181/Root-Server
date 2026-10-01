@@ -7,4 +7,5 @@ build-test/
 *.db
 *.zip
 .DS_Store
-sprout.rootpkg
+wisp.rootpkg
+bot/src/blueprint/mailboxes.local.ts

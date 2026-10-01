@@ -50,7 +50,7 @@ export const funCommands: Command[] = [
     name: "choose",
     aliases: ["pick"],
     usage: "<a | b | c>",
-    summary: "Can't decide? Let Sprout pick.",
+    summary: `Can't decide? Let ${config.botName} pick.`,
     level: "everyone",
     category: "Fun",
     async run(ctx) {
