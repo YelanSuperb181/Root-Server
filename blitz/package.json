@@ -1,0 +1,39 @@
+{
+  "name": "@blitz/app",
+  "description": "Blitz: the setup, community and domain App for Bich ass bitchess on Root",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@rootsdk/client-app": "^0.21.3",
+    "@rootsdk/server-app": "^0.21.3",
+    "@blitz/gen-client": "file:./networking/gen/client",
+    "@blitz/gen-server": "file:./networking/gen/server",
+    "@blitz/gen-shared": "file:./networking/gen/shared"
+  },
+  "devDependencies": {
+    "@rootsdk/dev-tools": "^0.21.3",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.8.2"
+  },
+  "scripts": {
+    "build": "npm run build -w networking && npm run build -w shared && npm run build -w server && npm run build -w client",
+    "test": "npm run build -w shared && npm test -w server",
+    "check": "npm run build && npm test",
+    "docs": "npm run build -w shared && npm run docs -w server",
+    "server": "npm run server -w server",
+    "client": "npm run client -w client",
+    "package": "npm run build && rootsdk build package -o blitz.rootpkg",
+    "clean": "node clean.js"
+  },
+  "workspaces": {
+    "packages": [
+      "./networking",
+      "./shared",
+      "./server",
+      "./client"
+    ]
+  }
+}

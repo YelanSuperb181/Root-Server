@@ -7,6 +7,6 @@ build-test/
 *.db
 *.zip
 .DS_Store
-wisp.rootpkg
-wisp/server/src/blueprint/mailboxes.local.ts
-wisp/networking/gen/
+blitz.rootpkg
+blitz/server/src/blueprint/mailboxes.local.ts
+blitz/networking/gen/

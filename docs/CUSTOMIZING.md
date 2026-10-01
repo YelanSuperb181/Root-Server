@@ -3,28 +3,28 @@
 The whole server is defined in a few files. After any change:
 
 ```bash
-cd wisp
+cd blitz
 npm run build
 npm test          # catches typos: unknown roles, bad channel names, broken references
 npm run docs      # optional: regenerates docs/SERVER-LAYOUT.md
 ```
 
-Then restart Wisp (or upload a new version, remembering to bump the version number) and run `!setup` in Root. Setup **only adds** what's missing. It never deletes, renames or re-permissions things that already exist, so it's safe to run as often as you like.
+Then restart Blitz (or upload a new version, remembering to bump the version number) and run `!setup` in Root. Setup **only adds** what's missing. It never deletes, renames or re-permissions things that already exist, so it's safe to run as often as you like.
 
 | File | Change it to… |
 | --- | --- |
-| [`wisp/server/src/blueprint/layout.ts`](../wisp/server/src/blueprint/layout.ts) | add, remove or rename categories, channels and roles; change colors and permissions |
-| [`wisp/server/src/blueprint/content.ts`](../wisp/server/src/blueprint/content.ts) | rewrite the pinned how-to notes |
-| [`wisp/server/src/config.ts`](../wisp/server/src/config.ts) | tune features: prefix, quote wall, XP, birthdays, auto-mod, where things post |
-| [`wisp/server/src/content/lines.ts`](../wisp/server/src/content/lines.ts) | Wisp's welcome lines, level-up lines and 8-ball answers |
-| [`wisp/shared/src/physics.ts`](../wisp/shared/src/physics.ts) | how Wisp moves in its domain |
-| [`wisp/client/src/`](../wisp/client/src/) | the domain window: its look (`style.css`) and how Wisp is drawn (`domain.ts`) |
+| [`blitz/server/src/blueprint/layout.ts`](../blitz/server/src/blueprint/layout.ts) | add, remove or rename categories, channels and roles; change colors and permissions |
+| [`blitz/server/src/blueprint/content.ts`](../blitz/server/src/blueprint/content.ts) | rewrite the pinned how-to notes |
+| [`blitz/server/src/config.ts`](../blitz/server/src/config.ts) | tune features: prefix, quote wall, XP, birthdays, auto-mod, where things post |
+| [`blitz/server/src/content/lines.ts`](../blitz/server/src/content/lines.ts) | Blitz's welcome lines, level-up lines and 8-ball answers |
+| [`blitz/shared/src/physics.ts`](../blitz/shared/src/physics.ts) | how Blitz moves in its domain |
+| [`blitz/client/src/`](../blitz/client/src/) | the domain window: its look (`style.css`) and how Blitz is drawn (`domain.ts`) |
 
 ## Recipes
 
 ### Add a mailbox for someone new
 
-In `wisp/server/src/blueprint/mailboxes.local.ts` (kept off GitHub; copy it from `mailboxes.local.example.ts` if you don't have it yet), add a line:
+In `blitz/server/src/blueprint/mailboxes.local.ts` (kept off GitHub; copy it from `mailboxes.local.example.ts` if you don't have it yet), add a line:
 
 ```ts
 { key: "mail-sam", name: "sam-the-new-guy", type: "text", topic: "🌻 Sam's mailbox." },
@@ -34,7 +34,7 @@ Keys just need to be unique; names can only use letters, digits and single hyphe
 
 ### Rename things
 
-Rename freely **in Root**: Wisp remembers everything by ID, not by name. To rename in the template too (so the docs and a future fresh setup match), change `name` but keep the `key` the same.
+Rename freely **in Root**: Blitz remembers everything by ID, not by name. To rename in the template too (so the docs and a future fresh setup match), change `name` but keep the `key` the same.
 
 ### Change the quote wall
 
@@ -63,42 +63,42 @@ Give it the same `access` as `#announcements` in `layout.ts` (`access: staffPost
 
 ### Change when birthdays are announced
 
-`daily.hourUtc` in `config.ts`, as a UTC hour (0-23). 16 is 9am in Los Angeles and noon in New York (summer time). Wisp reschedules itself on the next start.
+`daily.hourUtc` in `config.ts`, as a UTC hour (0-23). 16 is 9am in Los Angeles and noon in New York (summer time). Blitz reschedules itself on the next start.
 
 ### Block words
 
 Add them to `automod.blockedWords` in `config.ts`. Matching is whole-word and case-insensitive; end a word with `*` to also match longer forms (`scam*` catches "scammer"). The Bitchiest Bitch and admins are never filtered.
 
-### Change Wisp's personality
+### Change Blitz's personality
 
-Edit [`content/lines.ts`](../wisp/server/src/content/lines.ts). `{user}` becomes a mention and `{community}` the server's name; one line is picked at random each time.
+Edit [`content/lines.ts`](../blitz/server/src/content/lines.ts). `{user}` becomes a mention and `{community}` the server's name; one line is picked at random each time.
 
 ### Use a different command prefix
 
 `prefix` in `config.ts`, for example `"?"` if another bot already uses `!`.
 
-### Change how Wisp moves in its domain
+### Change how Blitz moves in its domain
 
-The numbers at the top of [`physics.ts`](../wisp/shared/src/physics.ts). Distances are fractions of the domain's radius (the rim is at 1), times are in seconds:
+The numbers at the top of [`physics.ts`](../blitz/shared/src/physics.ts). Distances are fractions of the domain's radius (the rim is at 1), times are in seconds:
 
 | Setting | What it does |
 | --- | --- |
-| `ORB_RADIUS` | How big Wisp is |
+| `ORB_RADIUS` | How big Blitz is |
 | `MAX_FLING` | The fastest throw counts as this fast |
-| `FLING_COAST` | How long a hard throw flies before Wisp drifts back to the middle |
+| `FLING_COAST` | How long a hard throw flies before Blitz drifts back to the middle |
 | `IMPACT_MIN_FREE` / `IMPACT_MIN_HELD` | How hard a hit on the rim must be to ripple and bonk, thrown / while held |
 | `POKE_SPEED` | How hard a poke pushes |
-| `SLEEP_AFTER` | Seconds without a touch before Wisp dozes off |
+| `SLEEP_AFTER` | Seconds without a touch before Blitz dozes off |
 | `OPEN_FOR` | Seconds without a touch before a burst bubble re-forms |
-| `BURST_SPEED`, `BURST_COAST` | How hard the bursting bubble launches Wisp, and for how long |
-| `STRAIN_BASE`, `STRAIN_PUSH`, `STRAIN_HEAL` | How fast the wall cracks while Wisp is pinned to it (about two seconds of hard shoving), and how fast it heals |
-| `SPRING`, `BOUNCE_FREE`, `BOUNCE_HELD` | How tightly Wisp follows your pointer, and how bouncy the rim is |
+| `BURST_SPEED`, `BURST_COAST` | How hard the bursting bubble launches Blitz, and for how long |
+| `STRAIN_BASE`, `STRAIN_PUSH`, `STRAIN_HEAL` | How fast the wall cracks while Blitz is pinned to it (about two seconds of hard shoving), and how fast it heals |
+| `SPRING`, `BOUNCE_FREE`, `BOUNCE_HELD` | How tightly Blitz follows your pointer, and how bouncy the rim is |
 
-The server and every window run this same file, so rebuild and re-upload everything after a change (`npm run package`). `npm test` checks that Wisp still can't escape the domain and that the wall takes about as long to burst as it should.
+The server and every window run this same file, so rebuild and re-upload everything after a change (`npm run package`). `npm test` checks that Blitz still can't escape the domain and that the wall takes about as long to burst as it should.
 
-### Change Wisp's personality (its brain)
+### Change Blitz's personality (its brain)
 
-With Claude as Wisp's brain, who Wisp is lives in `personaPrompt` in [`brain.ts`](../wisp/shared/src/brain.ts): how it talks, what it knows about its world, and how it should answer. It's plain writing; change it like you'd brief a friend. Keep the "How to answer" part, since Wisp's server relies on those fields.
+With Claude as Blitz's brain, who Blitz is lives in `personaPrompt` in [`brain.ts`](../blitz/shared/src/brain.ts): how it talks, what it knows about its world, and how it should answer. It's plain writing; change it like you'd brief a friend. Keep the "How to answer" part, since Blitz's server relies on those fields.
 
 In `config.ts` under `brain`:
 
@@ -107,21 +107,21 @@ In `config.ts` under `brain`:
 | `model` | Which Claude model answers (`claude-opus-5-5` by default) |
 | `effort` | How hard it thinks first: `"low"` is quick and cheap, `"medium"`/`"high"` are slower and more thoughtful |
 | `maxPerHour` | A cap on answers across the community; keywords after that |
-| `contextMessages`, `memory` | How much of the channel, and of its own past exchanges, Wisp reads |
+| `contextMessages`, `memory` | How much of the channel, and of its own past exchanges, Blitz reads |
 | `replyCooldownSeconds` | At most one chat reply per channel this often |
 | `skipIn` | Channels never sent to Claude |
 
-### Teach Wisp new words (the keyword fallback)
+### Teach Blitz new words (the keyword fallback)
 
-[`mood.ts`](../wisp/shared/src/mood.ts) has the lists. `FEELINGS` maps words and emoji to a mood (checked top to bottom, first match wins), `REQUESTS` maps words to tricks ("spin", "dance"), and `LINES` holds what Wisp says back for each mood. `MOOD_EMOJI` is the reaction it leaves in chat; use the shortcode names Root uses for reactions (`two_hearts`, `sparkles`). Add a case to `wisp/server/test/mood.test.ts` for anything you add, so a later change can't quietly break it.
+[`mood.ts`](../blitz/shared/src/mood.ts) has the lists. `FEELINGS` maps words and emoji to a mood (checked top to bottom, first match wins), `REQUESTS` maps words to tricks ("spin", "dance"), and `LINES` holds what Blitz says back for each mood. `MOOD_EMOJI` is the reaction it leaves in chat; use the shortcode names Root uses for reactions (`two_hearts`, `sparkles`). Add a case to `blitz/server/test/mood.test.ts` for anything you add, so a later change can't quietly break it.
 
-### Quiet Wisp down in chat
+### Quiet Blitz down in chat
 
 In `config.ts` under `domain`: `replyInChat: false` keeps the emoji reactions but drops the little lines back, `replyCooldownSeconds` spaces them out, `listen: false` turns chat reactions off entirely, and `quietIn` lists channels whose messages never show up in the domain (the vent, to start with).
 
 ## How permissions work
 
-Each category and channel can have **access rules**: per-role "allow" or "deny" switches that sit on top of a role's normal permissions. The template uses presets from [`permissions.ts`](../wisp/server/src/blueprint/permissions.ts):
+Each category and channel can have **access rules**: per-role "allow" or "deny" switches that sit on top of a role's normal permissions. The template uses presets from [`permissions.ts`](../blitz/server/src/blueprint/permissions.ts):
 
 | Preset | Effect |
 | --- | --- |
@@ -130,7 +130,7 @@ Each category and channel can have **access rules**: per-role "allow" or "deny" 
 | `HIDE` / `SHOW` | Can't / can see the channel |
 | `LISTEN_ONLY` / `CAN_SPEAK` | Voice: can't / can talk and stream |
 
-A channel with its own `access` stops sharing its category's permissions (Root ignores channel rules otherwise), so Wisp copies the category's rules onto it first and then adds the channel's own. [`rules.ts`](../wisp/server/src/blueprint/rules.ts) has the logic and [`blueprint.test.ts`](../wisp/server/test/blueprint.test.ts) shows the expected results.
+A channel with its own `access` stops sharing its category's permissions (Root ignores channel rules otherwise), so Blitz copies the category's rules onto it first and then adds the channel's own. [`rules.ts`](../blitz/server/src/blueprint/rules.ts) has the logic and [`blueprint.test.ts`](../blitz/server/test/blueprint.test.ts) shows the expected results.
 
 There's also an optional **onboarding gate** (`onboarding.gate` in `config.ts`): categories marked `membersOnly: true` stay hidden until a newcomer reacts ✅ on a rules post. It's off, since this is a friend group.
 

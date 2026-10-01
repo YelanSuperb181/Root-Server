@@ -1,0 +1,15 @@
+{
+  "name": "@blitz/server",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
+    "@blitz/shared": "*"
+  },
+  "scripts": {
+    "build": "tsc",
+    "server": "rootsdk start devhost --project-folder=../",
+    "test": "tsc -p tsconfig.test.json && node --test build-test/test/*.test.js",
+    "docs": "tsc -p tsconfig.test.json && node build-test/scripts/render-layout.js ../../docs/SERVER-LAYOUT.md"
+  }
+}

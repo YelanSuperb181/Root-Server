@@ -1,0 +1,53 @@
+{
+  "id": "your-app-id",
+  "version": "1.0.0",
+  "settings": {
+    "groups": [
+      {
+        "key": "brain",
+        "title": "Blitz's brain",
+        "items": [
+          {
+            "key": "anthropicApiKey",
+            "title": "Anthropic API key",
+            "description": "Lets Blitz understand and answer messages with Claude. Create a key at console.anthropic.com. Messages that mention Blitz, plus the last few messages in that channel, are sent to Anthropic's API (never from the vent). Leave empty to keep Blitz on simple keyword reactions.",
+            "required": false,
+            "confirmation": "Save",
+            "text": {}
+          }
+        ]
+      }
+    ]
+  },
+  "package": {
+    "client": {
+      "deploy": "client/dist"
+    },
+    "server": {
+      "launch": "server/dist/main.js",
+      "deploy": [
+        "server/dist",
+        "networking/gen/server"
+      ],
+      "nodeModules": [
+        "node_modules"
+      ]
+    }
+  },
+  "permissions": {
+    "community": {
+      "manageRoles": true,
+      "createChannelGroup": true
+    },
+    "channel": {
+      "fullControl": true,
+      "view": true,
+      "viewMessageHistory": true,
+      "createMessage": true,
+      "createMessageMention": true,
+      "createMessageReaction": true,
+      "deleteMessageOther": true,
+      "managePinnedMessages": true
+    }
+  }
+}

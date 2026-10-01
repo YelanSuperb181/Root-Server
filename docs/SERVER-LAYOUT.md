@@ -1,6 +1,6 @@
 # Server layout
 
-> Generated from [`wisp/server/src/blueprint/layout.ts`](../wisp/server/src/blueprint/layout.ts) by `npm run docs`. Edit the blueprint, not this file.
+> Generated from [`blitz/server/src/blueprint/layout.ts`](../blitz/server/src/blueprint/layout.ts) by `npm run docs`. Edit the blueprint, not this file.
 
 **7 channel groups · 30 text channels · 1 voice channel · 4 roles**
 
@@ -16,7 +16,7 @@ The stuff that matters (and the stuff that really doesn't). _(visible to everyon
 | `polls` | 💬 text | 📊 Settle it democratically. Start one with !poll | same as group |
 | `freakiest-freakstars` | 💬 text | 👅 Freakiest freakstars only. | same as group |
 | `jockie-music-status` | 💬 text | 🎵 What's playing. | same as group |
-| `dyno-status` | 💬 text | 🤖 Wisp's log: joins, leaves and anything auto-mod removed. | visible to everyone; read-only except for Bitchiest Bitch |
+| `dyno-status` | 💬 text | 🤖 Blitz's log: joins, leaves and anything auto-mod removed. | visible to everyone; read-only except for Bitchiest Bitch |
 | `birthdays` | 💬 text | 🎂 Birthday shout-outs. Save yours with !birthday | same as group |
 | `personality-types` | 💬 text | 🧬 MBTI, enneagram, star signs, all of it. | same as group |
 | `quotes` | 💬 text | 🗣️ Things that should never have been said. React 🗣️ on any message to send it here. | same as group |
@@ -30,7 +30,7 @@ Where the yapping happens. _(visible to everyone)_
 | `bitches-yapping` | 💬 text | ✨ The main chat. | same as group |
 | `games` | 💬 text | 🎮 Games, clips and who's getting on tonight. | same as group |
 | `fm-bot` | 💬 text | 🎶 Music stats and now playing. | same as group |
-| `bot-commands` | 💬 text | 💡 Talk to Wisp here: !help | same as group |
+| `bot-commands` | 💬 text | 💡 Talk to Blitz here: !help | same as group |
 | `availability` | 💬 text | 🗓️ Who's free, who's busy, who's asleep. | same as group |
 
 ### Bitch Mailing Service
@@ -92,7 +92,7 @@ Everything else. _(visible to everyone)_
 
 | Role | Color | Pingable | Self-assignable | Notes |
 | --- | --- | --- | --- | --- |
-| **Bitches** | `#B07CF0` | yes | no | Everyone. Wisp hands it out when someone joins. |
+| **Bitches** | `#B07CF0` | yes | no | Everyone. Blitz hands it out when someone joins. |
 
 ### Special
 

@@ -1,7 +1,0 @@
-{
-  "name": "@wisp/networking",
-  "private": true,
-  "scripts": {
-    "build": "rootsdk build proto"
-  }
-}

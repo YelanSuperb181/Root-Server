@@ -1,13 +1,13 @@
-# Wisp commands
+# Blitz commands
 
-Commands start with `!` (change it with `prefix` in [`config.ts`](../wisp/server/src/config.ts)). `!help` shows the commands *you* can use; `!help poll` explains one.
+Commands start with `!` (change it with `prefix` in [`config.ts`](../blitz/server/src/config.ts)). `!help` shows the commands *you* can use; `!help poll` explains one.
 
 ## For everyone
 
 | Command | What it does |
 | --- | --- |
 | `!help [command]` | All commands, or details about one. Also `!commands`. |
-| `!wisp` | Summon Wisp: links its domain, and Wisp lights up for everyone already inside. Also `!summon`, `!domain`. |
+| `!blitz` | Summon Blitz: links its domain, and Blitz lights up for everyone already inside. Also `!summon`, `!domain`. |
 | `!rank [@someone]` | Level, XP progress bar, message count and leaderboard spot. Also `!level`, `!xp`. |
 | `!top` | The 10 biggest yappers. Also `!leaderboard`, `!lb`. |
 | `!levels` | How XP works. |
@@ -20,18 +20,18 @@ Commands start with `!` (change it with `prefix` in [`config.ts`](../wisp/server
 | `!8ball <question>` | Ask the magic 8-ball. |
 | `!roll [d20 \| 2d6+1 \| 100]` | Roll dice (default 1d6). Also `!dice`. |
 | `!flip` | Flip a coin. Also `!coin`. |
-| `!choose a \| b \| c` | Let Wisp decide (also `a, b` or `a or b`). Also `!pick`. |
-| `!ping` | Is Wisp awake? |
+| `!choose a \| b \| c` | Let Blitz decide (also `a, b` or `a or b`). Also `!pick`. |
+| `!ping` | Is Blitz awake? |
 
 ## Without commands
 
-| Do this | And Wisp… |
+| Do this | And Blitz… |
 | --- | --- |
 | React 🗣️ on a message | At 2 reactions from people other than the author, saves it to `#quotes` with a live count. Never from `#the-vent-aka-hell`. |
 | Join the community | Gives you **Bitches** and welcomes you in `#bitches-yapping`. |
 | Chat | Earns 15-25 XP, at most once a minute (not in `#bot-commands`, `#the-vent-aka-hell` or `#dyno-status`). Level-ups are announced in `#bot-commands`. |
-| Say "wisp" (or @mention it, or reply to it) | Answers you. With its brain on (an Anthropic API key, see the [setup guide](SETUP-GUIDE.md#6-give-wisp-its-brain-optional)) it reads the conversation and replies in its own voice; without, it reacts to the mood with a canned line. Either way it leaves an emoji and acts it out in the domain. See [the README](../README.md#talking-to-wisp). |
-| Open Wisp's domain | Drag Wisp to carry it, let go to fling it, slam it into the wall, tap to poke it (arrow keys and space work too), or type to it. Hold it against the wall long enough and the bubble bursts into an endless universe; **Seal the bubble** brings it back. Everyone inside shares the same Wisp. |
+| Say "blitz" (or @mention it, or reply to it) | Answers you. With its brain on (an Anthropic API key, see the [setup guide](SETUP-GUIDE.md#6-give-blitz-its-brain-optional)) it reads the conversation and replies in its own voice; without, it reacts to the mood with a canned line. Either way it leaves an emoji and acts it out in the domain. See [the README](../README.md#talking-to-blitz). |
+| Open Blitz's domain | Drag Blitz to carry it, let go to fling it, slam it into the wall, tap to poke it (arrow keys and space work too), or type to it. Hold it against the wall long enough and the bubble bursts into an endless universe; **Seal the bubble** brings it back. Everyone inside shares the same Blitz. |
 | Have a birthday | A shout-out in `#birthdays` and **Birthday Bitch** for the day (16:00 UTC). |
 
 ## For the Bitchiest Bitch (and admins)
@@ -40,7 +40,7 @@ Commands start with `!` (change it with `prefix` in [`config.ts`](../wisp/server
 | --- | --- |
 | `!announce <message>` | Posts in `#announcements`. |
 | `!event <details>` | Posts an event in `#announcements`. |
-| `!say [#channel] <message>` | Post as Wisp. |
+| `!say [#channel] <message>` | Post as Blitz. |
 | `!clear <1-50>` | Delete the last messages in this channel. Also `!purge`. |
 
 ## For admins
@@ -52,7 +52,7 @@ Admins are the community owner and roles with **Manage Community** or **Full Con
 | `!setup` | Preview what setup would create. Changes nothing. |
 | `!setup confirm` | Build it: categories, channels, roles, permissions, pinned how-to notes, and **Bitches** for everyone already here. |
 | `!setup content` | Post any missing how-to notes. |
-| `!setup refresh` | Re-render the how-to notes after editing [`content.ts`](../wisp/server/src/blueprint/content.ts). |
+| `!setup refresh` | Re-render the how-to notes after editing [`content.ts`](../blitz/server/src/blueprint/content.ts). |
 | `!setup permissions` | Re-apply the template's channel permissions to what exists. Rules for other roles are left alone. |
 | `!setup status` | What's in place and what's missing. |
 | `!setxp @someone <xp>` | Set someone's XP. `!setxp @someone level 12` sets a level instead. Handy for carrying Discord levels over. |
