@@ -31,7 +31,7 @@ Commands start with `!` (change it with `prefix` in [`config.ts`](../blitz/serve
 | Join the community | Gives you **Bitches** and welcomes you in `#bitches-yapping`. |
 | Chat | Earns 15-25 XP, at most once a minute (not in `#bot-commands`, `#the-vent-aka-hell` or `#dyno-status`). Level-ups are announced in `#bot-commands`. |
 | Say "blitz" (or @mention it, or reply to it) | Answers you. With its brain on (an Anthropic API key, see the [setup guide](SETUP-GUIDE.md#6-give-blitz-its-brain-optional)) it reads the conversation and replies in its own voice; without, it reacts to the mood with a canned line. Either way it leaves an emoji and acts it out in the domain. See [the README](../README.md#talking-to-blitz). |
-| Open Blitz's domain | Drag Blitz to carry it, let go to fling it, slam it into the wall, tap to poke it (arrow keys and space work too), or type to it. Hold it against the wall long enough and the bubble bursts into an endless universe; **Seal the bubble** brings it back. Everyone inside shares the same Blitz. |
+| Open Blitz's domain | Drag Blitz to carry it, let go to fling it, slam it into the wall, tap to poke it (arrow keys and space work too), or type to it. Hold it against the wall long enough and the bubble bursts into an endless universe full of space rocks to crash into; **Seal the bubble** brings it back. Everyone inside shares the same Blitz. |
 | Have a birthday | A shout-out in `#birthdays` and **Birthday Bitch** for the day (16:00 UTC). |
 
 ## For the Bitchiest Bitch (and admins)

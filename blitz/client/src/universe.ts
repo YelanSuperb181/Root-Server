@@ -225,6 +225,8 @@ export interface UniverseView {
 }
 
 export class Universe {
+  /** Hears where each new shooting star appears (screen pixels), so Blitz can look. */
+  onShootingStar: ((x: number, y: number) => void) | undefined;
   private layers: Array<{ tile: HTMLCanvasElement; p: number; pattern?: CanvasPattern | null }> = [];
   private nebulae: HTMLCanvasElement[] = [];
   private galaxies: HTMLCanvasElement[] = [];
@@ -353,6 +355,39 @@ export class Universe {
       ctx.drawImage(this.planet, o.x - 560 * zoom - size / 2, o.y + 280 * zoom - size / 2, size, size);
     }
 
+    // Distant rocks, dark against the stars, drifting by slower than the ones Blitz can reach.
+    this.cells(cam, 0.5, t, W, H, 360, 40, (ix, iy, cx, cy) => {
+      const rnd = cellRandom(ix, iy, 5);
+      if (rnd() > 0.2) return;
+      const x = cx + rnd() * 360;
+      const y = cy + rnd() * 360;
+      const size = (4 + rnd() * 12) * zoom;
+      const turn = rnd() * 6.28 + (this.reduced ? 0 : t * (rnd() - 0.5) * 0.5);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(turn);
+      ctx.beginPath();
+      for (let i = 0; i < 9; i++) {
+        const a = (i / 9) * Math.PI * 2;
+        const r = size * (0.75 + rnd() * 0.45);
+        if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+        else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+      }
+      ctx.closePath();
+      // Faintly lit from the upper left, as if by a far-off star, so they read as rocks rather than holes.
+      ctx.rotate(-turn);
+      const shade = ctx.createRadialGradient(-size * 0.45, -size * 0.45, size * 0.1, 0, 0, size * 1.2);
+      shade.addColorStop(0, "rgba(74, 82, 112, 0.95)");
+      shade.addColorStop(0.55, "rgba(28, 31, 48, 0.95)");
+      shade.addColorStop(1, "rgba(10, 11, 19, 0.95)");
+      ctx.fillStyle = shade;
+      ctx.fill();
+      ctx.strokeStyle = "rgba(150, 170, 220, 0.2)";
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+      ctx.restore();
+    });
+
     // Bright stars: twinkling, with soft spikes, and streaking when the camera rushes along.
     ctx.globalCompositeOperation = "lighter";
     const speed = Math.hypot(this.camVel.x, this.camVel.y) * REF;
@@ -400,7 +435,9 @@ export class Universe {
         const fromLeft = Math.random() < 0.5;
         const sp = 900 + Math.random() * 600;
         const a = (fromLeft ? 0.35 : Math.PI - 0.35) + (Math.random() - 0.5) * 0.4;
-        this.shooting.push({ x: fromLeft ? Math.random() * W * 0.5 : W * (0.5 + Math.random() * 0.5), y: Math.random() * H * 0.4, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, born: t, life: 0.75 });
+        const star = { x: fromLeft ? Math.random() * W * 0.5 : W * (0.5 + Math.random() * 0.5), y: Math.random() * H * 0.4, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, born: t, life: 0.75 };
+        this.shooting.push(star);
+        this.onShootingStar?.(star.x + star.vx * 0.35, star.y + star.vy * 0.35);
       }
       for (let i = this.shooting.length - 1; i >= 0; i--) {
         const s = this.shooting[i];

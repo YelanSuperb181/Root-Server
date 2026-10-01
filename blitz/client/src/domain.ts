@@ -14,12 +14,14 @@ import {
   Body,
   FLING_COAST,
   FLING_SPEED,
+  Impact,
   MOODS,
   Mood,
   OPEN_FOR,
   ORB_RADIUS,
   Point,
   Reaction,
+  Rock,
   SLEEP_AFTER,
   STEP,
   Situation,
@@ -29,6 +31,7 @@ import {
   advance,
   burstLaunch,
   clampTarget,
+  hash32,
   idleTrick,
   isBursting,
   isSplash,
@@ -36,9 +39,11 @@ import {
   landingPoint,
   pokeImpulse,
   readMessage,
+  rocksNear,
   sanitize,
   step,
   trickAge,
+  unit,
   wallPush,
 } from "@blitz/shared";
 import { ChromeRects, chromeBurst, chromeReform, measureChrome } from "./chrome";
@@ -67,7 +72,7 @@ import {
 } from "./fx";
 import type { DomainLink } from "./net";
 import { Universe } from "./universe";
-import { Brows, Eyes, Look, Mouth, drawHalo, drawBlitz } from "./blitz";
+import { Brows, Eyes, Look, Mouth, drawBlitz, drawCrackle, drawHalo } from "./blitz";
 
 const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const now = () => performance.now() / 1000;
@@ -82,6 +87,7 @@ const VIOLET: RGB = [200, 168, 255];
 const GOLD: RGB = [255, 214, 120];
 const PINK: RGB = [255, 140, 200];
 const WHITE: RGB = [255, 255, 255];
+const DUST: RGB = [176, 186, 210];
 
 const CALM: RGB = [127, 227, 255];
 const TINTS: Record<Mood, RGB> = {
@@ -172,6 +178,16 @@ const BURST_CAM = 1.4;
 const GATHER = 0.95;
 /** The first moments after the burst play in slow motion. */
 const SLOW_MO = 0.35;
+/** How far Blitz's light reaches across open space, in domain units. */
+const LIGHT_REACH = 3.2;
+
+/** How one rock looks: its lumpy outline, craters and crystals, all from its id. */
+interface RockLook {
+  verts: number[];
+  craters: Array<[number, number, number]>;
+  crystals: Array<[number, number, boolean]>;
+  warm: number;
+}
 
 export interface DomainUi {
   status: HTMLElement;
@@ -288,6 +304,12 @@ export class DomainView {
   private strainSaid = 0;
   private lastImpact = -1;
   private emitAt: Record<string, number> = {};
+  private rockLooks = new Map<number, RockLook>();
+  private rockHits = new Map<number, { born: number; power: number; x: number; y: number }>();
+  /** Extra static after a hit or the burst, fading out. */
+  private zap = 0;
+  /** A screen point Blitz is watching for a moment (a shooting star). */
+  private watch: { x: number; y: number; until: number } | undefined;
   private lastStatus = "";
   private cardTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -304,6 +326,7 @@ export class DomainView {
     link.onState((e) => this.applyEvent(e));
     link.onWatchers((w) => this.setWatchers(w));
     link.onMessage((m) => this.applyMessage(m));
+    this.universe.onShootingStar = (x, y) => this.noticeShootingStar(x, y);
     this.simulatedUntil = this.simNow();
     this.lastInteraction = this.simNow();
     this.nextIdleTrick = this.simNow() + 6;
@@ -792,12 +815,23 @@ export class DomainView {
     this.wobble = 1;
   }
 
-  private impact(nx: number, ny: number, speed: number): void {
+  private impact(hit: Impact): void {
     if (this.t - this.lastImpact < 0.12) return;
     this.lastImpact = this.t;
+    const { nx, ny, speed } = hit;
     const pxSpeed = speed * 250; // tuned in pixels on a 250px-radius domain
-    this.ripples.push({ nx, ny, born: this.t, power: Math.max(0.25, Math.min(1, pxSpeed / 1300)) });
-    this.particles.burst(nx * 0.99, ny * 0.99, Math.min(30, 6 + pxSpeed / 55), Math.min(340, 80 + pxSpeed * 0.2) * PX, [CYAN, VIOLET], -nx, -ny);
+    const power = Math.max(0.25, Math.min(1, pxSpeed / 1300));
+    this.zap = Math.max(this.zap, power);
+    if (hit.rock !== undefined && hit.at) {
+      // A rock: a puff of dust and chips off its face, and it rocks on its axis.
+      this.rockHits.set(hit.rock, { born: this.t, power, x: hit.at.x, y: hit.at.y });
+      const n = Math.min(36, 8 + pxSpeed / 45);
+      this.particles.burst(hit.at.x, hit.at.y, n, Math.min(320, 70 + pxSpeed * 0.18) * PX, [DUST, DUST, WHITE, this.tint], -nx, -ny, 1.1);
+      if (pxSpeed > 900 && Math.random() < 0.4) this.speak(pick(["BONK", "rock!!", "oof—", "who put that there"]), 1.2);
+    } else {
+      this.ripples.push({ nx, ny, born: this.t, power });
+      this.particles.burst(nx * 0.99, ny * 0.99, Math.min(30, 6 + pxSpeed / 55), Math.min(340, 80 + pxSpeed * 0.2) * PX, [CYAN, VIOLET], -nx, -ny);
+    }
     this.wobble = Math.min(1, this.wobble + pxSpeed / 1600);
     this.squash = Math.max(this.squash, Math.min(1, pxSpeed / 1400));
     this.squashAngle = Math.atan2(ny, nx);
@@ -807,6 +841,13 @@ export class DomainView {
       if (Math.random() < 0.5) this.speak(pick(["ow!", "oof", "@_@", "ouch!"]), 1.1);
     }
     if (!reduced) this.shake = Math.max(this.shake, Math.min(1, (pxSpeed - 300) / 1500));
+  }
+
+  /** Out in the universe, a shooting star catches Blitz's eye now and then. */
+  private noticeShootingStar(x: number, y: number): void {
+    if (!this.layoutOpen || this.trans || this.asleep || this.holding || this.mood || this.thinking || this.speech) return;
+    this.watch = { x, y, until: this.t + 1.2 };
+    if (Math.random() < 0.3) this.speak(pick(["ooh!! a shooting star", "make a wish!", "✨ did you see that ✨", "woah"]), 1.6);
   }
 
   /** Blitz's drawn position glides from `from` to where it really is, over the re-seal. */
@@ -840,6 +881,7 @@ export class DomainView {
     this.shatter.explode(center.x - this.rectLeft, center.y - this.rectTop, radius, breakAngle, this.fxT, reduced ? 16 : 48);
     this.shatter.flash(this.fxT, reduced ? 0.2 : 0.6);
     this.slowUntil = this.t + SLOW_MO;
+    this.zap = 1.5;
     if (!reduced) this.shake = 1.6;
     this.cracks = [];
     this.crackLevel = 0;
@@ -1047,7 +1089,7 @@ export class DomainView {
     while (this.simulatedUntil + STEP <= until) {
       const hit = step(this.body, { t: this.simulatedUntil, ...this.forces(target) });
       this.simulatedUntil += STEP;
-      if (hit && isSplash(hit)) this.impact(hit.nx, hit.ny, hit.speed);
+      if (hit && isSplash(hit)) this.impact(hit);
     }
     // A trick that's over: a spin leaves Blitz a little dizzy.
     if (this.trick && until > this.trick.start && trickAge(this.trick, until) === undefined) {
@@ -1170,6 +1212,9 @@ export class DomainView {
       const mp = this.motePoint();
       gx = mp.x - me.x;
       gy = mp.y - me.y;
+    } else if (this.watch && t < this.watch.until && !this.asleep) {
+      gx = this.watch.x - me.x;
+      gy = this.watch.y - me.y;
     } else if (this.thinking) {
       // Pondering: eyes up and off to the side.
       gx = 0.65;
@@ -1215,6 +1260,7 @@ export class DomainView {
     this.tint = [this.tint[0] + (tintTarget[0] - this.tint[0]) * k, this.tint[1] + (tintTarget[1] - this.tint[1]) * k, this.tint[2] + (tintTarget[2] - this.tint[2]) * k];
 
     this.wobble *= Math.exp(-3 * dt);
+    this.zap *= Math.exp(-2.5 * dt);
     this.squash *= Math.exp(-7 * dt);
     this.shake *= Math.exp(-6 * dt);
     if (this.glide) {
@@ -1435,10 +1481,12 @@ export class DomainView {
         ctx.arc(cx, cy, reveal, 0, Math.PI * 2);
         ctx.clip();
         this.universe.draw(ctx, W, H, this.cam, t, dt, view);
+        this.drawRocks();
         ctx.restore();
         this.drawRevealRing(cx, cy, reveal, tr!.kind === "burst" ? clamp01((t - tr!.start) / REVEAL) : clamp01((t - tr!.start) / GATHER));
       } else {
         this.universe.draw(ctx, W, H, this.cam, t, dt, view);
+        this.drawRocks();
       }
       if (tr?.kind === "reform") this.drawRim(cx, cy, wallR, clamp01((t - tr.start) / GATHER), 0);
     } else {
@@ -1458,6 +1506,7 @@ export class DomainView {
       drawHalo(ctx, look);
       this.drawTether(look);
       drawBlitz(ctx, look, t);
+      if (!reduced) drawCrackle(ctx, look, this.crackle(), t);
       if (t < this.dizzyUntil) this.drawDizzyStars(look);
     }
     this.emotes.draw(ctx, this.cam, look, this.fxT, fxDt, this.font);
@@ -1480,6 +1529,139 @@ export class DomainView {
     if (this.mote) this.drawMote();
     ctx.restore();
     this.shatter.draw(ctx, W, H, this.fxT, fxDt);
+  }
+
+  private rockLook(id: number): RockLook {
+    let look = this.rockLooks.get(id);
+    if (look) return look;
+    const u = (n: number) => unit(hash32(id, n, 7));
+    const n = 18;
+    const raw = Array.from({ length: n }, (_, i) => 1 + (u(i) - 0.5) * 0.5);
+    const verts = raw.map((v, i) => (raw[(i + n - 1) % n] + 2 * v + raw[(i + 1) % n]) / 4);
+    const craters = Array.from({ length: 1 + Math.floor(u(40) * 3) }, (_, k): [number, number, number] => [u(41 + k) * Math.PI * 2, 0.2 + 0.45 * u(50 + k), 0.1 + 0.16 * u(60 + k)]);
+    const crystals = Array.from({ length: 2 + Math.floor(u(80) * 2) }, (_, k): [number, number, boolean] => [u(81 + k) * Math.PI * 2, 0.28 + 0.2 * u(90 + k), u(100 + k) < 0.5]);
+    look = { verts, craters, crystals, warm: u(110) };
+    if (this.rockLooks.size > 400) this.rockLooks.clear();
+    this.rockLooks.set(id, look);
+    return look;
+  }
+
+  /** The rocks around the camera, lit by Blitz's glow on the side that faces it. */
+  private drawRocks(): void {
+    const { W, H, cam } = this;
+    const middle = toWorld(cam, W / 2, H / 2);
+    const rocks = rocksNear(middle.x, middle.y, Math.hypot(W, H) / 2 / cam.s + 0.2, this.simNow());
+    const blitz = this.drawnBody();
+    for (const rock of rocks) this.drawRock(rock, blitz);
+  }
+
+  private drawRock(rock: Rock, blitz: Point): void {
+    const { ctx, cam, t } = this;
+    const [sx, sy] = toScreen(cam, rock.x, rock.y);
+    const R = rock.r * cam.s;
+    if (sx < -R * 1.6 || sy < -R * 1.6 || sx > this.W + R * 1.6 || sy > this.H + R * 1.6) return;
+    const look = this.rockLook(rock.id);
+    const hit = this.rockHits.get(rock.id);
+    let wobble = 0;
+    let flash = 0;
+    if (hit) {
+      const age = t - hit.born;
+      if (age > 1.5) this.rockHits.delete(rock.id);
+      else {
+        wobble = Math.sin(age * 26) * 0.14 * hit.power * Math.exp(-age * 4) * (0.25 / Math.max(0.12, rock.r));
+        flash = hit.power * Math.exp(-age * 5);
+      }
+    }
+    const angle = rock.spin + wobble;
+    // Blitz's light, in the rock's own (turning) frame.
+    const dx = blitz.x - rock.x;
+    const dy = blitz.y - rock.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    const lit = Math.pow(clamp01(1 - (dist - rock.r) / LIGHT_REACH), 1.6);
+    const la = Math.atan2(dy, dx) - angle;
+    const lx = dist < 50 ? Math.cos(la) : -0.6;
+    const ly = dist < 50 ? Math.sin(la) : -0.8;
+
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(angle);
+    const n = look.verts.length;
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      const rr = R * look.verts[i];
+      if (i === 0) ctx.moveTo(Math.cos(a) * rr, Math.sin(a) * rr);
+      else ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+    }
+    ctx.closePath();
+    const body = ctx.createRadialGradient(lx * R * 0.45, ly * R * 0.45, R * 0.05, 0, 0, R * 1.25);
+    body.addColorStop(0, look.warm < 0.5 ? "#6E7795" : "#7A6E86");
+    body.addColorStop(0.45, look.warm < 0.5 ? "#353B53" : "#3C3448");
+    body.addColorStop(1, "#0D0E16");
+    ctx.fillStyle = body;
+    ctx.fill();
+    ctx.save();
+    ctx.clip();
+    for (const [a, d, cr] of look.craters) {
+      const px = Math.cos(a) * d * R;
+      const py = Math.sin(a) * d * R;
+      ctx.fillStyle = "rgba(4, 5, 12, 0.32)";
+      ctx.beginPath();
+      ctx.arc(px, py, cr * R, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(220, 230, 255, 0.10)";
+      ctx.lineWidth = Math.max(0.6, R * 0.03);
+      ctx.beginPath();
+      ctx.arc(px, py, cr * R, Math.atan2(ly, lx) + Math.PI * 0.6, Math.atan2(ly, lx) + Math.PI * 1.4);
+      ctx.stroke();
+    }
+    if (lit > 0.01 || flash > 0.01) {
+      ctx.globalCompositeOperation = "lighter";
+      const glow = ctx.createRadialGradient(lx * R, ly * R, 0, lx * R, ly * R, R * 1.5);
+      glow.addColorStop(0, rgba(this.tint, 0.55 * lit + 0.5 * flash));
+      glow.addColorStop(1, rgba(this.tint, 0));
+      ctx.fillStyle = glow;
+      ctx.fillRect(-R * 1.6, -R * 1.6, R * 3.2, R * 3.2);
+    }
+    ctx.restore();
+    ctx.strokeStyle = `rgba(170, 195, 240, ${0.12 + 0.35 * lit})`;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    if (rock.crystal) {
+      // Crystals poking out of the surface, glowing on their own.
+      ctx.globalCompositeOperation = "lighter";
+      for (const [a, size, cyan] of look.crystals) {
+        const i = Math.floor(((a / (Math.PI * 2)) % 1) * n);
+        const rr = R * look.verts[i] * 0.86;
+        const pulse = 0.7 + 0.3 * Math.sin(t * 2.2 + a * 3);
+        const c: RGB = cyan ? [120, 235, 255] : [200, 150, 255];
+        ctx.save();
+        ctx.translate(Math.cos(a) * rr, Math.sin(a) * rr);
+        ctx.rotate(a + Math.PI / 2);
+        const h = size * R;
+        ctx.drawImage(glowSprite(c), -h * 1.2, -h * 1.6, h * 2.4, h * 2.4);
+        ctx.fillStyle = rgba(c, 0.85 * pulse);
+        ctx.beginPath();
+        ctx.moveTo(0, -h);
+        ctx.lineTo(h * 0.28, -h * 0.25);
+        ctx.lineTo(0, h * 0.2);
+        ctx.lineTo(-h * 0.28, -h * 0.25);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+    ctx.restore();
+  }
+
+  /** How much static Blitz gives off right now: speed, excitement, strain and recent hits. */
+  private crackle(): number {
+    const speed = Math.hypot(this.body.vx, this.body.vy);
+    let c = Math.max(0, (speed - 2.6) / 5) + this.zap * 0.8 + this.shownStrain() * 0.6;
+    if (this.mood === "excited") c += 0.35;
+    if (this.mood === "grumpy") c += 0.2;
+    if (this.asleep) c = 0;
+    return Math.min(1.3, c);
   }
 
   /** The bright edge of the universe as it opens out or folds back in. */
@@ -1519,6 +1701,21 @@ export class DomainView {
     glass.addColorStop(1, "rgba(9, 14, 34, 0.8)");
     ctx.fillStyle = glass;
     ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+    // A curved sheen across the top of the glass, like light on a soap bubble.
+    ctx.globalCompositeOperation = "lighter";
+    const sheen = ctx.createLinearGradient(cx - r, cy - r, cx, cy);
+    sheen.addColorStop(0, "rgba(200, 235, 255, 0.10)");
+    sheen.addColorStop(1, "rgba(200, 235, 255, 0)");
+    ctx.strokeStyle = sheen;
+    ctx.lineWidth = r * 0.07;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 0.88, Math.PI * 1.08, Math.PI * 1.42);
+    ctx.stroke();
+    ctx.lineWidth = r * 0.02;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 0.8, Math.PI * 1.12, Math.PI * 1.22);
+    ctx.stroke();
     ctx.restore();
     this.drawRim(cx, cy, r, alpha, strain);
   }

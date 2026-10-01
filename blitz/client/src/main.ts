@@ -25,7 +25,7 @@ async function main(): Promise<void> {
     const note = byId("note");
     note.textContent = "Not connected to Root, so this Blitz is just yours. Inside Root, everyone in the channel shares the same Blitz.";
     note.hidden = false;
-    // In the browser prototype, Blitz can think with the viewer's Claude.
+    // In the browser prototype, Blitz can think with Claude, but only for the page's creator.
     void viewerBrain().then((brain) => {
       if (!brain) return;
       view.brain = brain;
@@ -44,13 +44,11 @@ async function main(): Promise<void> {
 
   // The bubble bursts into the whole window, and into fullscreen when the
   // browser (and Root's frame) allow it. Sealing it brings the window back.
-  const fullscreen = byId<HTMLButtonElement>("fullscreen");
   const seal = byId<HTMLButtonElement>("seal");
   const canFullscreen = document.fullscreenEnabled;
   const enterFullscreen = () => document.documentElement.requestFullscreen().catch(() => undefined);
   const syncButtons = () => {
     seal.hidden = !view.isOpen;
-    fullscreen.hidden = !view.isOpen || !canFullscreen || document.fullscreenElement !== null;
   };
   view.onOpenChange = (open, byMe) => {
     syncButtons();
@@ -64,14 +62,11 @@ async function main(): Promise<void> {
   // Leave fullscreen before the universe folds back into the bubble, so the bubble lands in the right place.
   view.beforeReform = async () => {
     seal.hidden = true;
-    fullscreen.hidden = true;
     if (!document.fullscreenElement) return;
     await document.exitFullscreen().catch(() => undefined);
     await new Promise((resolve) => setTimeout(resolve, 60));
   };
-  fullscreen.addEventListener("click", () => void enterFullscreen());
   seal.addEventListener("click", () => view.seal());
-  document.addEventListener("fullscreenchange", syncButtons);
 
   view.start(joined?.state, joined?.watchers);
   syncButtons();

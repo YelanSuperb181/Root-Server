@@ -96,6 +96,20 @@ The numbers at the top of [`physics.ts`](../blitz/shared/src/physics.ts). Distan
 
 The server and every window run this same file, so rebuild and re-upload everything after a change (`npm run package`). `npm test` checks that Blitz still can't escape the domain and that the wall takes about as long to burst as it should.
 
+### Change the space rocks
+
+Out in the universe, the rocks come from [`rocks.ts`](../blitz/shared/src/rocks.ts). Space is cut into square patches and each patch gets its rocks from a hash of where it is, so every screen has the same rocks without anything being sent.
+
+| Setting | What it does |
+| --- | --- |
+| `ROCK_CELL` | How big a patch is. Smaller means more rocks, closer together |
+| `ROCK_CLEAR` | How much empty space is left around where the bubble burst |
+| `ROCK_MAX_R` | How big the biggest rocks get (also used to look for nearby rocks, so keep it at least as big as any rock) |
+| the `count` line in `cellRocks` | How many rocks a patch gets (now: none in about a quarter of patches, up to three) |
+| `BOUNCE_ROCK` in `physics.ts` | How bouncy the rocks are |
+
+`npm test` checks that the rocks are the same every time, that Blitz bounces off them, and that it never ends up inside one.
+
 ### Change Blitz's personality (its brain)
 
 With Claude as Blitz's brain, who Blitz is lives in `personaPrompt` in [`brain.ts`](../blitz/shared/src/brain.ts): how it talks, what it knows about its world, and how it should answer. It's plain writing; change it like you'd brief a friend. Keep the "How to answer" part, since Blitz's server relies on those fields.

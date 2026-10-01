@@ -6,7 +6,8 @@
 // Speeds are in radii per second, time in seconds. Rendering scales
 // everything to pixels.
 
-import { LIMIT, OPEN_LIMIT, Point, arenaScale, clampToArena } from "./arena";
+import { LIMIT, OPEN_LIMIT, ORB_RADIUS, Point, arenaScale, clampToArena } from "./arena";
+import { rocksNear } from "./rocks";
 import { Trick, trickTarget } from "./tricks";
 
 /** Fixed simulation step. Variable frame times are split into these. */
@@ -67,6 +68,9 @@ export interface Impact {
   held: boolean;
   /** Blitz wasn't touching the wall a moment ago: a real hit, not a hand pressing it there. */
   fresh: boolean;
+  /** Out in open space: the rock Blitz hit, and where on it. */
+  rock?: number;
+  at?: Point;
 }
 
 const SPRING = 520;
@@ -75,6 +79,8 @@ const TRICK_SPRING = 210;
 const TRICK_DAMPING = 2 * Math.sqrt(TRICK_SPRING) * 0.72;
 const BOUNCE_FREE = 0.82;
 const BOUNCE_HELD = 0.3;
+/** Rocks are a little less springy than the bubble's wall. */
+const BOUNCE_ROCK = 0.72;
 
 /** Strain per second while pressed into the wall: a base, plus more the harder the push. */
 const STRAIN_BASE = 0.2;
@@ -148,6 +154,34 @@ function contain(body: Body, open: boolean, held: boolean, fresh: boolean): Impa
   return { nx, ny, speed: vn, held, fresh };
 }
 
+/**
+ * Pushes Blitz out of any rock it has moved into and bounces it off (rocks
+ * drift, so the bounce is relative to the rock). Returns the hardest hit.
+ */
+function bumpRocks(body: Body, before: Point, t: number, held: boolean): Impact | undefined {
+  let hardest: Impact | undefined;
+  for (const rock of rocksNear(body.x, body.y, ORB_RADIUS + 0.05, t)) {
+    const reach = rock.r + ORB_RADIUS;
+    const dx = body.x - rock.x;
+    const dy = body.y - rock.y;
+    const d = Math.hypot(dx, dy);
+    if (d >= reach) continue;
+    const nx = d > 1e-9 ? dx / d : 1;
+    const ny = d > 1e-9 ? dy / d : 0;
+    body.x = rock.x + nx * reach;
+    body.y = rock.y + ny * reach;
+    const vn = (body.vx - rock.vx) * nx + (body.vy - rock.vy) * ny;
+    if (vn >= 0) continue;
+    const e = held ? BOUNCE_HELD : BOUNCE_ROCK;
+    body.vx -= (1 + e) * vn * nx;
+    body.vy -= (1 + e) * vn * ny;
+    const fresh = Math.hypot(before.x - rock.x, before.y - rock.y) >= reach - 1e-6;
+    const hit: Impact = { nx: -nx, ny: -ny, speed: -vn, held, fresh, rock: rock.id, at: { x: rock.x + nx * rock.r, y: rock.y + ny * rock.r } };
+    if (!hardest || hit.speed > hardest.speed) hardest = hit;
+  }
+  return hardest;
+}
+
 /** How far past the wall the holder is shoving Blitz, measured straight out from where Blitz touches it. */
 export function wallPush(body: Body, target: Point | undefined): number {
   if (!target) return 0;
@@ -189,9 +223,10 @@ export function step(body: Body, f: Forces): Impact | undefined {
     body.vx *= drag;
     body.vy *= drag;
   }
+  const before = { x: body.x, y: body.y };
   body.x += body.vx * dt;
   body.y += body.vy * dt;
-  const hit = contain(body, open, held, !wasTouching);
+  const hit = open ? (contain(body, open, held, false), bumpRocks(body, before, f.t, held)) : contain(body, open, held, !wasTouching);
 
   if (open) {
     if (body.strain) body.strain = 0;

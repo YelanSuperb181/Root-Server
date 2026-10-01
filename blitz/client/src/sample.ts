@@ -1,14 +1,19 @@
 // Claude inside the claude.ai artifact viewer. When the domain runs there
-// (the browser prototype), Blitz can think with the viewer's own Claude
-// through the page's `sample` capability: the viewer is asked once before
-// the first message, and every call spends their own Claude usage. Anywhere
-// else this finds nothing and Blitz sticks to keywords.
+// (the browser prototype) and the viewer is the page's creator, Blitz can
+// think with their Claude through the page's `sample` capability: they're
+// asked once before the first message, and every call spends their own
+// Claude usage. Anyone else the page is shared with, and anywhere outside
+// the viewer, gets Blitz's keyword reactions and never sees Claude's prompt.
 
 import { CommunityFacts, MOODS, REACTION_EMOJI, TRICKS, personaPrompt, readThought, situationPrompt } from "@blitz/shared";
 import type { SoloBrain } from "./domain";
 
 interface Sample {
   json(input: string, options?: { modelTier?: "quick" | "default" | "complex"; cache?: boolean }): Promise<unknown>;
+}
+
+interface Viewer {
+  isOwner(): Promise<boolean>;
 }
 
 declare global {
@@ -24,6 +29,8 @@ const FOR_GOOD = ["not_granted", "sampling_disabled", "not_declared", "capabilit
 
 export async function viewerBrain(): Promise<SoloBrain | undefined> {
   if (!window.claude?.use) return undefined;
+  const viewer = (await window.claude.use("user").catch(() => null)) as Viewer | null;
+  if (!(await viewer?.isOwner().catch(() => false))) return undefined;
   const sample = (await window.claude.use("sample").catch(() => null)) as Sample | null;
   if (!sample) return undefined;
   const persona = personaPrompt(FACTS);
