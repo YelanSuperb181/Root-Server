@@ -1,22 +1,29 @@
 // !help, !ping and !server.
 
 import { rootServer } from "@rootsdk/server-app";
-import { blueprint } from "../blueprint/layout";
 import { config } from "../config";
 import { read } from "../core/api";
 import { Category, Command, allCommands, usageOf } from "../core/commands";
-import { directory } from "../core/directory";
-import { atLeast, knownPeople } from "../core/members";
-import { formatNumber } from "../logic/text";
+import { listChannels } from "../core/community";
+import { atLeast, communityRoles, knownPeople } from "../core/members";
+import { ChannelSetting, channelLink, settings } from "../core/settings";
+import { plural } from "../logic/text";
 
-const CATEGORY_ORDER: Category[] = ["Community", "Levels", "Fun", "Staff", "Setup"];
+const CATEGORY_ORDER: Category[] = ["Community", "Levels", "Fun", "Staff"];
 const CATEGORY_ICON: Record<Category, string> = {
   Community: "💬",
   Levels: "🌿",
   Fun: "🎲",
   Staff: "🛡️",
-  Setup: "🛠️",
 };
+
+const CHANNELS: Array<[ChannelSetting, string]> = [
+  ["welcome", "Welcomes"],
+  ["levelUps", "Level-ups"],
+  ["quotes", "Quote wall"],
+  ["birthdays", "Birthdays"],
+  ["log", "Staff log"],
+];
 
 export const infoCommands: Command[] = [
   {
@@ -67,13 +74,35 @@ export const infoCommands: Command[] = [
     category: "Community",
     async run(ctx) {
       const community = await read("communities.get", () => rootServer.community.communities.get());
-      const channels = blueprint.groups.flatMap((g) => g.channels).filter((c) => directory.channelId(c.key)).length;
+      const channels = await listChannels().catch(() => []);
+      const roles = await communityRoles().catch(() => []);
       const lines = [`✨ **${community.name}**`];
       if (community.description) lines.push(`_${community.description}_`);
       lines.push(
         "",
-        `👥 ${formatNumber(knownPeople().length)} members · 💬 ${channels} channels · 🎭 ${blueprint.roles.length} roles`,
-        `Main chat: ${directory.channelMention(config.onboarding.greetIn)} · Talk to ${config.botName}: ${directory.channelMention("bot-commands")}`,
+        `👥 ${plural(knownPeople().length, "member")} · 💬 ${plural(channels.length, "channel")} · 🎭 ${plural(roles.length, "role")}`,
+      );
+      await ctx.reply(lines.join("\n"));
+    },
+  },
+  {
+    name: "settings",
+    summary: `What ${config.botName} is set up to do here.`,
+    level: "mod",
+    category: "Staff",
+    async run(ctx) {
+      const lines = [`🛠️ **${config.botName}'s settings here**`, ""];
+      for (const [key, label] of CHANNELS) {
+        const id = settings.channel(key);
+        lines.push(`${label}: ${id ? await channelLink(id) : key === "levelUps" ? "where they happen" : "off"}`);
+      }
+      const named = async (id: string | undefined) => (id ? (await communityRoles()).find((r) => r.id === id)?.name : undefined);
+      lines.push(
+        `Role for new members: ${(await named(settings.role("joinRole"))) ?? "none"}`,
+        `Birthday role: ${(await named(settings.role("birthdayRole"))) ?? "none"}`,
+        `Levels: ${settings.on("levels") ? "on" : "off"} · Auto-mod: ${settings.on("automod") ? "on" : "off"} · Quote wall needs ${settings.number("quoteThreshold", 2, 1, 20)} 🗣️`,
+        "",
+        "_Change these in Blitz's App settings in Root._",
       );
       await ctx.reply(lines.join("\n"));
     },

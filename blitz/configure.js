@@ -1,15 +1,11 @@
 // `npm run configure`: asks for Blitz's App ID and your DEV_TOKEN and saves
 // them in server/.env, so nothing has to be edited by hand. Run it again any
-// time to change them; pressing Enter keeps what's saved. It also puts the
-// mailbox list in place if it's sitting in your Downloads folder.
+// time to change them; pressing Enter keeps what's saved.
 
 const fs = require("fs");
-const os = require("os");
 const path = require("path");
 const readline = require("readline");
 const { ENV_FILE, readEnv, writeEnv, isRootId, appIdFor } = require("./local");
-
-const MAILBOXES = path.join(__dirname, "server", "src", "blueprint", "mailboxes.local.ts");
 
 /** What was pasted, without a "KEY=" in front, quotes or spaces. */
 const clean = (text, key) =>
@@ -75,26 +71,6 @@ async function main() {
 
   writeEnv({ DEV_TOKEN: token, BLITZ_APP_ID: appId });
   console.log(`\nSaved in ${path.relative(process.cwd(), ENV_FILE)}. It stays on this computer.`);
-
-  if (fs.existsSync(MAILBOXES)) {
-    console.log("Mailboxes: found.");
-  } else {
-    const downloads = path.join(os.homedir(), "Downloads");
-    const found = fs.existsSync(downloads)
-      ? fs
-          .readdirSync(downloads)
-          .filter((name) => /^mailboxes\.local.*\.ts(\.txt)?$/i.test(name))
-          .map((name) => path.join(downloads, name))
-          .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs)
-      : [];
-    if (found.length > 0) {
-      fs.copyFileSync(found[0], MAILBOXES);
-      console.log(`Mailboxes: copied ${path.basename(found[0])} from your Downloads folder.`);
-    } else {
-      console.log("Mailboxes: not found, so setup would make only #to-all-bitches in the mail category.");
-      console.log("  Save mailboxes.local.ts into your Downloads folder, then run npm run configure again.");
-    }
-  }
 
   console.log("\nAll set! Next, type:  npm run server\n");
 }

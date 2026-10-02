@@ -3,7 +3,7 @@
 
 import { rootServer, ChannelGuid, MessageDirectionTake } from "@rootsdk/server-app";
 import { errDetail, read } from "./api";
-import { fetchExistingState } from "./directory";
+import { listChannels } from "./community";
 import { log } from "./log";
 
 const NO_PERMISSIONS = "Root may not have given Blitz its permissions here, so it won't hear commands.";
@@ -11,8 +11,7 @@ const NO_PERMISSIONS = "Root may not have given Blitz its permissions here, so i
 export async function checkCanRead(): Promise<void> {
   const tried: string[] = [];
   try {
-    const state = await fetchExistingState();
-    const text = state.groups.flatMap((g) => g.channels).filter((c) => c.type === "text");
+    const text = (await listChannels()).filter((c) => c.type === "text");
     if (text.length === 0) {
       log("warn", `Blitz can't see any text channels. ${NO_PERMISSIONS}`);
       return;

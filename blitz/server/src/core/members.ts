@@ -17,8 +17,8 @@ import {
   UserGuid,
 } from "@rootsdk/server-app";
 import { read } from "./api";
-import { directory } from "./directory";
 import { log } from "./log";
+import { settings } from "./settings";
 import { kv } from "./store";
 
 export type AccessLevel = "everyone" | "mod" | "admin";
@@ -122,20 +122,24 @@ async function owner(): Promise<string | undefined> {
   return ownerId;
 }
 
-/** Admin: owner, or a role that can manage the community. Mod: a role that can kick/ban, or the blueprint's "moderator" role. */
+/**
+ * Admin: the owner, or a role that can manage the community. Mod: a role that
+ * can kick or ban, or anyone on the community's Staff list in Blitz's settings.
+ */
 export async function accessLevel(userId: string): Promise<AccessLevel> {
   if (!isPerson(userId)) return "everyone";
   if (userId === (await owner())) return "admin";
   const mine = memberRoles.get(userId) ?? new Set<string>();
-  if (mine.size === 0) return "everyone";
-
   let level: AccessLevel = "everyone";
-  for (const role of await communityRoles()) {
-    if (!mine.has(role.id)) continue;
-    const c = role.communityPermission;
-    if (c.communityFullControl || c.communityManageCommunity || role.id === directory.roleId("admin")) return "admin";
-    if (c.communityKick || c.communityCreateBan || role.id === directory.roleId("moderator")) level = "mod";
+  if (mine.size > 0) {
+    for (const role of await communityRoles()) {
+      if (!mine.has(role.id)) continue;
+      const c = role.communityPermission;
+      if (c.communityFullControl || c.communityManageCommunity) return "admin";
+      if (c.communityKick || c.communityCreateBan) level = "mod";
+    }
   }
+  if (level === "everyone" && (await settings.isStaff(userId))) level = "mod";
   return level;
 }
 

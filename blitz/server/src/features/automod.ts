@@ -4,10 +4,10 @@
 
 import type { ChannelMessageCreatedEvent } from "@rootsdk/server-app";
 import { config } from "../config";
-import { directory } from "../core/directory";
 import { errMessage, log } from "../core/log";
 import { accessLevel, nickname } from "../core/members";
 import { modLog, remove, sendEphemeral } from "../core/messaging";
+import { channelLink, settings, staffPing } from "../core/settings";
 import { AutomodRules, History, addStrike, checkContent, checkRate, emptyHistory } from "../logic/automod";
 import { defuseMentions, truncate, userMention } from "../logic/text";
 
@@ -34,9 +34,8 @@ export function initAutomod(): void {
 
 /** Returns true if the message was removed (the caller should stop processing it). */
 export async function screenMessage(evt: ChannelMessageCreatedEvent): Promise<boolean> {
-  if (!config.automod.enabled) return false;
-  const channelKey = directory.channelKey(evt.channelId);
-  if (channelKey && (config.automod.ignore as readonly string[]).includes(channelKey)) return false;
+  if (!settings.on("automod")) return false;
+  if (settings.isLog(evt.channelId)) return false;
   if ((await accessLevel(evt.userId)) !== "everyone") return false;
 
   const text = evt.messageContent ?? "";
@@ -60,7 +59,7 @@ export async function screenMessage(evt: ChannelMessageCreatedEvent): Promise<bo
   const who = userMention(name, evt.userId);
   sendEphemeral(evt.channelId, `🛡️ ${who}, your message was removed: ${verdict.reason}.`);
 
-  const where = channelKey ? directory.channelMention(channelKey) : "a channel";
+  const where = await channelLink(evt.channelId);
   const excerpt = truncate(defuseMentions(text).replace(/\s+/g, " "), 200);
   await modLog(`🛡️ Removed a message from **${name}** in ${where} (${verdict.kind})${excerpt ? `: "${excerpt}"` : ""}`);
 
@@ -69,7 +68,7 @@ export async function screenMessage(evt: ChannelMessageCreatedEvent): Promise<bo
   if (list.length >= config.automod.strikesToAlert) {
     strikes.delete(evt.userId);
     await modLog(
-      `🚨 ${who} has had ${list.length} messages removed in ${config.automod.strikeWindowMinutes} minutes. ${directory.rolePing("moderator")}, can someone take a look?`,
+      `🚨 ${who} has had ${list.length} messages removed in ${config.automod.strikeWindowMinutes} minutes. ${(await staffPing()) || "Staff"}, can someone take a look?`,
     );
   }
   return true;

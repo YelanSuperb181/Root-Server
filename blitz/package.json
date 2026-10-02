@@ -22,7 +22,6 @@
     "build": "npm run build -w networking && npm run build -w shared && npm run build -w server && npm run build -w client",
     "test": "npm run build -w shared && npm test -w server",
     "check": "npm run build && npm test",
-    "docs": "npm run build -w shared && npm run docs -w server",
     "configure": "node configure.js",
     "upload": "node upload.js",
     "server": "npm run server -w server",

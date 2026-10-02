@@ -35,6 +35,11 @@ export function initBrain(facts: CommunityFacts, settings: GlobalSettings | unde
   log("info", brainReady() ? `Blitz's brain is on (${config.brain.model})` : "Blitz's brain has no API key; using keywords");
 }
 
+/** What Blitz knows about the community changed (channels, its "About" setting): rebuild the persona. */
+export function refreshFacts(facts: CommunityFacts): void {
+  persona = personaPrompt(facts);
+}
+
 /** While developing: ANTHROPIC_API_KEY from the environment, or from server/.env next to DEV_TOKEN. */
 function keyFromEnvironment(): string | undefined {
   const fromEnv = process.env.ANTHROPIC_API_KEY?.trim();

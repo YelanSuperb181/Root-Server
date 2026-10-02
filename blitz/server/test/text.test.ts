@@ -11,9 +11,6 @@ import {
   progressBar,
   quote,
   roleMention,
-  sameName,
-  nameCandidates,
-  sanitizeChannelName,
   truncate,
   userMention,
 } from "../src/logic/text";
@@ -52,30 +49,6 @@ test("progressBar clamps and rounds", () => {
   assert.equal(progressBar(2), "▰▰▰▰▰▰▰▰▰▰");
   assert.equal(progressBar(Number.NaN), "▱▱▱▱▱▱▱▱▱▱");
   assert.equal(progressBar(0.5, 4), "▰▰▱▱");
-});
-
-test("nameCandidates gets plainer step by step, without repeats", () => {
-  assert.deepEqual(nameCandidates("Important!!!"), ["Important!!!", "Important"]);
-  assert.deepEqual(nameCandidates("Yap... With Your Voices"), ["Yap... With Your Voices", "Yap With Your Voices", "Yap-With-Your-Voices", "YapWithYourVoices"]);
-  assert.deepEqual(nameCandidates("Bitchiest Bitch"), ["Bitchiest Bitch", "Bitchiest-Bitch", "BitchiestBitch"]);
-  assert.deepEqual(nameCandidates("Bitches"), ["Bitches"]);
-  assert.deepEqual(nameCandidates("🎂 Birthday Bitch"), ["🎂 Birthday Bitch", "Birthday Bitch", "Birthday-Bitch", "BirthdayBitch"]);
-  assert.deepEqual(nameCandidates("🎂"), ["🎂"]);
-});
-
-test("sanitizeChannelName follows Root's channel name rules", () => {
-  assert.equal(sanitizeChannelName("General Chat!"), "General-Chat");
-  assert.equal(sanitizeChannelName("--café  au   lait--"), "cafe-au-lait");
-  assert.equal(sanitizeChannelName("👋・welcome"), "welcome");
-  assert.equal(sanitizeChannelName("🎉🎉"), undefined);
-  assert.equal(sanitizeChannelName("a".repeat(150))?.length, 100);
-});
-
-test("sameName ignores case, emoji and punctuation", () => {
-  assert.ok(sameName("General", "general"));
-  assert.ok(sameName("👋・welcome", "welcome"));
-  assert.ok(sameName("Feedback and Help", "feedback-and-help"));
-  assert.ok(!sameName("general", "general-2"));
 });
 
 test("pick uses the injected random source", () => {

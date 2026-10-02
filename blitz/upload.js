@@ -8,7 +8,7 @@ const fs = require("fs");
 const path = require("path");
 const readline = require("readline");
 const { spawn } = require("child_process");
-const { readEnv, writeEnv, appIdFor, lockOwners } = require("./local");
+const { readEnv, writeEnv, appIdFor } = require("./local");
 
 const ROOT = __dirname;
 const TOOLS = path.join(ROOT, "node_modules", "@rootsdk", "dev-tools");
@@ -92,7 +92,6 @@ async function main() {
   };
   const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, "root-manifest.json"), "utf8"));
   if (!appIdFor(manifest)) stop("Blitz doesn't know its App ID yet. Type  npm run configure  and paste it in.");
-  if (!lockOwners()) stop("Blitz doesn't know who you are yet. Type  npm run server  and wait for the line that says it noted you as the owner, stop it with Ctrl+C, then try again.");
   if (!fs.existsSync(PUBLISHER)) stop("Root's upload tool isn't installed. Type  npm install  and try again.");
 
   console.log("\nUploading Blitz to Root's cloud.\n");

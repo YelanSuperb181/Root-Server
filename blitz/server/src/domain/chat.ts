@@ -8,7 +8,7 @@ import { rootServer, ChannelGuid, ChannelMessageCreatedEvent } from "@rootsdk/se
 import { readMessage } from "@blitz/shared";
 import { config } from "../config";
 import { read } from "../core/api";
-import { directory } from "../core/directory";
+import { settings } from "../core/settings";
 import { errMessage, log } from "../core/log";
 import { botUserId, nickname } from "../core/members";
 import { react, send } from "../core/messaging";
@@ -38,8 +38,6 @@ async function channelName(channelId: string): Promise<string> {
   }
 }
 
-const inChannels = (keys: readonly string[], channelId: string) => keys.some((key) => directory.channelId(key) === channelId);
-
 /** Text safe to show and to post: no pings, no @everyone. One line unless `keepLines`. */
 function plain(text: string, keepLines = false): string {
   const safe = defuseMentions(text).replace(/@(everyone|here)\b/gi, "@\u200b$1");
@@ -53,7 +51,8 @@ function plain(text: string, keepLines = false): string {
 export async function hearChat(evt: ChannelMessageCreatedEvent): Promise<void> {
   const text = evt.messageContent ?? "";
   if (text.trim().startsWith(config.prefix)) return;
-  const private_ = inChannels(config.brain.skipIn, evt.channelId);
+  // Private channels (picked in Blitz's settings) are never sent to Claude or shown in the domain.
+  const private_ = settings.isPrivate(evt.channelId);
   // What was said before this message, then this message itself for next time.
   const before = private_ ? [] : snapshotLines(evt.channelId);
   if (!private_) rememberLine(evt.channelId, evt.userId, plain(text));
@@ -68,7 +67,7 @@ export async function hearChat(evt: ChannelMessageCreatedEvent): Promise<void> {
     const where = await channelName(evt.channelId);
     const said = plain(text);
     const heard = { id: evt.id, userId: evt.userId, nickname: name, text: truncate(said, MAX_SAY), channelName: where };
-    const showInDomain = !inChannels(config.domain.quietIn, evt.channelId);
+    const showInDomain = !private_;
     if (showInDomain) domain.listen(heard);
 
     const smart = private_

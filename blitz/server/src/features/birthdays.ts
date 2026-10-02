@@ -1,13 +1,15 @@
 // Birthdays: members save their day (no year, no age), and on the day they
-// get a shout-out and the Birthday Star role for 24 hours.
+// get a shout-out in the community's birthday channel and wear its birthday
+// role for the day. Both are picked in Blitz's settings; with no channel
+// picked, birthdays are off.
 
 import { birthdayLines } from "../content/lines";
 import { config } from "../config";
 import { Command, UsageError } from "../core/commands";
-import { directory } from "../core/directory";
 import { errMessage, log } from "../core/log";
 import { knownPeople, nickname } from "../core/members";
 import { addRole, removeRole, sendTo } from "../core/messaging";
+import { settings } from "../core/settings";
 import { kv } from "../core/store";
 import { BirthdayEntry, birthdaysOn, upcomingBirthdays, utcDateKey } from "../logic/dates";
 import { MonthDay, formatMonthDay, parseMonthDay } from "../logic/parse";
@@ -22,21 +24,28 @@ async function allBirthdays(): Promise<BirthdayEntry[]> {
     .filter((e) => present.has(e.userId));
 }
 
-/** Daily: takes off yesterday's Birthday Star roles and celebrates today's birthdays. */
+interface Wearing {
+  roleId: string;
+  userIds: string[];
+}
+
+/** Daily: takes off yesterday's birthday roles and celebrates today's birthdays. */
 export async function celebrateBirthdays(): Promise<void> {
-  if (!config.birthdays.enabled) return;
   const now = Date.now();
   const today = utcDateKey(now);
   if ((await kv.get<string>("bdaystate:last")) === today) return;
   await kv.set("bdaystate:last", today);
 
-  const roleId = config.birthdays.role ? directory.roleId(config.birthdays.role) : undefined;
-  if (roleId) {
-    for (const userId of (await kv.get<string[]>("bdaystate:wearing")) ?? []) {
-      await removeRole(userId, roleId).catch((err) => log("warn", "couldn't remove birthday role", { error: errMessage(err) }));
+  // Yesterday's role comes off even if birthdays were switched off since.
+  const wore = await kv.get<Wearing>("bdaystate:wearing");
+  if (wore?.roleId) {
+    for (const userId of wore.userIds) {
+      await removeRole(userId, wore.roleId).catch((err) => log("warn", "couldn't remove birthday role", { error: errMessage(err) }));
     }
-    await kv.set<string[]>("bdaystate:wearing", []);
+    await kv.delete("bdaystate:wearing");
   }
+  if (!settings.channel("birthdays")) return;
+  const roleId = settings.role("birthdayRole");
 
   const todays = birthdaysOn(await allBirthdays(), now);
   if (todays.length === 0) return;
@@ -44,7 +53,7 @@ export async function celebrateBirthdays(): Promise<void> {
   const mentions: string[] = [];
   for (const entry of todays) mentions.push(userMention(await nickname(entry.userId), entry.userId));
   const users = mentions.length === 1 ? mentions[0] : `${mentions.slice(0, -1).join(", ")} and ${mentions[mentions.length - 1]}`;
-  await sendTo(config.birthdays.channel, fillTemplate(pick(birthdayLines), { users }));
+  await sendTo("birthdays", fillTemplate(pick(birthdayLines), { users }));
 
   if (roleId) {
     const wearing: string[] = [];
@@ -56,7 +65,7 @@ export async function celebrateBirthdays(): Promise<void> {
         log("warn", "couldn't give birthday role", { error: errMessage(err) });
       }
     }
-    await kv.set("bdaystate:wearing", wearing);
+    await kv.set<Wearing>("bdaystate:wearing", { roleId, userIds: wearing });
   }
 }
 
@@ -87,7 +96,11 @@ export const birthdayCommands: Command[] = [
       const date = parseMonthDay(input);
       if (!date) throw new UsageError(`I couldn't read that date. Try \`${config.prefix}birthday July 14\` or \`${config.prefix}birthday 07-14\` (month-day).`);
       await kv.set(entryKey(ctx.userId), date);
-      await ctx.reply(`🎉 Got it! I'll celebrate you on **${formatMonthDay(date)}**.`);
+      await ctx.reply(
+        settings.channel("birthdays")
+          ? `🎉 Got it! I'll celebrate you on **${formatMonthDay(date)}**.`
+          : `🎉 Saved **${formatMonthDay(date)}**. Birthday shout-outs start once an admin picks a birthday channel in my settings.`,
+      );
     },
   },
   {

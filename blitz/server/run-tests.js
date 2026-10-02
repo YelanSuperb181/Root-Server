@@ -1,6 +1,6 @@
 // Runs every compiled test file. They're listed here rather than with a
 // `*.test.js` pattern, because Windows doesn't expand patterns and Node only
-// learned to from version 21.
+// learned to from version 21. Compiled tests whose source is gone are skipped.
 
 const fs = require("fs");
 const path = require("path");
@@ -9,7 +9,7 @@ const { spawnSync } = require("child_process");
 const dir = path.join(__dirname, "build-test", "test");
 const files = fs
   .readdirSync(dir)
-  .filter((name) => name.endsWith(".test.js"))
+  .filter((name) => name.endsWith(".test.js") && fs.existsSync(path.join(__dirname, "test", name.replace(/\.js$/, ".ts"))))
   .map((name) => path.join(dir, name));
 const run = spawnSync(process.execPath, ["--test", ...files], { stdio: "inherit" });
 process.exit(run.status ?? 1);

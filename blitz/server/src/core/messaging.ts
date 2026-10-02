@@ -13,10 +13,9 @@ import type { Emoji } from "../logic/emoji";
 import { shortcode } from "../logic/emoji";
 import { MAX_MESSAGE, MAX_NOTIFY_BODY, MAX_NOTIFY_TITLE, truncate } from "../logic/text";
 import { read, write } from "./api";
-import { config } from "../config";
-import { directory } from "./directory";
 import { errMessage, log } from "./log";
 import { learnSelf, noteRoleChange } from "./members";
+import { ChannelSetting, settings } from "./settings";
 
 export async function send(channelId: string, content: string, replyTo?: string): Promise<ChannelMessage> {
   const msg = await write("channelMessages.create", () =>
@@ -30,14 +29,14 @@ export async function send(channelId: string, content: string, replyTo?: string)
   return msg;
 }
 
-/** Posts to a blueprint channel by key; quietly does nothing if it doesn't exist. */
-export async function sendTo(channelKey: string, content: string): Promise<ChannelMessage | undefined> {
-  const id = directory.channelId(channelKey);
+/** Posts to the channel the community picked for `which`; quietly does nothing if none is picked. */
+export async function sendTo(which: ChannelSetting, content: string): Promise<ChannelMessage | undefined> {
+  const id = settings.channel(which);
   if (!id) return undefined;
   try {
     return await send(id, content);
   } catch (err) {
-    log("warn", `couldn't post in #${channelKey}`, { error: errMessage(err) });
+    log("warn", `couldn't post in the ${which} channel`, { error: errMessage(err) });
     return undefined;
   }
 }
@@ -138,9 +137,9 @@ export async function notify(userIds: string[], title: string, description: stri
   }
 }
 
-/** A line in the staff mod log, if it exists. */
+/** A line in the staff log, if the community picked one. */
 export async function modLog(content: string): Promise<void> {
-  await sendTo(config.modLog.channel, content);
+  await sendTo("log", content);
 }
 
 /** Link to a message, for "jump to" buttons. Undefined if Root won't make one. */

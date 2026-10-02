@@ -4,6 +4,147 @@
   "settings": {
     "groups": [
       {
+        "key": "channels",
+        "title": "Channels",
+        "items": [
+          {
+            "key": "welcome",
+            "title": "Welcome channel",
+            "description": "Where Blitz greets new members. Leave empty for no welcome messages.",
+            "required": false,
+            "confirmation": "Save",
+            "channel": {
+              "multiSelect": false
+            }
+          },
+          {
+            "key": "levelUps",
+            "title": "Level-up channel",
+            "description": "Where level-ups are announced. Leave empty to announce them where they happened.",
+            "required": false,
+            "confirmation": "Save",
+            "channel": {
+              "multiSelect": false
+            }
+          },
+          {
+            "key": "quotes",
+            "title": "Quote wall",
+            "description": "Messages that get enough 🗣️ reactions are saved here. Leave empty to turn the quote wall off.",
+            "required": false,
+            "confirmation": "Save",
+            "channel": {
+              "multiSelect": false
+            }
+          },
+          {
+            "key": "birthdays",
+            "title": "Birthday channel",
+            "description": "Where Blitz wishes people happy birthday. Leave empty to turn birthdays off.",
+            "required": false,
+            "confirmation": "Save",
+            "channel": {
+              "multiSelect": false
+            }
+          },
+          {
+            "key": "log",
+            "title": "Staff log",
+            "description": "Where Blitz notes auto-mod removals, joins and leaves. Leave empty for no log.",
+            "required": false,
+            "confirmation": "Save",
+            "channel": {
+              "multiSelect": false
+            }
+          },
+          {
+            "key": "private",
+            "title": "Private channels",
+            "description": "Blitz stays out of these: no XP, no quotes, never shown in its domain or sent to its brain. Good for vent or staff channels.",
+            "required": false,
+            "confirmation": "Save",
+            "channel": {
+              "multiSelect": true
+            }
+          }
+        ]
+      },
+      {
+        "key": "roles",
+        "title": "Roles",
+        "items": [
+          {
+            "key": "joinRole",
+            "title": "Role for new members",
+            "description": "Given to everyone who joins. Leave empty to give none.",
+            "required": false,
+            "confirmation": "Save",
+            "roleOrMember": {
+              "selectBehavior": "roleSingle"
+            }
+          },
+          {
+            "key": "birthdayRole",
+            "title": "Birthday role",
+            "description": "Worn for the day on someone's birthday. Leave empty to give none.",
+            "required": false,
+            "confirmation": "Save",
+            "roleOrMember": {
+              "selectBehavior": "roleSingle"
+            }
+          },
+          {
+            "key": "staff",
+            "title": "Staff",
+            "description": "Can use staff commands like !clear, !announce and !setxp. The owner, and roles that can manage the community, kick or ban, always can.",
+            "required": false,
+            "confirmation": "Save",
+            "roleOrMember": {
+              "selectBehavior": "roleMultiAndUserMulti"
+            }
+          }
+        ]
+      },
+      {
+        "key": "features",
+        "title": "Features",
+        "items": [
+          {
+            "key": "levels",
+            "title": "Levels",
+            "description": "Members earn XP for chatting and level up.",
+            "required": false,
+            "confirmation": "Save",
+            "checkbox": {
+              "defaultValue": true
+            }
+          },
+          {
+            "key": "automod",
+            "title": "Auto-mod",
+            "description": "Removes floods, copy-paste spam and mass mentions.",
+            "required": false,
+            "confirmation": "Save",
+            "checkbox": {
+              "defaultValue": true
+            }
+          },
+          {
+            "key": "quoteThreshold",
+            "title": "Reactions for the quote wall",
+            "description": "How many 🗣️ reactions (not counting the author's) save a message to the quote wall.",
+            "required": false,
+            "confirmation": "Save",
+            "number": {
+              "minValue": 1,
+              "maxValue": 20,
+              "step": 1,
+              "defaultValue": 2
+            }
+          }
+        ]
+      },
+      {
         "key": "brain",
         "title": "Blitz's brain",
         "items": [
@@ -11,6 +152,14 @@
             "key": "anthropicApiKey",
             "title": "Anthropic API key",
             "description": "Lets Blitz understand and answer messages with Claude. Create a key at console.anthropic.com. Messages that mention Blitz, plus the last few messages in that channel, are sent to Anthropic's API (never from the vent). Leave empty to keep Blitz on simple keyword reactions.",
+            "required": false,
+            "confirmation": "Save",
+            "text": {}
+          },
+          {
+            "key": "about",
+            "title": "About this community",
+            "description": "Optional. A sentence or two for Blitz's brain: what the community is about, its vibe, in-jokes. Only used with an API key.",
             "required": false,
             "confirmation": "Save",
             "text": {}
@@ -36,18 +185,15 @@
   },
   "permissions": {
     "community": {
-      "manageRoles": true,
-      "createChannelGroup": true
+      "manageRoles": true
     },
     "channel": {
-      "fullControl": true,
       "view": true,
       "viewMessageHistory": true,
       "createMessage": true,
       "createMessageMention": true,
       "createMessageReaction": true,
-      "deleteMessageOther": true,
-      "managePinnedMessages": true
+      "deleteMessageOther": true
     }
   }
 }

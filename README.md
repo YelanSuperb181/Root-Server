@@ -1,38 +1,44 @@
-# ✨ Bich ass bitchess, on Root
+# ✨ Blitz
 
-The Discord server, moved to [Root](https://www.rootapp.com): same categories, same channels, same roles, plus **Blitz**, a Root App that builds the whole thing with one command, hangs around being useful, and has a glowing little domain of its own you can drag it around in.
+**Blitz** is a Root App for any community: a glowing little spirit that hangs out in your chat, keeps levels, a quote wall and birthdays, keeps spam out, and has a domain of its own where everyone can drag it around, fling it into the walls and burst its bubble into space.
 
-```
-IMPORTANT!!!               ZE SOCIAL PLACE        BITCH MAILING SERVICE      BITCHES PLAYING MINECRAFT
-  #announcements ‼️          #bitches-yapping ✨     #to-all-bitches 📬          #minecraft-chat
-  #polls 📊                  #games 🎮               + a mailbox per person     #minecraft-pics 📷
-  #freakiest-freakstars 👅   #fm-bot 🎶                                         #minecraft-coords 🗺️
-  #jockie-music-status 🎵    #bot-commands 💡       YAP... WITH YOUR VOICES      #realm-finance 💸
-  #dyno-status 🤖            #availability            #music 💫
-  #birthdays 🎂                                       🔊 bitches-endlessly-     BITCHES PLAYING TERRARIA
-  #personality-types 🧬    OTHER                         bitching 🌟              #yappity-yap 🫧
-  #quotes 🗣️                 #the-vent-aka-hell 👁️                              #info 😳
-
-Roles: Bitchiest Bitch · Bitches · Birthday Bitch
-```
-
-Root channel names can only use letters, digits and hyphens, so each channel's emoji moves to the start of its description. Every channel, role and permission is listed in [docs/SERVER-LAYOUT.md](docs/SERVER-LAYOUT.md).
+It doesn't come with a server template and never creates channels or roles. It fits whatever your community already has: you point it at your channels and roles on its settings page in Root, and anything you leave empty is simply off.
 
 ## What Blitz does
 
 | | |
 | --- | --- |
 | 🔮 **Its domain** | Blitz's own channel: a round, glowing bubble where it floats, zooms around and does tricks. Drag it, fling it, slam it, poke it, or pin it to the wall until the bubble shatters and opens into an endless universe full of drifting space rocks to fling it into. Everyone inside sees the same Blitz, live. |
-| 💬 **Talk to it** | Say "blitz" in any chat (or @mention it, or reply to it) and Blitz actually answers: with Claude as its brain it reads the conversation, replies in its own voice, reacts with an emoji, and acts out how it feels in the domain while everyone watches. |
-| 🛠️ **Builds the server** | `!setup` previews, `!setup confirm` builds every category, channel and role in a couple of minutes. It only ever creates (never deletes or renames), matches anything that already exists by name, and can be re-run anytime. |
-| 🗣️ **Quote wall** | React 🗣️ on anything someone says. At 2 reactions (not counting whoever said it) Blitz saves it to `#quotes` with a live count. `!quote` pulls a random one back up. Nothing from `#the-vent-aka-hell` is ever quoted. |
-| 🎂 **Birthdays** | `!birthday July 14`, then a shout-out in `#birthdays` and the **Birthday Bitch** role for 24 hours. No birth year is ever asked for. |
+| 💬 **Talk to it** | Say "blitz" in any chat (or @mention it, or reply to it) and Blitz answers: with Claude as its brain it reads the conversation, replies in its own voice, reacts with an emoji, and acts out how it feels in the domain while everyone watches. |
+| ✨ **Levels** | XP for chatting (once a minute, so spam doesn't count), `!rank` and `!top`. Level-ups are announced where they happen, or in a channel you pick. |
+| 🗣️ **Quote wall** | Pick a quote wall channel, and anything that gets 🗣️ reactions (2 by default, not counting whoever said it) is saved there with a live count. `!quote` pulls a random one back up. |
+| 🎂 **Birthdays** | `!birthday July 14`, then a shout-out in the birthday channel you pick and, if you pick one, a birthday role for the day. No birth year is ever asked for. |
+| 👋 **Welcomes** | A welcome in the channel you pick, and a role for every newcomer if you pick one. |
+| 🛡️ **Auto-mod** | Removes floods, copy-paste spam and mass mentions, and notes them (plus joins and leaves) in a staff log channel if you pick one. |
 | 📊 **Polls** | `!poll 1h Movie night? \| Shrek \| Shrek 2`: reaction votes, auto-close and a results card. |
-| ✨ **Levels** | XP for chatting (once a minute, so spam doesn't count), `!rank` and `!top`. Level-ups are announced in `#bot-commands`. The vent and bot channels earn nothing. |
-| 👋 **Welcomes** | New people get **Bitches** automatically and a welcome in `#bitches-yapping`. |
-| 🤖 **Takes over for Dyno** | Light auto-mod (floods, copy-paste spam, mass mentions) with a log of joins, leaves and removals in `#dyno-status`. |
 | 🎲 **Toys** | `!8ball`, `!roll`, `!flip`, `!choose`. |
-| 📣 **For the Bitchiest Bitch** | `!announce`, `!say`, `!clear`, and `!setxp` to carry Discord levels over. |
+| 📣 **For staff** | `!announce`, `!event`, `!say`, `!clear`, `!setxp`, and `!settings` to see how Blitz is set up. |
+
+## Setting Blitz up in a community
+
+Install Blitz, then open its **App settings** in Root. Everything is optional:
+
+| Setting | What it does |
+| --- | --- |
+| Welcome channel | Where Blitz greets new members. Empty: no welcomes. |
+| Level-up channel | Where level-ups go. Empty: where they happened. |
+| Quote wall | Where 🗣️-ed messages are saved. Empty: no quote wall. |
+| Birthday channel | Where Blitz wishes happy birthday. Empty: no birthdays. |
+| Staff log | Where auto-mod removals, joins and leaves are noted. Empty: no log. |
+| Private channels | Channels Blitz stays out of: no XP, no quotes, never shown in its domain or sent to its brain. Good for vent or staff channels. |
+| Role for new members | Given to everyone who joins. |
+| Birthday role | Worn for the day on someone's birthday. |
+| Staff | Who can use staff commands. The owner, and roles that can manage the community, kick or ban, always can. |
+| Levels, Auto-mod | Switch them off if you'd rather not have them. |
+| Reactions for the quote wall | How many 🗣️ a message needs. |
+| Anthropic API key, About this community | Blitz's brain (see below), and a sentence or two that tells it what your community is like. |
+
+Blitz needs permission to read and post messages, react, delete messages (for auto-mod and `!clear`) and manage roles (only to hand out the roles you pick). Type `!settings` to see what's set.
 
 ## Blitz's domain
 
@@ -51,7 +57,7 @@ Type `!blitz` anywhere and Blitz replies with a link into its domain. Inside:
 
 ### Talking to Blitz
 
-With an Anthropic API key in Blitz's App settings (see the [setup guide](docs/SETUP-GUIDE.md#6-give-blitz-its-brain-optional)), Claude is Blitz's brain. It reads your message along with the last few messages in the channel and Blitz's recent conversation there, then decides how Blitz feels, which trick it does, what it says in the domain and what it replies in chat. You can ask it things ("blitz where do i post minecraft screenshots?", "blitz settle this: is a hotdog a sandwich"), tease it, hype it up or vent to it. It knows the channels and commands, keeps the group's crude-but-affectionate vibe, and drops the bit when someone sounds genuinely not okay.
+With an Anthropic API key in Blitz's App settings (see the [setup guide](docs/SETUP-GUIDE.md#give-blitz-its-brain-optional)), Claude is Blitz's brain. It reads your message along with the last few messages in the channel and Blitz's recent conversation there, then decides how Blitz feels, which trick it does, what it says in the domain and what it replies in chat. You can ask it things ("blitz where do i post my art?", "blitz settle this: is a hotdog a sandwich"), tease it, hype it up or vent to it. It knows the community's channels and commands, matches the vibe of the chat, and drops the bit when someone sounds genuinely not okay. Tell it about your community in the "About this community" setting and it'll fit right in.
 
 Without a key, or if Claude can't be reached, Blitz falls back to reading the mood from keywords. Either way it acts it out. Some of what it picks up on:
 
@@ -70,62 +76,47 @@ Without a key, or if Claude can't be reached, Blitz falls back to reading the mo
 
 In chat, Blitz leaves a matching emoji on your message and replies (with the keyword fallback: a little canned line, at most once every 25 seconds per channel). In the domain, everyone sees your message arrive at the top and fly over to Blitz, a thought bubble while it thinks, then its reaction.
 
-**Privacy:** with a key set, messages that mention Blitz, plus the last 12 messages in that channel, are sent to Anthropic's API to work out the answer. Nothing is stored by Blitz; its memory lives only while it runs. `#the-vent-aka-hell` is never sent and never shows up in the domain; Blitz reacts there with keywords only. Change any of this under `brain` and `domain` in [`config.ts`](blitz/server/src/config.ts).
+**Privacy:** with a key set, messages that mention Blitz, plus the last 12 messages in that channel, are sent to Anthropic's API to work out the answer. Nothing is stored by Blitz; its memory lives only while it runs. Channels you mark private are never sent and never show up in the domain; Blitz reacts there with keywords only. The full details are in the [privacy policy](PRIVACY.md).
 
 One person holds Blitz at a time; everyone else sees who's carrying it. If Blitz's server can't be reached (or you open the domain outside Root), it runs solo: the same Blitz, just yours. **[Try it in your browser](https://claude.ai/artifact/JjoXEpCC6r2eeme9ZjCi57)**: there, Blitz thinks with Claude only for the page's creator (it asks once); everyone else gets the keyword Blitz. In Root, the brain is whatever key is in the App's settings, which only people who can manage the App can change.
 
 Root Apps live inside their own channel, so the domain is a channel rather than a window over the rest of Root. Bursting the bubble is how it gets as big as Root lets it.
 
-## Quick start
+## Building and running Blitz yourself
 
-> Full walkthrough: **[docs/SETUP-GUIDE.md](docs/SETUP-GUIDE.md)**.
+> Step by step: **[docs/SETUP-GUIDE.md](docs/SETUP-GUIDE.md)**.
 
-1. **Create a fresh Root community.**
-2. **Register Blitz** as an **App** in the Root Developer Portal and generate a `DEV_TOKEN` for it.
-3. **Build it:**
-   ```bash
-   cd blitz
-   npm install
-   npm run configure # paste the App ID and DEV_TOKEN; saved in server/.env
-   npm run build     # networking, physics, server and the domain client
-   npm test          # validates the template and runs the unit tests
-   ```
-4. **Try it in your test community:** run `npm run server`, and type `!setup` (then `!setup confirm`) in any channel. In a second terminal, `npm run client` serves the domain for Root's dev mode.
-5. **Go live:** `npm run upload` (asks for your publishing token once), install Blitz in the real community, and run `!setup confirm` there.
-
-## Before you build: the mailboxes
-
-This repository is public, so the personal mailbox channels (one per person, named after them) aren't in it. They live in `blitz/server/src/blueprint/mailboxes.local.ts`, a file git never uploads:
-
-1. Copy [`mailboxes.local.example.ts`](blitz/server/src/blueprint/mailboxes.local.example.ts) to `mailboxes.local.ts` in the same folder.
-2. Add one line per person, using the exact channel names from Discord.
-
-Without that file, setup creates only `#to-all-bitches` in that category.
-
-Two smaller differences from Discord: there's one `#bot-commands` instead of two (without the emoji their names were identical), and Discord's built-in Events and Server Boosts don't exist on Root.
+```bash
+cd blitz
+npm install
+npm run configure   # paste the App ID and DEV_TOKEN from Root's Developer Portal; saved in server/.env
+npm run check       # builds everything and runs the tests
+npm run server      # runs Blitz in your test community
+npm run client      # in a second window: the domain in your browser
+npm run upload      # puts Blitz in Root's cloud (asks for your publishing token once)
+```
 
 ## Make it yours
 
 | File | What's in it |
 | --- | --- |
-| [`blitz/server/src/blueprint/layout.ts`](blitz/server/src/blueprint/layout.ts) | Categories, channels, roles, colors and permissions |
-| [`blitz/server/src/blueprint/content.ts`](blitz/server/src/blueprint/content.ts) | The pinned how-to posts Blitz puts in its channels |
-| [`blitz/server/src/config.ts`](blitz/server/src/config.ts) | Prefix, quote emoji and threshold, levels, birthdays, auto-mod, where things get posted |
-| [`blitz/server/src/content/lines.ts`](blitz/server/src/content/lines.ts) | Blitz's welcome lines, level-up lines and 8-ball answers |
-| [`blitz/shared/src/physics.ts`](blitz/shared/src/physics.ts) | How Blitz moves in its domain: drift, drag, bounce, slam, how fast the wall cracks |
-| [`blitz/shared/src/rocks.ts`](blitz/shared/src/rocks.ts) | The space rocks: how many, how big, how far apart, how much room around the bubble |
+| [`blitz/root-manifest.json`](blitz/root-manifest.json) | The settings page each community sees, and the permissions Blitz asks for |
+| [`blitz/server/src/config.ts`](blitz/server/src/config.ts) | Defaults for every community: prefix, XP per message, auto-mod limits, the brain's model and budget |
+| [`blitz/server/src/content/lines.ts`](blitz/server/src/content/lines.ts) | Blitz's welcome lines, level-up lines, birthday lines and 8-ball answers |
 | [`blitz/shared/src/brain.ts`](blitz/shared/src/brain.ts) | Blitz's personality: what Claude is told about who Blitz is and how it talks |
 | [`blitz/shared/src/mood.ts`](blitz/shared/src/mood.ts) | The keyword fallback: words Blitz reacts to, its canned lines, and its chat emoji |
+| [`blitz/shared/src/physics.ts`](blitz/shared/src/physics.ts) | How Blitz moves in its domain: drift, drag, bounce, slam, how fast the wall cracks |
+| [`blitz/shared/src/rocks.ts`](blitz/shared/src/rocks.ts) | The space rocks: how many, how big, how far apart |
 | [`blitz/shared/src/tricks.ts`](blitz/shared/src/tricks.ts) | Blitz's tricks: loops, spins, zooms, the heart |
 | [`blitz/client/src/style.css`](blitz/client/src/style.css) | The domain window's look |
 
-Change them, run `npm run build && npm test`, then `!setup` again; it only adds what's new. Recipes: **[docs/CUSTOMIZING.md](docs/CUSTOMIZING.md)**. All commands: **[docs/COMMANDS.md](docs/COMMANDS.md)**. Privacy policy: **[PRIVACY.md](PRIVACY.md)**. Terms: **[TERMS.md](TERMS.md)**.
+Recipes: **[docs/CUSTOMIZING.md](docs/CUSTOMIZING.md)**. All commands: **[docs/COMMANDS.md](docs/COMMANDS.md)**. Privacy policy: **[PRIVACY.md](PRIVACY.md)**. Terms: **[TERMS.md](TERMS.md)**.
 
 ## Project layout
 
 ```
 blitz/
-├── root-manifest.json          App ID, version and the permissions Blitz asks for
+├── root-manifest.json          ⭐ the settings page each community sees, and the permissions Blitz asks for
 ├── stage.js                    gathers a clean copy to upload (npm run package), without sources or .env
 ├── upload.js                   builds, packages and uploads Blitz in one go (npm run upload)
 ├── configure.js                asks for the App ID and DEV_TOKEN and saves them in server/.env (npm run configure)
@@ -139,18 +130,16 @@ blitz/
 │   └── mood.ts                 the keyword fallback for reading what people say
 ├── server/                     the App's server: everything that happens in chat, plus the shared Blitz
 │   ├── src/
-│   │   ├── blueprint/          ⭐ the server template (layout, posts, permissions, validation, setup planner)
-│   │   ├── config.ts           ⭐ settings
+│   │   ├── config.ts           ⭐ defaults for every community
 │   │   ├── domain/             the one true Blitz, its tricks and the burst; its brain (Claude), memory, chat answers and !blitz
-│   │   ├── content/            Blitz's lines, 8-ball answers, a question pool (question of the day is off)
-│   │   ├── core/               rate-limited API calls, commands, storage, IDs, jobs
-│   │   ├── features/           setup, welcome, quote wall, levels, birthdays, polls, automod, staff, fun
+│   │   ├── content/            Blitz's welcome, level-up and birthday lines, 8-ball answers
+│   │   ├── core/               rate-limited API calls, commands, storage, jobs, each community's settings
+│   │   ├── features/           welcome, quote wall, levels, birthdays, polls, auto-mod, staff, fun, !help and !settings
 │   │   ├── logic/              pure helpers (parsing, XP math, automod checks, polls, dates)
 │   │   └── main.ts             wiring
-│   ├── test/                   unit tests (node:test)
-│   └── scripts/render-layout.ts  generates docs/SERVER-LAYOUT.md
+│   └── test/                   unit tests (node:test)
 └── client/                     the domain window, shown in Blitz's channel: faces, effects, cracks, the shatter, the universe and its rocks
-docs/                           setup guide, commands, customizing, layout
+docs/                           setup guide, commands, customizing
 ```
 
 Built on the official [Root SDK](https://docs.rootapp.com) 0.21 (`@rootsdk/server-app` and `@rootsdk/client-app`), with Claude (`@anthropic-ai/sdk`) as Blitz's brain. Root runs Blitz for you once it's uploaded, and each community gets its own private data store.

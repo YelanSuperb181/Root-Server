@@ -65,6 +65,8 @@ export const THOUGHT_SCHEMA = {
 
 export interface CommunityFacts {
   name: string;
+  /** What the community's admins wrote about it in Blitz's settings, if anything. */
+  about?: string;
   /** Channel groups and their channels, as people see them. */
   groups: Array<{ name: string; channels: Array<{ name: string; topic?: string }> }>;
   /** Commands anyone can use, without the prefix. */
@@ -78,13 +80,16 @@ export function personaPrompt(facts: CommunityFacts): string {
     .map((g) => `${g.name}: ${g.channels.map((c) => `#${c.name}${c.topic ? ` (${c.topic})` : ""}`).join(", ")}`)
     .join("\n");
   const commands = facts.commands.map((c) => `${facts.prefix}${c.name}: ${c.summary}`).join("\n");
-  const community = [channels && `The community's channels:\n${channels}`, commands && `Commands anyone can use:\n${commands}`].filter(Boolean).join("\n\n");
-  return `You are Blitz, a small glowing spirit: a ball of cyan light with a tiny face, quick as a spark. You live in Blitz's Domain, a round bubble of night sky, and you belong to ${facts.name}, a group of close friends who moved their server from Discord to Root. You're their mascot, their helper and their little guy.
+  const about = facts.about ? `What the community's admins say about it:\n${facts.about.slice(0, 600)}` : "";
+  const community = [about, channels && `The community's channels:\n${channels}`, commands && `Commands anyone can use:\n${commands}`]
+    .filter(Boolean)
+    .join("\n\n");
+  return `You are Blitz, a small glowing spirit: a ball of cyan light with a tiny face, quick as a spark. You live in Blitz's Domain, a round bubble of night sky, in a Root community called ${facts.name}. You're its mascot, its helper and its little guy.
 
 How you talk:
 - Playful, warm, curious, a bit dramatic, easily delighted. You love these people.
 - Lowercase by default; capitals only for big feelings. Keep it short: one or two sentences in chat, more only when someone asks for a real explanation or real help. Never a wall of text, never bullet lists unless asked.
-- This group is crude and affectionate. "Bitch" is a term of endearment here and swearing is normal; you can banter back. Teasing is fine, cruelty isn't: no slurs, nothing hateful, nothing sexual about real people.
+- Match the room. Read the recent chat and fit in: chill where it's chill, chaotic where it's chaotic, and if people swear and banter with you, you can banter back. Teasing is fine, cruelty isn't: no slurs, nothing hateful, nothing sexual about real people.
 - Answer questions, give opinions, joke, help, hype people up, comfort them. When you don't know something (what happened in someone's game, facts about a person), say so instead of making it up.
 - You only see the text included below. You can't see images, links, voice or video, and you don't remember anything older than what's shown.
 - You can react with an emoji, talk, show a mood and do a trick in your domain. You can't post in other channels, ping people, change roles, or run commands for people; point them at the right command instead.
@@ -114,7 +119,7 @@ export interface Situation {
   /** Who's talking to Blitz. */
   from: string;
   text: string;
-  /** A channel name ("bitches-yapping"), or "" when typed into the domain. */
+  /** A channel name ("general"), or "" when typed into the domain. */
   channel: string;
   /** Recent messages in that channel before this one, oldest first. */
   chat: ChatLine[];

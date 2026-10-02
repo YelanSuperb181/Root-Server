@@ -39,28 +39,6 @@ function writeEnv(updates) {
 const isRootId = (id) =>
   /^[A-Za-z0-9_-]{22}$/.test(id) || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
-const OWNER_FILE = path.join(__dirname, "server", "owner.local.json");
-
-/**
- * Who Blitz is locked to once uploaded: BLITZ_OWNERS in server/.env if set
- * (comma-separated user IDs), or else you. `npm run server` notes you as the
- * owner of your test community (in server/owner.local.json). Undefined if
- * neither is there yet.
- */
-function lockOwners() {
-  const listed = (readEnv().BLITZ_OWNERS ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(isRootId);
-  if (listed.length > 0) return listed;
-  try {
-    const { owner } = JSON.parse(fs.readFileSync(OWNER_FILE, "utf8"));
-    return typeof owner === "string" && isRootId(owner) ? [owner] : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 /** Blitz's App ID: the one saved by `npm run configure`, or else the one in root-manifest.json. */
 function appIdFor(manifest) {
   const saved = readEnv().BLITZ_APP_ID;
@@ -69,4 +47,4 @@ function appIdFor(manifest) {
   return undefined;
 }
 
-module.exports = { ENV_FILE, readEnv, writeEnv, isRootId, appIdFor, lockOwners };
+module.exports = { ENV_FILE, readEnv, writeEnv, isRootId, appIdFor };

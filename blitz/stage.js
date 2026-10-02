@@ -7,7 +7,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { appIdFor, lockOwners } = require("./local");
+const { appIdFor } = require("./local");
 
 const root = __dirname;
 const deploy = path.join(root, "deploy");
@@ -25,9 +25,6 @@ const manifest = JSON.parse(fs.readFileSync(path.join(root, "root-manifest.json"
 // The App ID comes from `npm run configure` (server/.env) unless it's in the manifest itself.
 const appId = appIdFor(manifest);
 if (!appId) fail("Blitz doesn't know its App ID yet. Type  npm run configure  and paste it in.");
-// Blitz is private: it locks itself to communities you own (see server/src/core/privacy.ts).
-const owners = lockOwners();
-if (!owners) fail("Blitz doesn't know who you are yet. Type  npm run server  and wait for the line that says it noted you as the owner, stop it with Ctrl+C, then try again.");
 
 fs.rmSync(deploy, { recursive: true, force: true });
 fs.mkdirSync(deploy, { recursive: true });
@@ -43,10 +40,6 @@ for (const item of [...list(client.deploy), ...list(server.deploy)]) {
   if (!fs.existsSync(from)) fail(`${item} is missing. Run \`npm run build\` first.`);
   fs.cpSync(from, path.join(deploy, item), { recursive: true, dereference: true });
 }
-
-// The lock, next to the server's main.js.
-const serverDir = path.join(deploy, path.dirname(server.launch ?? "server/dist/main.js"));
-fs.writeFileSync(path.join(serverDir, "lock.json"), JSON.stringify({ owners }, null, 2) + "\n");
 
 // node_modules: every top-level package production needs (packages nested inside them come along).
 const modules = path.join(deploy, "node_modules");
@@ -90,4 +83,3 @@ walk(deploy);
 if (bad.length) fail(`refusing to package files that may hold tokens or keys:\n  ${bad.join("\n  ")}`);
 
 console.log(`Stage: deploy/ is ready (${count} packages in node_modules)`);
-console.log(`Stage: Blitz will only work in communities owned by ${owners.join(", ")}`);

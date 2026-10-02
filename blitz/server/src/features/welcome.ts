@@ -1,6 +1,6 @@
-// Greets newcomers (after they accept the rules, when the gate is on), gives
-// them the auto role, optionally nudges them with a push notification, and
-// logs joins and leaves for staff.
+// Greets newcomers in the community's welcome channel, gives them the join
+// role, and notes joins and leaves in the staff log. Each part only runs if
+// the community picked a channel or role for it in Blitz's settings.
 
 import {
   rootServer,
@@ -9,14 +9,13 @@ import {
   CommunityLeaveEvent,
   CommunityLeaveReason,
 } from "@rootsdk/server-app";
-import { rulesGate } from "../blueprint/content";
 import { welcomeLines } from "../content/lines";
 import { config } from "../config";
 import { read } from "../core/api";
-import { directory } from "../core/directory";
 import { errMessage, log } from "../core/log";
 import { hasRole, isPerson, nickname } from "../core/members";
-import { addRole, modLog, notify, sendTo } from "../core/messaging";
+import { addRole, modLog, sendTo } from "../core/messaging";
+import { settings } from "../core/settings";
 import { fillTemplate, pick, userMention } from "../logic/text";
 
 let communityName = "the community";
@@ -33,37 +32,29 @@ export function initWelcome(): void {
 
 /** Posts a welcome for a member who just got in. */
 export async function greet(userId: string): Promise<void> {
+  if (!settings.channel("welcome")) return;
   const name = await nickname(userId);
   const line = fillTemplate(pick(welcomeLines), { user: userMention(name, userId), community: `**${communityName}**` });
-  const tip = `Say hi to ${config.botName} in ${directory.channelMention("bot-commands")} with \`${config.prefix}help\` ✨`;
-  await sendTo(config.onboarding.greetIn, `${line}\n${tip}`);
+  await sendTo("welcome", `${line}\nSay \`${config.prefix}help\` to see what ${config.botName} can do ✨`);
 }
 
 async function onJoin(evt: CommunityJoinedEvent): Promise<void> {
   if (!isPerson(evt.userId)) return;
   try {
     const name = await nickname(evt.userId);
-    if (config.modLog.joinsAndLeaves) await modLog(`📥 ${userMention(name, evt.userId)} joined.`);
-
-    // With the gate on, the gate's role is earned by reacting to the rules, not handed out.
-    const gated = config.onboarding.gate && config.onboarding.autoRole === rulesGate.role;
-    const autoRole = config.onboarding.autoRole && !gated ? directory.roleId(config.onboarding.autoRole) : undefined;
-    if (autoRole && !hasRole(evt.userId, autoRole)) {
-      await addRole(evt.userId, autoRole).catch((err) => log("warn", "couldn't give the auto role", { error: errMessage(err) }));
+    await modLog(`📥 ${userMention(name, evt.userId)} joined.`);
+    const joinRole = settings.role("joinRole");
+    if (joinRole && !hasRole(evt.userId, joinRole)) {
+      await addRole(evt.userId, joinRole).catch((err) => log("warn", "couldn't give the join role", { error: errMessage(err) }));
     }
-
-    if (!config.onboarding.gate) {
-      await greet(evt.userId);
-    } else if (config.onboarding.notifyOnJoin) {
-      await notify([evt.userId], `Welcome to ${communityName}! ✨`, "Read #rules and react ✅ to unlock the whole community.");
-    }
+    await greet(evt.userId);
   } catch (err) {
     log("warn", "welcome failed", { error: errMessage(err) });
   }
 }
 
 async function onLeave(evt: CommunityLeaveEvent): Promise<void> {
-  if (!config.modLog.joinsAndLeaves || !isPerson(evt.userId)) return;
+  if (!isPerson(evt.userId)) return;
   const how =
     evt.leaveReason === CommunityLeaveReason.Kicked ? "was kicked" : evt.leaveReason === CommunityLeaveReason.Banned ? "was banned" : "left";
   await modLog(`📤 A member ${how} (${userMention("member", evt.userId)}).`).catch(() => undefined);

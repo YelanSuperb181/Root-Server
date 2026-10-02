@@ -10,7 +10,7 @@ import { log } from "./log";
 import { AccessLevel, accessLevel, atLeast } from "./members";
 import { send } from "./messaging";
 
-export type Category = "Community" | "Levels" | "Fun" | "Staff" | "Setup";
+export type Category = "Community" | "Levels" | "Fun" | "Staff";
 
 export interface CommandContext {
   evt: ChannelMessageCreatedEvent;

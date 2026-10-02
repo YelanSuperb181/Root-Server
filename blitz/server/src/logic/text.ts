@@ -90,43 +90,6 @@ export function placeLabel(place: number): string {
   return ["🥇", "🥈", "🥉"][place - 1] ?? `**#${place}**`;
 }
 
-/**
- * Root channel names are 1-100 letters, digits and hyphens, with no leading,
- * trailing or doubled hyphens. Undefined when nothing usable is left.
- */
-export function sanitizeChannelName(input: string, max = 100): string | undefined {
-  const name = input
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/[^A-Za-z0-9]+/g, "-")
-    .slice(0, max)
-    .replace(/-{2,}/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return name || undefined;
-}
-
-/**
- * Ever plainer versions of a name, for when Root won't take one: as written,
- * without punctuation or emoji, with hyphens, then letters and digits only.
- */
-export function nameCandidates(name: string, max = 100): string[] {
-  const words = name
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^A-Za-z0-9]+/g, " ")
-    .trim()
-    .slice(0, max)
-    .trim();
-  const all = [name.trim().slice(0, max), words, sanitizeChannelName(name, max), words.replace(/ /g, "")];
-  return [...new Set(all.filter((n): n is string => !!n))];
-}
-
-/** Loose name comparison: case, spacing, emoji and punctuation don't matter. */
-export function sameName(a: string, b: string): boolean {
-  const norm = (s: string) => (sanitizeChannelName(s.toLowerCase()) ?? s.trim().toLowerCase());
-  return norm(a) === norm(b);
-}
-
 /** Picks a random element; `random` is injectable for tests. */
 export function pick<T>(items: readonly T[], random: () => number = Math.random): T {
   if (items.length === 0) throw new Error("pick() needs at least one item");

@@ -5,7 +5,6 @@ import { rootServer, ChannelGuid, MessageDirectionTake, RootGuidUtils } from "@r
 import { config } from "../config";
 import { read } from "../core/api";
 import { Command, UsageError } from "../core/commands";
-import { directory } from "../core/directory";
 import { nickname } from "../core/members";
 import { remove, send, sendEphemeral } from "../core/messaging";
 import { mentionedChannelIds } from "../logic/text";
@@ -13,37 +12,39 @@ import { mentionedChannelIds } from "../logic/text";
 /** How many messages to ask Root for at once (other Apps use 50 too). */
 const PAGE = 50;
 
-async function postWithPing(channelKey: string, pingRole: string | null, title: string, body: string, author: string): Promise<boolean> {
-  const channelId = directory.channelId(channelKey);
-  if (!channelId) return false;
-  const ping = pingRole ? `\n\n${directory.rolePing(pingRole)}` : "";
-  await send(channelId, `${title}\n\n${body}\n\n_— ${author}_${ping}`);
-  return true;
+/** A leading channel mention ("#news Big news") and the text after it. */
+function channelAndText(rest: string): { channelId?: string; text: string } {
+  return {
+    channelId: mentionedChannelIds(rest)[0],
+    text: rest.replace(/^\s*\[#[^\]]*\]\(root:\/\/channel\/[^)\s]+\)\s*/, "").trim(),
+  };
 }
 
 export const staffCommands: Command[] = [
   {
     name: "announce",
-    usage: "<message>",
-    summary: "Post in #announcements and ping everyone who opted in.",
+    usage: "[#channel] <message>",
+    summary: "Post an announcement here or in another channel.",
     level: "mod",
     category: "Staff",
     async run(ctx) {
-      if (!ctx.rest) throw new UsageError(`Usage: \`${config.prefix}announce We hit 100 members! 🎉\``);
-      const ok = await postWithPing(config.announcements.channel, config.announcements.pingRole, "📣 **Announcement**", ctx.rest, await nickname(ctx.userId));
-      await ctx.reply(ok ? "✅ Announced!" : "⚠️ The announcements channel doesn't exist yet.");
+      const { channelId, text } = channelAndText(ctx.rest);
+      if (!text) throw new UsageError(`Usage: \`${config.prefix}announce #news We hit 100 members! 🎉\``);
+      await send(channelId ?? ctx.channelId, `📣 **Announcement**\n\n${text}\n\n_— ${await nickname(ctx.userId)}_`);
+      if (channelId) await ctx.reply("✅ Announced!");
     },
   },
   {
     name: "event",
-    usage: "<details>",
-    summary: "Post an event in #events and ping everyone who opted in.",
+    usage: "[#channel] <details>",
+    summary: "Post an event here or in another channel.",
     level: "mod",
     category: "Staff",
     async run(ctx) {
-      if (!ctx.rest) throw new UsageError(`Usage: \`${config.prefix}event Game night Friday 8pm UTC on the Stage 🎮\``);
-      const ok = await postWithPing(config.events.channel, config.events.pingRole, "📅 **New event!**", ctx.rest, await nickname(ctx.userId));
-      await ctx.reply(ok ? "✅ Event posted!" : "⚠️ The events channel doesn't exist yet.");
+      const { channelId, text } = channelAndText(ctx.rest);
+      if (!text) throw new UsageError(`Usage: \`${config.prefix}event #events Game night Friday 8pm UTC 🎮\``);
+      await send(channelId ?? ctx.channelId, `📅 **New event!**\n\n${text}\n\n_— ${await nickname(ctx.userId)}_`);
+      if (channelId) await ctx.reply("✅ Event posted!");
     },
   },
   {

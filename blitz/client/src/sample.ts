@@ -22,7 +22,7 @@ declare global {
   }
 }
 
-const FACTS: CommunityFacts = { name: "Bich ass bitchess", prefix: "!", groups: [], commands: [] };
+const FACTS: CommunityFacts = { name: "this community", prefix: "!", groups: [], commands: [] };
 
 /** Codes after which asking again is pointless for the rest of the visit. */
 const FOR_GOOD = ["not_granted", "sampling_disabled", "not_declared", "capability_disabled", "capability_removed"];

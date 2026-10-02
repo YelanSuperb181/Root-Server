@@ -1,5 +1,6 @@
-// Levels: members earn XP for chatting (once a minute, so spam doesn't pay),
-// level up with a little celebration, and unlock roles along the way.
+// Levels: members earn XP for chatting (once a minute, so spam doesn't pay)
+// and level up with a little celebration. A community can switch it off in
+// Blitz's settings, and pick where level-ups are announced.
 
 import type { ChannelMessageCreatedEvent, UserGuid } from "@rootsdk/server-app";
 import { rootServer } from "@rootsdk/server-app";
@@ -7,22 +8,12 @@ import { levelUpLines } from "../content/lines";
 import { config } from "../config";
 import { read } from "../core/api";
 import { Command, UsageError } from "../core/commands";
-import { directory } from "../core/directory";
-import { serialize } from "../core/lock";
 import { errMessage, log } from "../core/log";
-import { hasRole, knownPeople, nickname } from "../core/members";
-import { addRole, removeRole, send } from "../core/messaging";
+import { knownPeople, nickname } from "../core/members";
+import { send } from "../core/messaging";
+import { settings } from "../core/settings";
 import { kv } from "../core/store";
-import {
-  EMPTY_XP,
-  LevelReward,
-  XpRecord,
-  applyMessage,
-  levelFromXp,
-  rankEntries,
-  rewardsForLevel,
-  totalXpForLevel,
-} from "../logic/levels";
+import { EMPTY_XP, XpRecord, applyMessage, levelFromXp, rankEntries, totalXpForLevel } from "../logic/levels";
 import { fillTemplate, formatNumber, mentionedUserIds, pick, placeLabel, progressBar, userMention } from "../logic/text";
 
 const RULES = {
@@ -34,9 +25,8 @@ const RULES = {
 const xpKey = (userId: string) => `xp:${userId}`;
 
 export async function awardXp(evt: ChannelMessageCreatedEvent): Promise<void> {
-  if (!config.levels.enabled) return;
-  const channelKey = directory.channelKey(evt.channelId);
-  if (channelKey && (config.levels.noXpIn as readonly string[]).includes(channelKey)) return;
+  if (!settings.on("levels")) return;
+  if (settings.isPrivate(evt.channelId) || settings.isLog(evt.channelId)) return;
 
   let before = 0;
   const after = await kv.update<XpRecord>(
@@ -55,37 +45,11 @@ export async function awardXp(evt: ChannelMessageCreatedEvent): Promise<void> {
 async function onLevelUp(userId: string, channelId: string, level: number): Promise<void> {
   try {
     const name = await nickname(userId);
-    let text = fillTemplate(pick(levelUpLines), { user: userMention(name, userId), level: String(level) });
-    const earned = await syncRewards(userId, level);
-    if (earned) text += `\n🏅 New role unlocked: **${directory.roleName(earned.role)}**!`;
-    const target = config.levels.announceIn ? directory.channelId(config.levels.announceIn) ?? channelId : channelId;
-    await send(target, text);
+    const text = fillTemplate(pick(levelUpLines), { user: userMention(name, userId), level: String(level) });
+    await send(settings.channel("levelUps") ?? channelId, text);
   } catch (err) {
     log("warn", "level-up announcement failed", { error: errMessage(err) });
   }
-}
-
-/** Gives the member the reward roles for their level. Returns a reward they just earned, if any. */
-async function syncRewards(userId: string, level: number): Promise<LevelReward | undefined> {
-  const rewards = config.levels.rewards as readonly LevelReward[];
-  const wanted = rewardsForLevel(level, rewards, config.levels.stackRewards);
-  const wantedRoles = new Set(wanted.map((r) => r.role));
-  let earned: LevelReward | undefined;
-
-  return serialize(`roles:${userId}`, async () => {
-    for (const reward of rewards) {
-      const roleId = directory.roleId(reward.role);
-      if (!roleId) continue;
-      const has = hasRole(userId, roleId);
-      if (wantedRoles.has(reward.role) && !has) {
-        await addRole(userId, roleId);
-        earned = reward;
-      } else if (!wantedRoles.has(reward.role) && has) {
-        await removeRole(userId, roleId);
-      }
-    }
-    return earned;
-  });
 }
 
 async function leaderboard(): Promise<Array<{ userId: string; xp: number }>> {
@@ -157,17 +121,19 @@ export const levelCommands: Command[] = [
   },
   {
     name: "levels",
-    summary: "How levels work and which roles you can unlock.",
+    summary: "How levels work.",
     level: "everyone",
     category: "Levels",
     async run(ctx) {
-      const ladder = config.levels.rewards.map((r) => `• Level ${r.level} → **${directory.roleName(r.role)}** (${formatNumber(totalXpForLevel(r.level))} XP)`);
+      if (!settings.on("levels")) {
+        await ctx.reply("🌿 Levels are switched off in this community.");
+        return;
+      }
       await ctx.reply(
         [
           "🌿 **How levels work**",
           `You earn ${config.levels.minXp}-${config.levels.maxXp} XP for chatting, at most once every ${config.levels.cooldownSeconds} seconds, so quality beats spam.`,
-          "",
-          ...ladder,
+          `Level 5 takes ${formatNumber(totalXpForLevel(5))} XP, level 10 takes ${formatNumber(totalXpForLevel(10))}.`,
         ].join("\n"),
       );
     },
@@ -175,8 +141,8 @@ export const levelCommands: Command[] = [
   {
     name: "setxp",
     usage: "@member <xp> | @member level <n>",
-    summary: "Set someone's XP, e.g. to carry levels over from Discord.",
-    level: "admin",
+    summary: "Set someone's XP, e.g. to carry levels over from another app.",
+    level: "mod",
     category: "Staff",
     async run(ctx) {
       const target = mentionedUserIds(ctx.rest)[0];
@@ -189,7 +155,6 @@ export const levelCommands: Command[] = [
       const xp = levelMode ? totalXpForLevel(amount) : amount;
       await kv.update<XpRecord>(xpKey(target), (r) => ({ ...r, xp }), EMPTY_XP);
       const level = levelFromXp(xp).level;
-      await syncRewards(target, level);
       await ctx.reply(`✅ **${await nickname(target)}** now has ${formatNumber(xp)} XP (level ${level}).`);
     },
   },

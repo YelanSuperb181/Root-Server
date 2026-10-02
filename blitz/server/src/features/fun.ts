@@ -1,4 +1,4 @@
-// Small toys for #bot-commands.
+// Small toys: 8-ball, dice, coin flips and picking for you.
 
 import { eightBallAnswers } from "../content/lines";
 import { config } from "../config";

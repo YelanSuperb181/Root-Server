@@ -9,7 +9,6 @@
   "scripts": {
     "build": "tsc",
     "server": "node ../dev-manifest.js && rootsdk-devhost --project-folder=../ --manifest=root-manifest.dev.json",
-    "test": "tsc -p tsconfig.test.json && node run-tests.js",
-    "docs": "tsc -p tsconfig.test.json && node build-test/scripts/render-layout.js ../../docs/SERVER-LAYOUT.md"
+    "test": "tsc -p tsconfig.test.json && node run-tests.js"
   }
 }

@@ -6,7 +6,7 @@ export const welcomeLines: readonly string[] = [
   "🕯️ Blitz lit a candle: {user} has arrived.",
   "👀 Everyone act normal, {user} is here.",
   "🔮 The orb foretold this. Welcome, {user}!",
-  "📬 New bitch delivered: {user}. No returns.",
+  "📬 Special delivery: {user}. No returns.",
   "🌙 {user} floated in from the void. Say hi!",
   "🎉 {user} joined. The yapping may now continue.",
   "💫 A wild {user} appeared!",

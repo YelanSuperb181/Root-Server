@@ -4,7 +4,7 @@
 // channelView, channelCreateMessage, communityManageRoles and so on. Our names
 // (view, createMessage, manageRoles) don't match, so every permission would be
 // silently dropped: Blitz couldn't see a single channel in the test community,
-// and `!setup` would get no answer. This copy adds the prefixed names next to
+// and commands would get no answer. This copy adds the prefixed names next to
 // the originals. The real root-manifest.json stays as it is for packaging,
 // where Root reads it correctly.
 
@@ -31,6 +31,22 @@ if (manifest.permissions) {
     community: withPrefixedNames(manifest.permissions.community, "community"),
     channel: withPrefixedNames(manifest.permissions.channel, "channel"),
   };
+}
+
+// The two tools also spell single pickers differently: the packager wants
+// "roleSingle"/"userSingle", the dev host "role"/"user".
+const DEV_PICKER = { roleSingle: "role", userSingle: "user" };
+// And the dev host crashes on number settings (it labels them as text), so
+// in testing they become text boxes holding the number.
+for (const group of manifest.settings?.groups ?? []) {
+  for (const item of group.items ?? []) {
+    const picker = item.roleOrMember;
+    if (picker && DEV_PICKER[picker.selectBehavior]) picker.selectBehavior = DEV_PICKER[picker.selectBehavior];
+    if (item.number) {
+      item.text = item.number.defaultValue !== undefined ? { defaultValue: String(item.number.defaultValue) } : {};
+      delete item.number;
+    }
+  }
 }
 
 fs.writeFileSync(path.join(__dirname, "root-manifest.dev.json"), JSON.stringify(manifest, null, 2) + "\n");
