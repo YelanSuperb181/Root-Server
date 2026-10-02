@@ -104,25 +104,35 @@ async function main() {
     writeEnv({ BLITZ_UPLOAD_TOKEN: token });
     console.log("  Saved in server/.env. It stays on this computer.\n");
   }
-  const version = nextVersion(manifest.version, env.BLITZ_LAST_VERSION);
+  let version = nextVersion(manifest.version, env.BLITZ_LAST_VERSION);
 
   console.log("1 of 3: building Blitz…");
   if ((await run("npm", ["run", "build"], { shell: true })) !== 0) stop("The build failed (see above), so nothing was uploaded.");
 
-  console.log(`\n2 of 3: packaging version ${version}…`);
-  if ((await run(process.execPath, [path.join(ROOT, "stage.js")], { env: { BLITZ_VERSION: version } })) !== 0) stop("Packaging failed (see above).");
-  fs.rmSync(PACKAGE, { force: true });
-  if ((await run(process.execPath, [PACKAGER, "--dir=deploy", `--out=${PACKAGE}`])) !== 0 || !fs.existsSync(PACKAGE)) stop("Packaging failed (see above).");
+  // A second go when Root already has a newer version than this computer knows about.
+  for (let attempt = 1; ; attempt++) {
+    console.log(`\n2 of 3: packaging version ${version}…`);
+    if ((await run(process.execPath, [path.join(ROOT, "stage.js")], { env: { BLITZ_VERSION: version } })) !== 0) stop("Packaging failed (see above).");
+    fs.rmSync(PACKAGE, { force: true });
+    if ((await run(process.execPath, [PACKAGER, "--dir=deploy", `--out=${PACKAGE}`])) !== 0 || !fs.existsSync(PACKAGE)) stop("Packaging failed (see above).");
 
-  console.log(`\n3 of 3: uploading version ${version}…`);
-  const seen = [];
-  const code = await run(PUBLISHER, ["push", `--file=${PACKAGE}`, `--authToken=${token}`], { secret: token, seen });
-  // Remember the version either way: versions only need to go up, so a failed try costs nothing.
-  writeEnv({ BLITZ_LAST_VERSION: version });
-  if (code !== 0) {
+    console.log(`\n3 of 3: uploading version ${version}…`);
+    const seen = [];
+    const code = await run(PUBLISHER, ["push", `--file=${PACKAGE}`, `--authToken=${token}`], { secret: token, seen });
+    // Remember the version either way: versions only need to go up, so a failed try costs nothing.
+    writeEnv({ BLITZ_LAST_VERSION: version });
+    if (code === 0) break;
+
     if (seen.some((line) => /invalid token|unauthenticated|unauthorized|forbidden|\b40[13]\b/i.test(line))) {
       writeEnv({ BLITZ_UPLOAD_TOKEN: "" });
       stop("Root didn't accept the publishing token. Type  npm run upload  again and paste it fresh from the Developer Portal.");
+    }
+    const latest = seen.map((line) => /latest version is:?\s*(\d+\.\d+\.\d+)/i.exec(line)?.[1]).find(Boolean);
+    if (latest && attempt === 1) {
+      writeEnv({ BLITZ_LAST_VERSION: latest });
+      version = nextVersion(manifest.version, latest);
+      console.log(`\nRoot already has version ${latest}, so trying again as ${version}.`);
+      continue;
     }
     stop("The upload didn't go through (see above). Type  npm run upload  to try again; it uses the next version number.");
   }
