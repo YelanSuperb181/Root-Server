@@ -105,10 +105,10 @@ Out in the universe, the rocks come from [`rocks.ts`](../blitz/shared/src/rocks.
 | `ROCK_CELL` | How big a patch is. Smaller means more rocks, closer together |
 | `ROCK_CLEAR` | How much empty space is left around where the bubble burst |
 | `ROCK_MAX_R` | How big the biggest rocks get (also used to look for nearby rocks, so keep it at least as big as any rock) |
-| the `count` line in `cellRocks` | How many rocks a patch gets (now: none in about a quarter of patches, up to three) |
+| the `count` line in `cellRocks` | How many rocks a patch gets (now: none in a quarter of patches, at most two). Two in one patch always keep their distance |
 | `BOUNCE_ROCK` in `physics.ts` | How bouncy the rocks are |
 
-`npm test` checks that the rocks are the same every time, that Blitz bounces off them, and that it never ends up inside one.
+`npm test` checks that the rocks are the same every time, never drift into each other, that Blitz bounces off them, and that it never ends up inside one. How they look is in [`rockart.ts`](../blitz/client/src/rockart.ts) (shapes, colors, craters, crystals).
 
 ### Change Blitz's personality (its brain)
 

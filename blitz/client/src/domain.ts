@@ -72,7 +72,8 @@ import {
 } from "./fx";
 import type { DomainLink } from "./net";
 import { Universe } from "./universe";
-import { Brows, Eyes, Look, Mouth, drawBlitz, drawCrackle, drawHalo } from "./blitz";
+import { RockArt, SUN, drawRockArt, makeRockArt } from "./rockart";
+import { Brows, Eyes, Look, Mouth, drawBlitz, drawHalo } from "./blitz";
 
 const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const now = () => performance.now() / 1000;
@@ -180,14 +181,6 @@ const GATHER = 0.95;
 const SLOW_MO = 0.35;
 /** How far Blitz's light reaches across open space, in domain units. */
 const LIGHT_REACH = 3.2;
-
-/** How one rock looks: its lumpy outline, craters and crystals, all from its id. */
-interface RockLook {
-  verts: number[];
-  craters: Array<[number, number, number]>;
-  crystals: Array<[number, number, boolean]>;
-  warm: number;
-}
 
 export interface DomainUi {
   status: HTMLElement;
@@ -304,10 +297,8 @@ export class DomainView {
   private strainSaid = 0;
   private lastImpact = -1;
   private emitAt: Record<string, number> = {};
-  private rockLooks = new Map<number, RockLook>();
+  private rockArts = new Map<number, RockArt>();
   private rockHits = new Map<number, { born: number; power: number; x: number; y: number }>();
-  /** Extra static after a hit or the burst, fading out. */
-  private zap = 0;
   /** A screen point Blitz is watching for a moment (a shooting star). */
   private watch: { x: number; y: number; until: number } | undefined;
   private lastStatus = "";
@@ -821,7 +812,6 @@ export class DomainView {
     const { nx, ny, speed } = hit;
     const pxSpeed = speed * 250; // tuned in pixels on a 250px-radius domain
     const power = Math.max(0.25, Math.min(1, pxSpeed / 1300));
-    this.zap = Math.max(this.zap, power);
     if (hit.rock !== undefined && hit.at) {
       // A rock: a puff of dust and chips off its face, and it rocks on its axis.
       this.rockHits.set(hit.rock, { born: this.t, power, x: hit.at.x, y: hit.at.y });
@@ -881,7 +871,6 @@ export class DomainView {
     this.shatter.explode(center.x - this.rectLeft, center.y - this.rectTop, radius, breakAngle, this.fxT, reduced ? 16 : 48);
     this.shatter.flash(this.fxT, reduced ? 0.2 : 0.6);
     this.slowUntil = this.t + SLOW_MO;
-    this.zap = 1.5;
     if (!reduced) this.shake = 1.6;
     this.cracks = [];
     this.crackLevel = 0;
@@ -1260,7 +1249,6 @@ export class DomainView {
     this.tint = [this.tint[0] + (tintTarget[0] - this.tint[0]) * k, this.tint[1] + (tintTarget[1] - this.tint[1]) * k, this.tint[2] + (tintTarget[2] - this.tint[2]) * k];
 
     this.wobble *= Math.exp(-3 * dt);
-    this.zap *= Math.exp(-2.5 * dt);
     this.squash *= Math.exp(-7 * dt);
     this.shake *= Math.exp(-6 * dt);
     if (this.glide) {
@@ -1506,7 +1494,6 @@ export class DomainView {
       drawHalo(ctx, look);
       this.drawTether(look);
       drawBlitz(ctx, look, t);
-      if (!reduced) drawCrackle(ctx, look, this.crackle(), t);
       if (t < this.dizzyUntil) this.drawDizzyStars(look);
     }
     this.emotes.draw(ctx, this.cam, look, this.fxT, fxDt, this.font);
@@ -1531,19 +1518,13 @@ export class DomainView {
     this.shatter.draw(ctx, W, H, this.fxT, fxDt);
   }
 
-  private rockLook(id: number): RockLook {
-    let look = this.rockLooks.get(id);
-    if (look) return look;
-    const u = (n: number) => unit(hash32(id, n, 7));
-    const n = 18;
-    const raw = Array.from({ length: n }, (_, i) => 1 + (u(i) - 0.5) * 0.5);
-    const verts = raw.map((v, i) => (raw[(i + n - 1) % n] + 2 * v + raw[(i + 1) % n]) / 4);
-    const craters = Array.from({ length: 1 + Math.floor(u(40) * 3) }, (_, k): [number, number, number] => [u(41 + k) * Math.PI * 2, 0.2 + 0.45 * u(50 + k), 0.1 + 0.16 * u(60 + k)]);
-    const crystals = Array.from({ length: 2 + Math.floor(u(80) * 2) }, (_, k): [number, number, boolean] => [u(81 + k) * Math.PI * 2, 0.28 + 0.2 * u(90 + k), u(100 + k) < 0.5]);
-    look = { verts, craters, crystals, warm: u(110) };
-    if (this.rockLooks.size > 400) this.rockLooks.clear();
-    this.rockLooks.set(id, look);
-    return look;
+  private rockArt(rock: Rock): RockArt {
+    let art = this.rockArts.get(rock.id);
+    if (art) return art;
+    art = makeRockArt((n) => unit(hash32(rock.id, n, 7)), rock.crystal);
+    if (this.rockArts.size > 400) this.rockArts.clear();
+    this.rockArts.set(rock.id, art);
+    return art;
   }
 
   /** The rocks around the camera, lit by Blitz's glow on the side that faces it. */
@@ -1559,8 +1540,7 @@ export class DomainView {
     const { ctx, cam, t } = this;
     const [sx, sy] = toScreen(cam, rock.x, rock.y);
     const R = rock.r * cam.s;
-    if (sx < -R * 1.6 || sy < -R * 1.6 || sx > this.W + R * 1.6 || sy > this.H + R * 1.6) return;
-    const look = this.rockLook(rock.id);
+    if (sx < -R * 1.8 || sy < -R * 1.8 || sx > this.W + R * 1.8 || sy > this.H + R * 1.8) return;
     const hit = this.rockHits.get(rock.id);
     let wobble = 0;
     let flash = 0;
@@ -1572,96 +1552,17 @@ export class DomainView {
         flash = hit.power * Math.exp(-age * 5);
       }
     }
-    const angle = rock.spin + wobble;
-    // Blitz's light, in the rock's own (turning) frame.
+    // Blitz's glow, strongest up close.
     const dx = blitz.x - rock.x;
     const dy = blitz.y - rock.y;
     const dist = Math.hypot(dx, dy) || 1;
-    const lit = Math.pow(clamp01(1 - (dist - rock.r) / LIGHT_REACH), 1.6);
-    const la = Math.atan2(dy, dx) - angle;
-    const lx = dist < 50 ? Math.cos(la) : -0.6;
-    const ly = dist < 50 ? Math.sin(la) : -0.8;
-
-    ctx.save();
-    ctx.translate(sx, sy);
-    ctx.rotate(angle);
-    const n = look.verts.length;
-    ctx.beginPath();
-    for (let i = 0; i < n; i++) {
-      const a = (i / n) * Math.PI * 2;
-      const rr = R * look.verts[i];
-      if (i === 0) ctx.moveTo(Math.cos(a) * rr, Math.sin(a) * rr);
-      else ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
-    }
-    ctx.closePath();
-    const body = ctx.createRadialGradient(lx * R * 0.45, ly * R * 0.45, R * 0.05, 0, 0, R * 1.25);
-    body.addColorStop(0, look.warm < 0.5 ? "#6E7795" : "#7A6E86");
-    body.addColorStop(0.45, look.warm < 0.5 ? "#353B53" : "#3C3448");
-    body.addColorStop(1, "#0D0E16");
-    ctx.fillStyle = body;
-    ctx.fill();
-    ctx.save();
-    ctx.clip();
-    for (const [a, d, cr] of look.craters) {
-      const px = Math.cos(a) * d * R;
-      const py = Math.sin(a) * d * R;
-      ctx.fillStyle = "rgba(4, 5, 12, 0.32)";
-      ctx.beginPath();
-      ctx.arc(px, py, cr * R, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = "rgba(220, 230, 255, 0.10)";
-      ctx.lineWidth = Math.max(0.6, R * 0.03);
-      ctx.beginPath();
-      ctx.arc(px, py, cr * R, Math.atan2(ly, lx) + Math.PI * 0.6, Math.atan2(ly, lx) + Math.PI * 1.4);
-      ctx.stroke();
-    }
-    if (lit > 0.01 || flash > 0.01) {
-      ctx.globalCompositeOperation = "lighter";
-      const glow = ctx.createRadialGradient(lx * R, ly * R, 0, lx * R, ly * R, R * 1.5);
-      glow.addColorStop(0, rgba(this.tint, 0.55 * lit + 0.5 * flash));
-      glow.addColorStop(1, rgba(this.tint, 0));
-      ctx.fillStyle = glow;
-      ctx.fillRect(-R * 1.6, -R * 1.6, R * 3.2, R * 3.2);
-    }
-    ctx.restore();
-    ctx.strokeStyle = `rgba(170, 195, 240, ${0.12 + 0.35 * lit})`;
-    ctx.lineWidth = 1;
-    ctx.stroke();
-    if (rock.crystal) {
-      // Crystals poking out of the surface, glowing on their own.
-      ctx.globalCompositeOperation = "lighter";
-      for (const [a, size, cyan] of look.crystals) {
-        const i = Math.floor(((a / (Math.PI * 2)) % 1) * n);
-        const rr = R * look.verts[i] * 0.86;
-        const pulse = 0.7 + 0.3 * Math.sin(t * 2.2 + a * 3);
-        const c: RGB = cyan ? [120, 235, 255] : [200, 150, 255];
-        ctx.save();
-        ctx.translate(Math.cos(a) * rr, Math.sin(a) * rr);
-        ctx.rotate(a + Math.PI / 2);
-        const h = size * R;
-        ctx.drawImage(glowSprite(c), -h * 1.2, -h * 1.6, h * 2.4, h * 2.4);
-        ctx.fillStyle = rgba(c, 0.85 * pulse);
-        ctx.beginPath();
-        ctx.moveTo(0, -h);
-        ctx.lineTo(h * 0.28, -h * 0.25);
-        ctx.lineTo(0, h * 0.2);
-        ctx.lineTo(-h * 0.28, -h * 0.25);
-        ctx.closePath();
-        ctx.fill();
-        ctx.restore();
-      }
-    }
-    ctx.restore();
-  }
-
-  /** How much static Blitz gives off right now: speed, excitement, strain and recent hits. */
-  private crackle(): number {
-    const speed = Math.hypot(this.body.vx, this.body.vy);
-    let c = Math.max(0, (speed - 2.6) / 5) + this.zap * 0.8 + this.shownStrain() * 0.6;
-    if (this.mood === "excited") c += 0.35;
-    if (this.mood === "grumpy") c += 0.2;
-    if (this.asleep) c = 0;
-    return Math.min(1.3, c);
+    const glow = Math.pow(clamp01(1 - (dist - rock.r) / LIGHT_REACH), 1.6);
+    // The light swings round from the sun toward Blitz as it comes close.
+    const sun = Math.atan2(SUN.y, SUN.x);
+    let turn = Math.atan2(dy, dx) - sun;
+    turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+    const la = sun + turn * clamp01(glow * 1.5);
+    drawRockArt(ctx, this.rockArt(rock), sx, sy, R, rock.spin + wobble, { lx: Math.cos(la), ly: Math.sin(la), glow, tint: this.tint, gx: dx / dist, gy: dy / dist, flash }, t);
   }
 
   /** The bright edge of the universe as it opens out or folds back in. */
@@ -1701,21 +1602,6 @@ export class DomainView {
     glass.addColorStop(1, "rgba(9, 14, 34, 0.8)");
     ctx.fillStyle = glass;
     ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
-    // A curved sheen across the top of the glass, like light on a soap bubble.
-    ctx.globalCompositeOperation = "lighter";
-    const sheen = ctx.createLinearGradient(cx - r, cy - r, cx, cy);
-    sheen.addColorStop(0, "rgba(200, 235, 255, 0.10)");
-    sheen.addColorStop(1, "rgba(200, 235, 255, 0)");
-    ctx.strokeStyle = sheen;
-    ctx.lineWidth = r * 0.07;
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.arc(cx, cy, r * 0.88, Math.PI * 1.08, Math.PI * 1.42);
-    ctx.stroke();
-    ctx.lineWidth = r * 0.02;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r * 0.8, Math.PI * 1.12, Math.PI * 1.22);
-    ctx.stroke();
     ctx.restore();
     this.drawRim(cx, cy, r, alpha, strain);
   }

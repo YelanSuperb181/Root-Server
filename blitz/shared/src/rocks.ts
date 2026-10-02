@@ -7,12 +7,18 @@
 import { Point } from "./arena";
 
 /** Size of one patch of space, in domain units. */
-export const ROCK_CELL = 2.6;
+export const ROCK_CELL = 3;
 /** No rocks this close to where the bubble was, so the burst has room. */
 export const ROCK_CLEAR = 2.4;
 /** The biggest a rock gets, and the furthest it drifts from its home spot. */
-export const ROCK_MAX_R = 0.52;
-const DRIFT_MAX = 0.35;
+export const ROCK_MAX_R = 0.38;
+const ROCK_MIN_R = 0.08;
+const DRIFT_MAX = 0.22;
+/**
+ * Rocks sit in the middle of their patch (this far in from each side), so
+ * rocks in neighboring patches can never drift into each other.
+ */
+const INSET = 0.22;
 
 export interface Rock {
   /** Stable for the life of the rock (its looks come from it). */
@@ -43,15 +49,20 @@ export const unit = (h: number) => h / 4294967296;
 /** The rocks in one patch of space at time `t`. */
 export function cellRocks(ix: number, iy: number, t: number): Rock[] {
   const roll = unit(hash32(ix, iy, 0));
-  const count = roll < 0.28 ? 0 : roll < 0.68 ? 1 : roll < 0.92 ? 2 : 3;
+  const count = roll < 0.25 ? 0 : roll < 0.8 ? 1 : 2;
   const rocks: Rock[] = [];
+  const homes: Array<{ x: number; y: number; reach: number }> = [];
   for (let k = 0; k < count; k++) {
     const u = (n: number) => unit(hash32(ix, iy, 1 + k * 16 + n));
-    const bx = (ix + 0.2 + 0.6 * u(0)) * ROCK_CELL;
-    const by = (iy + 0.2 + 0.6 * u(1)) * ROCK_CELL;
-    const r = 0.09 + (ROCK_MAX_R - 0.09) * u(2) * u(2);
-    const amp = 0.12 + (DRIFT_MAX - 0.12) * u(3);
+    const bx = (ix + INSET + (1 - 2 * INSET) * u(0)) * ROCK_CELL;
+    const by = (iy + INSET + (1 - 2 * INSET) * u(1)) * ROCK_CELL;
+    // Mostly small and middling, now and then a big one.
+    const r = ROCK_MIN_R + (ROCK_MAX_R - ROCK_MIN_R) * u(2) * u(2);
+    const amp = 0.08 + (DRIFT_MAX - 0.08) * u(3);
     if (Math.hypot(bx, by) < ROCK_CLEAR + r + amp) continue;
+    // Two rocks in one patch keep their distance, wherever they drift.
+    if (homes.some((h) => Math.hypot(h.x - bx, h.y - by) < h.reach + r + amp + 0.12)) continue;
+    homes.push({ x: bx, y: by, reach: r + amp });
     const w = (u(4) < 0.5 ? -1 : 1) * (0.05 + 0.12 * u(5));
     const phase = u(6) * Math.PI * 2;
     const a = w * t + phase;

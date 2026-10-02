@@ -25,12 +25,24 @@ test("there's room around where the bubble was, and rocks out beyond it", () => 
       }
     }
   }
-  const area = (16 * ROCK_CELL) ** 2;
-  assert.ok(count > area / 12 && count < area / 3, `a field, not a wall or a desert (${count})`);
+  const perPatch = count / 256;
+  assert.ok(perPatch > 0.5 && perPatch < 1.5, `a field, not a wall or a desert (${perPatch} per patch)`);
+});
+
+test("rocks never drift into each other", () => {
+  for (const t of [0, 7.3, 55, 400]) {
+    const rocks = rocksNear(0, 0, 9 * ROCK_CELL, t);
+    for (let i = 0; i < rocks.length; i++) {
+      for (let j = i + 1; j < rocks.length; j++) {
+        const [a, b] = [rocks[i], rocks[j]];
+        assert.ok(Math.hypot(a.x - b.x, a.y - b.y) > a.r + b.r + 0.05, "a gap between every pair");
+      }
+    }
+  }
 });
 
 test("Blitz bounces off a rock and never ends up inside one", () => {
-  const rock = rocksNear(6, 0, 3, 0).sort((a, b) => a.x - b.x)[0];
+  const rock = rocksNear(7, 0, 4, 0).sort((a, b) => a.x - b.x)[0];
   assert.ok(rock, "a rock to aim at");
   const body: Body = { x: rock.x - rock.r - ORB_RADIUS - 0.5, y: rock.y, vx: 5, vy: 0 };
   let hit;

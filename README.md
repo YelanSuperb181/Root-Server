@@ -47,7 +47,6 @@ Type `!blitz` anywhere and Blitz replies with a link into its domain. Inside:
 - **Out in the universe** there are no walls: deep space in layers that slide past as the camera follows Blitz (nebulae, galaxies, a ringed planet, shooting stars it turns to watch). Fling Blitz and it streaks off with the stars blurring behind it, then settles wherever it lands; carry it to the edge of the screen to travel.
 - **Space rocks** drift and tumble everywhere out there, lit by Blitz's glow as it passes, a few glittering with crystal. Fling Blitz into one and it bonks off with a puff of dust and chips ("BONK"). The rocks are in the same place on every screen, so everyone sees the same crash.
 - **Seal the bubble** (the only button up top out in space) folds the universe back in and the window gathers around it; it also re-forms on its own after two quiet minutes.
-- When it's excited, or flying fast, or straining against the wall, it crackles with static.
 - Leave it alone and it does tricks on its own: loop-de-loops, spins, hops, zooming laps, the odd heart drawn in the air. After a while it dozes off. Any touch wakes it.
 
 ### Talking to Blitz
@@ -126,6 +125,7 @@ Change them, run `npm run build && npm test`, then `!setup` again; it only adds 
 ```
 blitz/
 ├── root-manifest.json          App ID, version and the permissions Blitz asks for
+├── stage.js                    gathers a clean copy to upload (npm run package), without sources or .env
 ├── networking/src/domain.proto the domain's live messages (grab, drag, throw, poke, state)
 ├── shared/src/                 run identically by the server and every window:
 │   ├── physics.ts              Blitz's physics, the wall cracking, the burst and open space

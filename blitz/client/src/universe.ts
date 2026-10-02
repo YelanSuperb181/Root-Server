@@ -5,7 +5,12 @@
 // shows through the bubble's glass, so bursting it reveals more of what was
 // already there. Decoration only: none of it touches Blitz's physics.
 
+import { hash32, unit } from "@blitz/shared";
 import { Cam, RGB, glowSprite, rgba } from "./fx";
+import { FAR_PALETTE, RockArt, RockLight, SUN, drawRockArt, makeRockArt } from "./rockart";
+
+/** The distant rocks are lit only by the far-off sun. */
+const FAR_LIGHT: RockLight = { lx: SUN.x, ly: SUN.y, glow: 0, tint: [0, 0, 0], gx: 0, gy: 0, flash: 0 };
 
 /** Pixels per domain unit the parallax is tuned for, whatever the zoom. */
 const REF = 300;
@@ -231,6 +236,7 @@ export class Universe {
   private nebulae: HTMLCanvasElement[] = [];
   private galaxies: HTMLCanvasElement[] = [];
   private planet: HTMLCanvasElement | undefined;
+  private farRocks = new Map<string, RockArt>();
   private shooting: Shooting[] = [];
   private nextShooting = 2.5;
   private lastFocus: { x: number; y: number } | undefined;
@@ -355,37 +361,22 @@ export class Universe {
       ctx.drawImage(this.planet, o.x - 560 * zoom - size / 2, o.y + 280 * zoom - size / 2, size, size);
     }
 
-    // Distant rocks, dark against the stars, drifting by slower than the ones Blitz can reach.
+    // Distant rocks, dim and small, drifting by slower than the ones Blitz can reach.
     this.cells(cam, 0.5, t, W, H, 360, 40, (ix, iy, cx, cy) => {
       const rnd = cellRandom(ix, iy, 5);
       if (rnd() > 0.2) return;
       const x = cx + rnd() * 360;
       const y = cy + rnd() * 360;
-      const size = (4 + rnd() * 12) * zoom;
+      const size = (5 + rnd() * 13) * zoom;
       const turn = rnd() * 6.28 + (this.reduced ? 0 : t * (rnd() - 0.5) * 0.5);
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate(turn);
-      ctx.beginPath();
-      for (let i = 0; i < 9; i++) {
-        const a = (i / 9) * Math.PI * 2;
-        const r = size * (0.75 + rnd() * 0.45);
-        if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
-        else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+      const key = `${ix},${iy}`;
+      let art = this.farRocks.get(key);
+      if (!art) {
+        art = makeRockArt((n) => unit(hash32(ix, iy, 5000 + n)), false, FAR_PALETTE);
+        if (this.farRocks.size > 200) this.farRocks.clear();
+        this.farRocks.set(key, art);
       }
-      ctx.closePath();
-      // Faintly lit from the upper left, as if by a far-off star, so they read as rocks rather than holes.
-      ctx.rotate(-turn);
-      const shade = ctx.createRadialGradient(-size * 0.45, -size * 0.45, size * 0.1, 0, 0, size * 1.2);
-      shade.addColorStop(0, "rgba(74, 82, 112, 0.95)");
-      shade.addColorStop(0.55, "rgba(28, 31, 48, 0.95)");
-      shade.addColorStop(1, "rgba(10, 11, 19, 0.95)");
-      ctx.fillStyle = shade;
-      ctx.fill();
-      ctx.strokeStyle = "rgba(150, 170, 220, 0.2)";
-      ctx.lineWidth = 0.8;
-      ctx.stroke();
-      ctx.restore();
+      drawRockArt(ctx, art, x, y, size, turn, FAR_LIGHT, t);
     });
 
     // Bright stars: twinkling, with soft spikes, and streaking when the camera rushes along.

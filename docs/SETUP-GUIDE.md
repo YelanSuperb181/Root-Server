@@ -71,6 +71,7 @@ While `npm run server` runs, Blitz lives on your computer. To keep it running 24
    ```bash
    npm run package          # builds everything and writes blitz.rootpkg (server, domain client and manifest)
    ```
+   It packs a clean copy staged in `blitz/deploy/`: the built server and domain plus only the packages the server needs, never your sources or `server/.env`. If it ever finds a `.env` in there, it stops instead of uploading your tokens.
 3. **Upload it** with the publishing token from the Developer Portal (a different token from `DEV_TOKEN`):
    ```bash
    npx rootsdk upload package -f blitz.rootpkg -a YOUR_AUTH_TOKEN
