@@ -31,13 +31,13 @@ import { channelRules, groupRules } from "../blueprint/rules";
 import type { AccessRuleSpec, ChannelSpec, GroupSpec, RoleSpec } from "../blueprint/types";
 import { validateAll } from "../blueprint/validate";
 import { config } from "../config";
-import { describeError, errorCode, isPermissionError, read, write } from "../core/api";
+import { describeError, errDetail, errorCode, isPermissionError, read, rejectedField, write } from "../core/api";
 import { Command, CommandContext, UsageError } from "../core/commands";
 import { directory, fetchExistingState } from "../core/directory";
 import { errMessage, log } from "../core/log";
 import { botUserId, hasRole, isPerson, noteRoleChange } from "../core/members";
 import { edit, modLog, send } from "../core/messaging";
-import { plural, sanitizeChannelName, truncate } from "../logic/text";
+import { nameCandidates, plural, sanitizeChannelName, truncate } from "../logic/text";
 import { publishContent, PostResult } from "./posts";
 
 let running = false;
@@ -175,7 +175,7 @@ async function build(ctx: CommandContext): Promise<void> {
     await progress.update(report);
     await modLog(`🛠️ Setup run by an admin finished.\n${truncate(report, 3000)}`);
   } catch (err) {
-    log("error", "setup failed", { error: errMessage(err) });
+    log("error", "setup failed", { error: errDetail(err) });
     await progress.update(
       `⚠️ **Setup stopped:** ${describeError(err)}\nEverything created so far is kept. Fix the problem and run \`${config.prefix}setup confirm\` again; it picks up where it left off.`,
     );
@@ -207,20 +207,27 @@ async function buildRoles(plan: SetupPlan, notes: string[]): Promise<void> {
   }
 }
 
+/** The error setup stops with when Root takes none of a name's versions. */
+function refusedName(what: string, names: string[]): Error {
+  const others = names.slice(1).map((n) => `"${n}"`);
+  return new Error(`Root wouldn't accept the ${what} name "${names[0]}"${others.length > 0 ? ` (also tried ${others.join(", ")})` : ""}. Change it in the blueprint (\`layout.ts\`) and try again.`);
+}
+
 async function createRole(spec: RoleSpec, notes: string[]): Promise<string> {
-  let name = spec.name;
+  const names = nameCandidates(spec.name);
+  let n = 0;
   let color = spec.color;
   let withPermissions = hasElevatedPermissions(spec.community, spec.channel);
   const compromises: string[] = [];
 
   // Retry with smaller asks: a permission error drops the special
-  // permissions, a validation error tries another color format, no color,
-  // then a plain name.
-  for (let attempt = 0; attempt < 6; attempt++) {
+  // permissions, a rejected name tries a plainer one, and any other
+  // validation error tries another color format, then no color.
+  for (let attempt = 0; attempt < 10; attempt++) {
     try {
       const role = await write("communityRoles.create", () =>
         rootServer.community.communityRoles.create({
-          name,
+          name: names[n],
           colorHex: color,
           isMentionable: spec.mentionable,
           isSelfAssignable: spec.selfAssignable,
@@ -228,6 +235,7 @@ async function createRole(spec: RoleSpec, notes: string[]): Promise<string> {
           channelPermission: withPermissions ? channelPermission(spec.channel) : undefined,
         }),
       );
+      if (n > 0) compromises.push(`as "${names[n]}" (Root didn't accept "${spec.name}")`);
       if (compromises.length > 0) notes.push(`Role **${role.name}** was created ${compromises.join(" and ")}.`);
       return role.id;
     } catch (err) {
@@ -235,6 +243,11 @@ async function createRole(spec: RoleSpec, notes: string[]): Promise<string> {
         withPermissions = false;
         compromises.push("without its special permissions (add them in the role's settings)");
         continue;
+      }
+      const nameIssue = rejectedField(err, "Name");
+      if (nameIssue === true) {
+        if (++n < names.length) continue;
+        throw refusedName("role", names);
       }
       if (errorCode(err) === ErrorCodeType.RequestValidationFailed) {
         if (color?.startsWith("#")) {
@@ -246,12 +259,8 @@ async function createRole(spec: RoleSpec, notes: string[]): Promise<string> {
           compromises.push("without its color");
           continue;
         }
-        const plain = sanitizeChannelName(name);
-        if (plain && plain !== name) {
-          name = plain;
-          compromises.push(`as "${plain}"`);
-          continue;
-        }
+        // Root didn't say what it disliked, and it isn't the color: try a plainer name.
+        if (nameIssue === undefined && ++n < names.length) continue;
       }
       throw err;
     }
@@ -260,24 +269,25 @@ async function createRole(spec: RoleSpec, notes: string[]): Promise<string> {
 }
 
 async function createGroup(spec: GroupSpec, notes: string[]): Promise<string> {
-  let name = spec.name;
+  const names = nameCandidates(spec.name);
+  let n = 0;
   let rules = resolveRules(groupRules(spec, config.onboarding.gate), notes);
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < 8; attempt++) {
     try {
       const group = await write("channelGroups.create", () =>
-        rootServer.community.channelGroups.create({ name, accessRuleCreates: rules.length > 0 ? rules : undefined }),
+        rootServer.community.channelGroups.create({ name: names[n], accessRuleCreates: rules.length > 0 ? rules : undefined }),
       );
+      if (n > 0) notes.push(`Category **${spec.name}** was created as **${names[n]}** (Root didn't accept the original). Rename it by hand if you like.`);
       return group.id;
     } catch (err) {
       if (rules.length > 0 && isPermissionError(err)) {
         rules = [];
-        notes.push(`Group **${name}** was created without its permissions. Run \`${config.prefix}setup permissions\` once I have full channel control.`);
+        notes.push(`Category **${spec.name}** was created without its permissions. Run \`${config.prefix}setup permissions\` once I have full channel control.`);
         continue;
       }
-      const plain = sanitizeChannelName(name);
-      if (errorCode(err) === ErrorCodeType.RequestValidationFailed && plain && plain !== name) {
-        name = plain;
-        continue;
+      if (rejectedField(err, "Name") !== false) {
+        if (++n < names.length) continue;
+        throw refusedName("category", names);
       }
       throw err;
     }
@@ -287,22 +297,26 @@ async function createGroup(spec: GroupSpec, notes: string[]): Promise<string> {
 
 async function createChannel(groupId: string, group: GroupSpec, spec: ChannelSpec, notes: string[]): Promise<string> {
   const computed = channelRules(group, spec, config.onboarding.gate);
+  // Channels prefer hyphens to spaces.
+  const names = [...new Set([spec.name, sanitizeChannelName(spec.name) ?? spec.name, ...nameCandidates(spec.name)])];
+  let n = 0;
   let inherit = computed.inherit;
   let rules = inherit ? [] : resolveRules(computed.rules, notes);
   let description: string | undefined = spec.topic;
 
-  for (let attempt = 0; attempt < 4; attempt++) {
+  for (let attempt = 0; attempt < 10; attempt++) {
     try {
       const channel = await write("channels.create", () =>
         rootServer.community.channels.create({
           channelGroupId: groupId as ChannelGroupGuid,
-          name: spec.name,
+          name: names[n],
           description,
           channelType: spec.type === "voice" ? ChannelType.Voice : ChannelType.Text,
           useChannelGroupPermission: inherit,
           accessRuleCreates: inherit ? undefined : rules,
         }),
       );
+      if (n > 0) notes.push(`#${spec.name} was created as #${names[n]} (Root didn't accept the original).`);
       return channel.id;
     } catch (err) {
       if (!inherit && isPermissionError(err)) {
@@ -311,9 +325,18 @@ async function createChannel(groupId: string, group: GroupSpec, spec: ChannelSpe
         notes.push(`#${spec.name} was created with its group's permissions. Run \`${config.prefix}setup permissions\` to apply its own.`);
         continue;
       }
-      if (errorCode(err) === ErrorCodeType.RequestValidationFailed && description) {
-        description = description.length > 100 ? truncate(description, 100) : undefined;
-        continue;
+      const nameIssue = rejectedField(err, "Name");
+      if (nameIssue === true) {
+        if (++n < names.length) continue;
+        throw refusedName("channel", names);
+      }
+      if (errorCode(err) === ErrorCodeType.RequestValidationFailed) {
+        // The topic: shorter, then none.
+        if (description) {
+          description = description.length > 100 ? truncate(description, 100) : undefined;
+          continue;
+        }
+        if (nameIssue === undefined && ++n < names.length) continue;
       }
       throw err;
     }

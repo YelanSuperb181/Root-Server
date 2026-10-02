@@ -90,7 +90,6 @@ export function isPermissionError(err: unknown): boolean {
   return code !== undefined && code >= ErrorCodeType.NoPermissionToCreate && code <= ErrorCodeType.NoPermissionToBan;
 }
 
-/** Turns a failure into a sentence a community admin can act on. */
 /** An error for the log, with Root's error code when there is one ("root-error (NoPermissionToRead)"). */
 export function errDetail(err: unknown): string {
   const message = err instanceof Error ? err.message : String(err);
@@ -99,6 +98,19 @@ export function errDetail(err: unknown): string {
   return `${message} (${ErrorCodeType[err.errorCode] ?? err.errorCode}${details ? `: ${details}` : ""})`;
 }
 
+/**
+ * Whether Root turned the request down because of one field ("Name"):
+ * true or false when Root said which fields, undefined when it didn't say.
+ */
+export function rejectedField(err: unknown, field: string): boolean | undefined {
+  if (!(err instanceof RootApiException) || err.errorCode !== ErrorCodeType.RequestValidationFailed) return false;
+  const errors = err.payload?.requestValidatorList?.errors ?? [];
+  if (errors.length === 0) return undefined;
+  const f = field.toLowerCase();
+  return errors.some((e) => (e.propertyName ?? "").toLowerCase().endsWith(f) || (e.errorMessage ?? "").toLowerCase().includes(`'${f}'`));
+}
+
+/** Turns a failure into a sentence a community admin can act on. */
 export function describeError(err: unknown): string {
   if (!(err instanceof RootApiException)) {
     return err instanceof Error ? err.message : "Something went wrong.";

@@ -105,6 +105,22 @@ export function sanitizeChannelName(input: string, max = 100): string | undefine
   return name || undefined;
 }
 
+/**
+ * Ever plainer versions of a name, for when Root won't take one: as written,
+ * without punctuation or emoji, with hyphens, then letters and digits only.
+ */
+export function nameCandidates(name: string, max = 100): string[] {
+  const words = name
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Za-z0-9]+/g, " ")
+    .trim()
+    .slice(0, max)
+    .trim();
+  const all = [name.trim().slice(0, max), words, sanitizeChannelName(name, max), words.replace(/ /g, "")];
+  return [...new Set(all.filter((n): n is string => !!n))];
+}
+
 /** Loose name comparison: case, spacing, emoji and punctuation don't matter. */
 export function sameName(a: string, b: string): boolean {
   const norm = (s: string) => (sanitizeChannelName(s.toLowerCase()) ?? s.trim().toLowerCase());

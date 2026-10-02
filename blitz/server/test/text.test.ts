@@ -12,6 +12,7 @@ import {
   quote,
   roleMention,
   sameName,
+  nameCandidates,
   sanitizeChannelName,
   truncate,
   userMention,
@@ -51,6 +52,15 @@ test("progressBar clamps and rounds", () => {
   assert.equal(progressBar(2), "▰▰▰▰▰▰▰▰▰▰");
   assert.equal(progressBar(Number.NaN), "▱▱▱▱▱▱▱▱▱▱");
   assert.equal(progressBar(0.5, 4), "▰▰▱▱");
+});
+
+test("nameCandidates gets plainer step by step, without repeats", () => {
+  assert.deepEqual(nameCandidates("Important!!!"), ["Important!!!", "Important"]);
+  assert.deepEqual(nameCandidates("Yap... With Your Voices"), ["Yap... With Your Voices", "Yap With Your Voices", "Yap-With-Your-Voices", "YapWithYourVoices"]);
+  assert.deepEqual(nameCandidates("Bitchiest Bitch"), ["Bitchiest Bitch", "Bitchiest-Bitch", "BitchiestBitch"]);
+  assert.deepEqual(nameCandidates("Bitches"), ["Bitches"]);
+  assert.deepEqual(nameCandidates("🎂 Birthday Bitch"), ["🎂 Birthday Bitch", "Birthday Bitch", "Birthday-Bitch", "BirthdayBitch"]);
+  assert.deepEqual(nameCandidates("🎂"), ["🎂"]);
 });
 
 test("sanitizeChannelName follows Root's channel name rules", () => {
