@@ -10,14 +10,13 @@
 
 const fs = require("fs");
 const path = require("path");
+const { appIdFor } = require("./local");
 
 const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "root-manifest.json"), "utf8"));
 
-if (!manifest.id || manifest.id === "your-app-id") {
-  console.error(
-    "Blitz needs its App ID first. Open blitz/root-manifest.json and replace your-app-id\n" +
-      "with the App ID from Root's Developer Portal (keep the quotes), then run this again.",
-  );
+manifest.id = appIdFor(manifest);
+if (!manifest.id) {
+  console.error("Blitz doesn't know its App ID yet. Type  npm run configure  and paste it in.");
   process.exit(1);
 }
 

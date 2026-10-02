@@ -81,15 +81,16 @@ Root Apps live inside their own channel, so the domain is a channel rather than 
 > Full walkthrough: **[docs/SETUP-GUIDE.md](docs/SETUP-GUIDE.md)**.
 
 1. **Create a fresh Root community.**
-2. **Register Blitz** as an **App** in the Root Developer Portal and paste its App ID into [`blitz/root-manifest.json`](blitz/root-manifest.json).
+2. **Register Blitz** as an **App** in the Root Developer Portal and generate a `DEV_TOKEN` for it.
 3. **Build it:**
    ```bash
    cd blitz
    npm install
+   npm run configure # paste the App ID and DEV_TOKEN; saved in server/.env
    npm run build     # networking, physics, server and the domain client
    npm test          # validates the template and runs the unit tests
    ```
-4. **Try it in your test community:** put your `DEV_TOKEN` in `blitz/server/.env`, run `npm run server`, and type `!setup` (then `!setup confirm`) in any channel. In a second terminal, `npm run client` serves the domain for Root's dev mode.
+4. **Try it in your test community:** run `npm run server`, and type `!setup` (then `!setup confirm`) in any channel. In a second terminal, `npm run client` serves the domain for Root's dev mode.
 5. **Go live:** `npm run package`, upload `blitz.rootpkg`, install Blitz in the real community, and run `!setup confirm` there.
 
 ## Before you build: the mailboxes
@@ -126,6 +127,7 @@ Change them, run `npm run build && npm test`, then `!setup` again; it only adds 
 blitz/
 ├── root-manifest.json          App ID, version and the permissions Blitz asks for
 ├── stage.js                    gathers a clean copy to upload (npm run package), without sources or .env
+├── configure.js                asks for the App ID and DEV_TOKEN and saves them in server/.env (npm run configure)
 ├── dev-manifest.js             works around Root's dev host dropping Blitz's permissions (npm run server)
 ├── networking/src/domain.proto the domain's live messages (grab, drag, throw, poke, state)
 ├── shared/src/                 run identically by the server and every window:

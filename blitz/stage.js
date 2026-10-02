@@ -7,6 +7,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { appIdFor } = require("./local");
 
 const root = __dirname;
 const deploy = path.join(root, "deploy");
@@ -21,9 +22,13 @@ if (!fs.existsSync(lockPath)) fail("package-lock.json is missing. Run `npm insta
 const lock = JSON.parse(fs.readFileSync(lockPath, "utf8"));
 const manifest = JSON.parse(fs.readFileSync(path.join(root, "root-manifest.json"), "utf8"));
 
+// The App ID comes from `npm run configure` (server/.env) unless it's in the manifest itself.
+const appId = appIdFor(manifest);
+if (!appId) fail("Blitz doesn't know its App ID yet. Type  npm run configure  and paste it in.");
+
 fs.rmSync(deploy, { recursive: true, force: true });
 fs.mkdirSync(deploy, { recursive: true });
-fs.copyFileSync(path.join(root, "root-manifest.json"), path.join(deploy, "root-manifest.json"));
+fs.writeFileSync(path.join(deploy, "root-manifest.json"), JSON.stringify({ ...manifest, id: appId }, null, 2) + "\n");
 
 // What the manifest deploys: the built server and the domain client.
 const list = (x) => (x === undefined ? [] : Array.isArray(x) ? x : [x]);

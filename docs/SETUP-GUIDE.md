@@ -33,12 +33,8 @@ Blitz is a Root **App**: a bot with a screen of its own (its domain). Apps are r
 
 1. Turn on **Developer Mode** in Root's settings, then open the **Developer Portal**.
 2. Create a new **App** project called **Blitz**. (Not a Bot project: a plain bot can't have the domain.)
-3. Copy the project's **App ID** into [`blitz/root-manifest.json`](../blitz/root-manifest.json), replacing `your-app-id`.
-4. Generate a **DEV_TOKEN** for the project and save it in a new file `blitz/server/.env` (copy [`blitz/server/.env.example`](../blitz/server/.env.example)):
-   ```
-   DEV_TOKEN=paste-your-token-here
-   ```
-   Root creates a private **test community** for you the first time you generate a token. Blitz runs there while you develop, so you can try everything without touching the real server.
+3. Note the project's **App ID** and generate a **DEV_TOKEN** for it. Root creates a private **test community** for you the first time you generate a token. Blitz runs there while you develop, so you can try everything without touching the real server.
+4. In a terminal in the `blitz` folder, run `npm install` and then `npm run configure`. It asks you to paste the App ID and the token, and saves both in `blitz/server/.env`. Run it again any time to change them. (You can also write the file yourself from [`blitz/server/.env.example`](../blitz/server/.env.example): `DEV_TOKEN=...` and `BLITZ_APP_ID=...`.)
 
 > `.env` is in `.gitignore`. Never commit or share your token; whoever has it can act as Blitz.
 
@@ -166,8 +162,8 @@ Blitz can't kick or ban. That stays with you. The domain needs no extra permissi
 
 | What you see | What to do |
 | --- | --- |
-| `Unable to find .env with a DEV_TOKEN` | Create `blitz/server/.env` with `DEV_TOKEN=...` from the Developer Portal (step 2). |
-| `Manifest validation error: id is not an app id` | Put your App ID in `blitz/root-manifest.json` instead of `your-app-id`. |
+| `Unable to find .env with a DEV_TOKEN` | Run `npm run configure` in the `blitz` folder and paste your DEV_TOKEN (step 2). |
+| `Manifest validation error: id is not an app id`, or "Blitz doesn't know its App ID yet" | Run `npm run configure` and paste the App ID from the Developer Portal. |
 | The upload is refused because of the version | Bump `"version"` in `root-manifest.json`; it must go up on every upload. |
 | Blitz doesn't answer commands | Is it running (`npm run server`) or installed? Commands start with `!`. Blitz ignores other bots, so test from your own account. |
 | In the test community Blitz starts fine but never answers, and nothing shows in its log | Root's dev host drops the App's permissions, so Blitz can't see any channel. `npm run server` works around that by starting the dev host with `root-manifest.dev.json`. Make sure you have the latest version of this repository, then stop Blitz (Ctrl+C) and run `npm run server` again. |
