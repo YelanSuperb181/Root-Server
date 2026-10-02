@@ -41,7 +41,7 @@ Commands start with `!` (change it with `prefix` in [`config.ts`](../blitz/serve
 | `!announce <message>` | Posts in `#announcements`. |
 | `!event <details>` | Posts an event in `#announcements`. |
 | `!say [#channel] <message>` | Post as Blitz. |
-| `!clear <1-50>` | Delete the last messages in this channel. Also `!purge`. |
+| `!clear <1-49>` | Delete the last messages in this channel. Also `!purge`. |
 
 ## For admins
 

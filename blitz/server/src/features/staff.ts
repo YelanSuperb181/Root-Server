@@ -10,6 +10,9 @@ import { nickname } from "../core/members";
 import { remove, send, sendEphemeral } from "../core/messaging";
 import { mentionedChannelIds } from "../logic/text";
 
+/** How many messages to ask Root for at once (other Apps use 50 too). */
+const PAGE = 50;
+
 async function postWithPing(channelKey: string, pingRole: string | null, title: string, body: string, author: string): Promise<boolean> {
   const channelId = directory.channelId(channelKey);
   if (!channelId) return false;
@@ -60,19 +63,20 @@ export const staffCommands: Command[] = [
   {
     name: "clear",
     aliases: ["purge"],
-    usage: "<1-50>",
+    usage: "<1-49>",
     summary: "Delete the last messages in this channel.",
     level: "mod",
     category: "Staff",
     async run(ctx) {
       const count = Number(ctx.args[0]);
-      if (!Number.isInteger(count) || count < 1 || count > 50) throw new UsageError(`Usage: \`${config.prefix}clear 10\` (1-50 messages).`);
+      if (!Number.isInteger(count) || count < 1 || count > 49) throw new UsageError(`Usage: \`${config.prefix}clear 10\` (1-49 messages).`);
       const page = await read("channelMessages.list", () =>
         rootServer.community.channelMessages.list({
           channelId: ctx.channelId as ChannelGuid,
           messageDirectionTake: MessageDirectionTake.Older,
           dateAt: new Date(),
-          limit: count + 1,
+          // Always a full page: Root rejects very small ones.
+          limit: PAGE,
         }),
       );
       // Newest first (message IDs carry their creation time): the command, then `count` more.

@@ -25,7 +25,7 @@ export async function checkCanRead(): Promise<void> {
             channelId: channel.id as ChannelGuid,
             messageDirectionTake: MessageDirectionTake.Older,
             dateAt: new Date(),
-            limit: 1,
+            limit: 50, // Root rejects very small pages
           }),
         );
         log("info", `Blitz can read the chat (${text.length} text channel${text.length === 1 ? "" : "s"}, like #${channel.name})`);

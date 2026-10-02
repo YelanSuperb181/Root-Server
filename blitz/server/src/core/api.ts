@@ -94,7 +94,9 @@ export function isPermissionError(err: unknown): boolean {
 /** An error for the log, with Root's error code when there is one ("root-error (NoPermissionToRead)"). */
 export function errDetail(err: unknown): string {
   const message = err instanceof Error ? err.message : String(err);
-  return err instanceof RootApiException ? `${message} (${ErrorCodeType[err.errorCode] ?? err.errorCode})` : message;
+  if (!(err instanceof RootApiException)) return message;
+  const details = err.payload?.requestValidatorList?.errors.map((e) => e.errorMessage).join("; ");
+  return `${message} (${ErrorCodeType[err.errorCode] ?? err.errorCode}${details ? `: ${details}` : ""})`;
 }
 
 export function describeError(err: unknown): string {
