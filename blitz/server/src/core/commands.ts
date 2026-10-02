@@ -5,8 +5,8 @@
 import type { ChannelMessageCreatedEvent } from "@rootsdk/server-app";
 import { config } from "../config";
 import { parseCommand } from "../logic/parse";
-import { describeError } from "./api";
-import { errMessage, log } from "./log";
+import { describeError, errDetail } from "./api";
+import { log } from "./log";
 import { AccessLevel, accessLevel, atLeast } from "./members";
 import { send } from "./messaging";
 
@@ -97,7 +97,7 @@ export async function handleCommand(evt: ChannelMessageCreatedEvent): Promise<bo
     if (err instanceof UsageError) {
       await reply(`💡 ${err.message}`).catch(() => undefined);
     } else {
-      log("error", `command ${cmd.name} failed`, { error: errMessage(err) });
+      log("error", `command ${cmd.name} failed`, { error: errDetail(err) });
       await reply(`⚠️ ${describeError(err)}`).catch(() => undefined);
     }
   }

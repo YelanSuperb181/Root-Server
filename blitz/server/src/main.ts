@@ -17,7 +17,7 @@ import { CommunityFacts } from "@blitz/shared";
 import { blueprint } from "./blueprint/layout";
 import { validateAll } from "./blueprint/validate";
 import { config } from "./config";
-import { read } from "./core/api";
+import { errDetail, read } from "./core/api";
 import { allCommands, handleCommand, register } from "./core/commands";
 import { directory } from "./core/directory";
 import { ensureDailyJob, initJobs } from "./core/jobs";
@@ -75,7 +75,7 @@ async function onMessage(evt: ChannelMessageCreatedEvent): Promise<void> {
     void hearChat(evt);
     await awardXp(evt);
   } catch (err) {
-    log("error", "message handling failed", { error: errMessage(err) });
+    log("error", "message handling failed", { error: errDetail(err) });
   }
 }
 

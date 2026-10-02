@@ -91,6 +91,12 @@ export function isPermissionError(err: unknown): boolean {
 }
 
 /** Turns a failure into a sentence a community admin can act on. */
+/** An error for the log, with Root's error code when there is one ("root-error (NoPermissionToRead)"). */
+export function errDetail(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  return err instanceof RootApiException ? `${message} (${ErrorCodeType[err.errorCode] ?? err.errorCode})` : message;
+}
+
 export function describeError(err: unknown): string {
   if (!(err instanceof RootApiException)) {
     return err instanceof Error ? err.message : "Something went wrong.";

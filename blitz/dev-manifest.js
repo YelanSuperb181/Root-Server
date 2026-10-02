@@ -34,3 +34,5 @@ if (manifest.permissions) {
 }
 
 fs.writeFileSync(path.join(__dirname, "root-manifest.dev.json"), JSON.stringify(manifest, null, 2) + "\n");
+const asked = Object.values(manifest.permissions ?? {}).flatMap((group) => Object.keys(group).filter((k) => /^(community|channel)[A-Z]/.test(k) && group[k]));
+console.log(`Asking Root for Blitz's ${asked.length} permissions in the test community (App ${manifest.id})`);
