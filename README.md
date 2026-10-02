@@ -119,7 +119,7 @@ Two smaller differences from Discord: there's one `#bot-commands` instead of two
 | [`blitz/shared/src/tricks.ts`](blitz/shared/src/tricks.ts) | Blitz's tricks: loops, spins, zooms, the heart |
 | [`blitz/client/src/style.css`](blitz/client/src/style.css) | The domain window's look |
 
-Change them, run `npm run build && npm test`, then `!setup` again; it only adds what's new. Recipes: **[docs/CUSTOMIZING.md](docs/CUSTOMIZING.md)**. All commands: **[docs/COMMANDS.md](docs/COMMANDS.md)**. Privacy policy: **[PRIVACY.md](PRIVACY.md)**.
+Change them, run `npm run build && npm test`, then `!setup` again; it only adds what's new. Recipes: **[docs/CUSTOMIZING.md](docs/CUSTOMIZING.md)**. All commands: **[docs/COMMANDS.md](docs/COMMANDS.md)**. Privacy policy: **[PRIVACY.md](PRIVACY.md)**. Terms: **[TERMS.md](TERMS.md)**.
 
 ## Project layout
 
