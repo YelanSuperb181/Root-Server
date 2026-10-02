@@ -13,6 +13,14 @@ const path = require("path");
 
 const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "root-manifest.json"), "utf8"));
 
+if (!manifest.id || manifest.id === "your-app-id") {
+  console.error(
+    "Blitz needs its App ID first. Open blitz/root-manifest.json and replace your-app-id\n" +
+      "with the App ID from Root's Developer Portal (keep the quotes), then run this again.",
+  );
+  process.exit(1);
+}
+
 const withPrefixedNames = (perms, prefix) => {
   const out = { ...perms };
   for (const [key, value] of Object.entries(perms ?? {})) out[prefix + key[0].toUpperCase() + key.slice(1)] = value;
