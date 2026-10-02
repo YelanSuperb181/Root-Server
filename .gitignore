@@ -10,5 +10,6 @@ build-test/
 blitz.rootpkg
 blitz/deploy/
 blitz/root-manifest.dev.json
+blitz/server/owner.local.json
 blitz/server/src/blueprint/mailboxes.local.ts
 blitz/networking/gen/

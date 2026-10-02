@@ -24,7 +24,7 @@ import { ensureDailyJob, initJobs } from "./core/jobs";
 import { errMessage, log } from "./core/log";
 import { initMembers, isPerson, loadSelf } from "./core/members";
 import { checkCanRead } from "./core/selfcheck";
-import { lockedOut, runLocked } from "./core/privacy";
+import { lockedOut, rememberOwner, runLocked } from "./core/privacy";
 import { initAutomod, screenMessage } from "./features/automod";
 import { birthdayCommands, celebrateBirthdays } from "./features/birthdays";
 import { funCommands } from "./features/fun";
@@ -187,6 +187,7 @@ async function onStarting(state: RootAppStartState): Promise<void> {
     hint: mapped === 0 ? `type ${config.prefix}setup in any channel of "${facts.name}" to build it` : undefined,
   });
   await checkCanRead();
+  await rememberOwner();
 }
 
 (async () => {

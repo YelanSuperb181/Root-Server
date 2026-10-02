@@ -27,7 +27,7 @@ const appId = appIdFor(manifest);
 if (!appId) fail("Blitz doesn't know its App ID yet. Type  npm run configure  and paste it in.");
 // Blitz is private: it locks itself to communities you own (see server/src/core/privacy.ts).
 const owners = lockOwners();
-if (!owners) fail("Couldn't work out your Root user ID from your DEV_TOKEN, which Blitz needs to lock itself to your communities. Type  npm run configure  and paste your DEV_TOKEN again.");
+if (!owners) fail("Blitz doesn't know who you are yet. Type  npm run server  and wait for the line that says it noted you as the owner, stop it with Ctrl+C, then try again.");
 
 fs.rmSync(deploy, { recursive: true, force: true });
 fs.mkdirSync(deploy, { recursive: true });

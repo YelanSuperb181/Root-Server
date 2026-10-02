@@ -6,6 +6,7 @@ const pathsToDelete = [
   "./blitz.rootpkg",
   "./deploy",
   "./root-manifest.dev.json",
+  "./server/owner.local.json",
   "./networking/gen",
   "./shared/dist",
   "./server/dist",

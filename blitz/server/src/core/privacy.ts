@@ -2,7 +2,8 @@
 // of owners, and in a community owned by anyone else it switches itself off:
 // no setup, no levels, no brain, nothing saved. It only answers commands
 // there to say it's private. Run on your own computer (no lock file), it's
-// never locked.
+// never locked, and it learns who you are: Root makes you the owner of your
+// test community, so that owner is who an uploaded Blitz is locked to.
 
 import fs from "fs";
 import path from "path";
@@ -15,6 +16,8 @@ import { isPerson } from "./members";
 import { send } from "./messaging";
 
 const LOCK_FILE = path.join(__dirname, "..", "lock.json");
+/** Where a Blitz running on your computer notes who you are (blitz/server/owner.local.json; git ignores it). */
+const OWNER_FILE = path.join(__dirname, "..", "..", "owner.local.json");
 const NOTICE_EVERY_MS = 10 * 60_000;
 
 function readOwners(): string[] | undefined {
@@ -44,6 +47,22 @@ export async function lockedOut(): Promise<boolean> {
       }
       await new Promise((resolve) => setTimeout(resolve, 2000 * attempt));
     }
+  }
+}
+
+/** On your own computer: remember the test community's owner (you) for the lock. */
+export async function rememberOwner(): Promise<void> {
+  if (readOwners()) return; // An uploaded copy: nothing to learn.
+  try {
+    const community = await read("communities.get", () => rootServer.community.communities.get());
+    if (!isPerson(community.ownerUserId)) {
+      log("warn", `"${community.name}" isn't owned by a person, so ${config.botName} can't learn who you are from it`);
+      return;
+    }
+    fs.writeFileSync(OWNER_FILE, JSON.stringify({ owner: community.ownerUserId, community: community.name }, null, 2) + "\n");
+    log("info", `Noted you as the owner of "${community.name}": an uploaded ${config.botName} will only work in your communities`);
+  } catch (err) {
+    log("warn", "couldn't look up who owns this community", { error: errDetail(err) });
   }
 }
 

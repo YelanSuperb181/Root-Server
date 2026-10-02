@@ -39,27 +39,26 @@ function writeEnv(updates) {
 const isRootId = (id) =>
   /^[A-Za-z0-9_-]{22}$/.test(id) || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
-/** Whether `id` is a Root ID for a person (Root keeps an ID's kind in its 8th byte; 1 is a person). */
-function isPersonId(id) {
-  if (!/^[A-Za-z0-9_-]{22}$/.test(id)) return false;
-  const bytes = Buffer.from(id, "base64url");
-  return bytes.length === 16 && bytes[7] === 1;
-}
+const OWNER_FILE = path.join(__dirname, "server", "owner.local.json");
 
 /**
  * Who Blitz is locked to once uploaded: BLITZ_OWNERS in server/.env if set
- * (comma-separated user IDs), or else you, read from your DEV_TOKEN (it starts
- * with your test community's ID, then your user ID). Undefined if neither works.
+ * (comma-separated user IDs), or else you. `npm run server` notes you as the
+ * owner of your test community (in server/owner.local.json). Undefined if
+ * neither is there yet.
  */
 function lockOwners() {
-  const env = readEnv();
-  const listed = (env.BLITZ_OWNERS ?? "")
+  const listed = (readEnv().BLITZ_OWNERS ?? "")
     .split(",")
     .map((s) => s.trim())
-    .filter(Boolean);
+    .filter(isRootId);
   if (listed.length > 0) return listed;
-  const me = (env.DEV_TOKEN ?? "").slice(22, 44);
-  return isPersonId(me) ? [me] : undefined;
+  try {
+    const { owner } = JSON.parse(fs.readFileSync(OWNER_FILE, "utf8"));
+    return typeof owner === "string" && isRootId(owner) ? [owner] : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Blitz's App ID: the one saved by `npm run configure`, or else the one in root-manifest.json. */
