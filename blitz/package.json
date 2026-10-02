@@ -1,6 +1,6 @@
 {
   "name": "@blitz/app",
-  "description": "Blitz: the setup, community and domain App for Bich ass bitchess on Root",
+  "description": "Blitz: a community and domain App for any Root community",
   "version": "1.0.0",
   "private": true,
   "engines": {

@@ -4,6 +4,7 @@
 // Each community decides on Blitz's App settings page which channels and
 // roles it uses; anything left empty is simply off.
 
+import "./polyfills"; // first: lets Root's SDK run on Node 20
 import {
   rootServer,
   ChannelEvent,
