@@ -9,5 +9,6 @@ build-test/
 .DS_Store
 blitz.rootpkg
 blitz/deploy/
+blitz/root-manifest.dev.json
 blitz/server/src/blueprint/mailboxes.local.ts
 blitz/networking/gen/

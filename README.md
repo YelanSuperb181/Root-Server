@@ -126,6 +126,7 @@ Change them, run `npm run build && npm test`, then `!setup` again; it only adds 
 blitz/
 ├── root-manifest.json          App ID, version and the permissions Blitz asks for
 ├── stage.js                    gathers a clean copy to upload (npm run package), without sources or .env
+├── dev-manifest.js             works around Root's dev host dropping Blitz's permissions (npm run server)
 ├── networking/src/domain.proto the domain's live messages (grab, drag, throw, poke, state)
 ├── shared/src/                 run identically by the server and every window:
 │   ├── physics.ts              Blitz's physics, the wall cracking, the burst and open space

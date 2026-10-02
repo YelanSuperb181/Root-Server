@@ -8,8 +8,8 @@
   },
   "scripts": {
     "build": "tsc",
-    "server": "rootsdk start devhost --project-folder=../",
-    "test": "tsc -p tsconfig.test.json && node --test build-test/test/*.test.js",
+    "server": "node ../dev-manifest.js && rootsdk-devhost --project-folder=../ --manifest=root-manifest.dev.json",
+    "test": "tsc -p tsconfig.test.json && node run-tests.js",
     "docs": "tsc -p tsconfig.test.json && node build-test/scripts/render-layout.js ../../docs/SERVER-LAYOUT.md"
   }
 }

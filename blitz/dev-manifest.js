@@ -1,0 +1,29 @@
+// Writes root-manifest.dev.json, the copy of the manifest `npm run server`
+// gives Root's dev host. The dev host (@rootsdk/dev-tools 0.21.3) sends the
+// manifest's "permissions" to Root as-is, but Root's message names them
+// channelView, channelCreateMessage, communityManageRoles and so on. Our names
+// (view, createMessage, manageRoles) don't match, so every permission would be
+// silently dropped: Blitz couldn't see a single channel in the test community,
+// and `!setup` would get no answer. This copy adds the prefixed names next to
+// the originals. The real root-manifest.json stays as it is for packaging,
+// where Root reads it correctly.
+
+const fs = require("fs");
+const path = require("path");
+
+const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "root-manifest.json"), "utf8"));
+
+const withPrefixedNames = (perms, prefix) => {
+  const out = { ...perms };
+  for (const [key, value] of Object.entries(perms ?? {})) out[prefix + key[0].toUpperCase() + key.slice(1)] = value;
+  return out;
+};
+
+if (manifest.permissions) {
+  manifest.permissions = {
+    community: withPrefixedNames(manifest.permissions.community, "community"),
+    channel: withPrefixedNames(manifest.permissions.channel, "channel"),
+  };
+}
+
+fs.writeFileSync(path.join(__dirname, "root-manifest.dev.json"), JSON.stringify(manifest, null, 2) + "\n");

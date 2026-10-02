@@ -2,7 +2,7 @@
 
 This takes you from "we're on Discord" to the same server on Root with Blitz running in it. Plan for about an hour the first time, most of it reading.
 
-**You'll need:** a Root account and the Root **desktop** app (some developer and import features aren't on mobile), [Node.js](https://nodejs.org) 22 or newer, and this repository on your computer.
+**You'll need:** a Root account and the Root **desktop** app (some developer and import features aren't on mobile), [Node.js](https://nodejs.org) 20 or newer, and this repository on your computer.
 
 - [1. Create the Root community](#1-create-the-root-community)
 - [2. Register Blitz](#2-register-blitz)
@@ -170,6 +170,7 @@ Blitz can't kick or ban. That stays with you. The domain needs no extra permissi
 | `Manifest validation error: id is not an app id` | Put your App ID in `blitz/root-manifest.json` instead of `your-app-id`. |
 | The upload is refused because of the version | Bump `"version"` in `root-manifest.json`; it must go up on every upload. |
 | Blitz doesn't answer commands | Is it running (`npm run server`) or installed? Commands start with `!`. Blitz ignores other bots, so test from your own account. |
+| In the test community Blitz starts fine but never answers, and nothing shows in its log | Root's dev host drops the App's permissions, so Blitz can't see any channel. `npm run server` works around that by starting the dev host with `root-manifest.dev.json`. Make sure you have the latest version of this repository, then stop Blitz (Ctrl+C) and run `npm run server` again. |
 | The domain says "just yours" (solo) | It couldn't reach Blitz's server. Inside Root: is Blitz installed and running? In development: is `npm run server` still running? Solo Blitz still works, it just isn't shared. |
 | `!blitz` says the domain isn't set up | Blitz didn't get its App channel. Make sure it was installed as an App (step 2) and reinstall it. |
 | `🔒 … is for admins only` | `!setup` needs the community owner or a role with Manage Community / Full Control. |

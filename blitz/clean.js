@@ -5,6 +5,7 @@ const pathsToDelete = [
   "./package-lock.json",
   "./blitz.rootpkg",
   "./deploy",
+  "./root-manifest.dev.json",
   "./networking/gen",
   "./shared/dist",
   "./server/dist",
