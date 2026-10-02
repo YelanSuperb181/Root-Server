@@ -39,6 +39,29 @@ function writeEnv(updates) {
 const isRootId = (id) =>
   /^[A-Za-z0-9_-]{22}$/.test(id) || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
+/** Whether `id` is a Root ID for a person (Root keeps an ID's kind in its 8th byte; 1 is a person). */
+function isPersonId(id) {
+  if (!/^[A-Za-z0-9_-]{22}$/.test(id)) return false;
+  const bytes = Buffer.from(id, "base64url");
+  return bytes.length === 16 && bytes[7] === 1;
+}
+
+/**
+ * Who Blitz is locked to once uploaded: BLITZ_OWNERS in server/.env if set
+ * (comma-separated user IDs), or else you, read from your DEV_TOKEN (it starts
+ * with your test community's ID, then your user ID). Undefined if neither works.
+ */
+function lockOwners() {
+  const env = readEnv();
+  const listed = (env.BLITZ_OWNERS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (listed.length > 0) return listed;
+  const me = (env.DEV_TOKEN ?? "").slice(22, 44);
+  return isPersonId(me) ? [me] : undefined;
+}
+
 /** Blitz's App ID: the one saved by `npm run configure`, or else the one in root-manifest.json. */
 function appIdFor(manifest) {
   const saved = readEnv().BLITZ_APP_ID;
@@ -47,4 +70,4 @@ function appIdFor(manifest) {
   return undefined;
 }
 
-module.exports = { ENV_FILE, readEnv, writeEnv, isRootId, appIdFor };
+module.exports = { ENV_FILE, readEnv, writeEnv, isRootId, appIdFor, lockOwners };

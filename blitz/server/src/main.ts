@@ -24,6 +24,7 @@ import { ensureDailyJob, initJobs } from "./core/jobs";
 import { errMessage, log } from "./core/log";
 import { initMembers, isPerson, loadSelf } from "./core/members";
 import { checkCanRead } from "./core/selfcheck";
+import { lockedOut, runLocked } from "./core/privacy";
 import { initAutomod, screenMessage } from "./features/automod";
 import { birthdayCommands, celebrateBirthdays } from "./features/birthdays";
 import { funCommands } from "./features/fun";
@@ -125,6 +126,12 @@ function scheduleResync(): void {
 }
 
 async function onStarting(state: RootAppStartState): Promise<void> {
+  // A private App: in a community its owner doesn't own, it does nothing else.
+  if (await lockedOut()) {
+    runLocked();
+    return;
+  }
+
   const problems = validateAll(blueprint);
   for (const p of problems) log("warn", `blueprint: ${p}`);
 
