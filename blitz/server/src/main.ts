@@ -23,6 +23,7 @@ import { directory } from "./core/directory";
 import { ensureDailyJob, initJobs } from "./core/jobs";
 import { errMessage, log } from "./core/log";
 import { initMembers, isPerson, loadSelf } from "./core/members";
+import { checkCanRead } from "./core/selfcheck";
 import { initAutomod, screenMessage } from "./features/automod";
 import { birthdayCommands, celebrateBirthdays } from "./features/birthdays";
 import { funCommands } from "./features/fun";
@@ -41,11 +42,34 @@ import { hearChat } from "./domain/chat";
 import { domainCommands } from "./domain/commands";
 import { domainService, initDomain } from "./domain/domain";
 
+/** The command a message starts with ("!setup"), if it starts with the prefix. */
+function commandWord(content: string | undefined): string | undefined {
+  const text = (content ?? "").trimStart();
+  return text.startsWith(config.prefix) ? text.split(/\s+/)[0].slice(0, 32) : undefined;
+}
+
+let heardChat = false;
+
 async function onMessage(evt: ChannelMessageCreatedEvent): Promise<void> {
-  if (evt.messageType === MessageType.System || !isPerson(evt.userId)) return;
+  if (evt.messageType === MessageType.System) return;
+  if (!heardChat) {
+    heardChat = true;
+    log("info", "Blitz can hear chat (first message since it started)");
+  }
+  // Commands get a line in the log, so it's clear Blitz saw them.
+  const word = commandWord(evt.messageContent);
+  if (!isPerson(evt.userId)) {
+    if (word) log("info", `ignored ${word}: it wasn't sent by a person`);
+    return;
+  }
+  if (word) log("info", `heard ${word}`);
   try {
-    if (await screenMessage(evt)) return;
+    if (await screenMessage(evt)) {
+      if (word) log("info", `auto-mod held back ${word}`);
+      return;
+    }
     if (await handleCommand(evt)) return;
+    if (word) log("info", `${word} isn't one of ${config.botName}'s commands`);
     if (await captureSuggestion(evt)) return;
     // Runs alongside: Blitz may take a few seconds to think, and XP shouldn't wait for it.
     void hearChat(evt);
@@ -145,15 +169,17 @@ async function onStarting(state: RootAppStartState): Promise<void> {
   // The domain: the App's own channel, where Blitz floats around.
   rootServer.lifecycle.addService(domainService);
   await initDomain(state.channelId);
-  initBrain(await communityFacts(), state.globalSettings);
+  const facts = await communityFacts();
+  initBrain(facts, state.globalSettings);
 
   const mapped = Object.keys(directory.saved()).length;
-  log("info", `${config.botName} is up`, {
+  log("info", `${config.botName} is up in the community "${facts.name}"`, {
     community: state.communityId,
     members: state.communityMembers.size,
     blueprintItemsFound: mapped,
-    hint: mapped === 0 ? `type ${config.prefix}setup in any channel to build the community` : undefined,
+    hint: mapped === 0 ? `type ${config.prefix}setup in any channel of "${facts.name}" to build it` : undefined,
   });
+  await checkCanRead();
 }
 
 (async () => {
