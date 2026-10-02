@@ -91,7 +91,7 @@ Root Apps live inside their own channel, so the domain is a channel rather than 
    npm test          # validates the template and runs the unit tests
    ```
 4. **Try it in your test community:** run `npm run server`, and type `!setup` (then `!setup confirm`) in any channel. In a second terminal, `npm run client` serves the domain for Root's dev mode.
-5. **Go live:** `npm run package`, upload `blitz.rootpkg`, install Blitz in the real community, and run `!setup confirm` there.
+5. **Go live:** `npm run upload` (asks for your publishing token once), install Blitz in the real community, and run `!setup confirm` there.
 
 ## Before you build: the mailboxes
 
@@ -127,6 +127,7 @@ Change them, run `npm run build && npm test`, then `!setup` again; it only adds 
 blitz/
 ├── root-manifest.json          App ID, version and the permissions Blitz asks for
 ├── stage.js                    gathers a clean copy to upload (npm run package), without sources or .env
+├── upload.js                   builds, packages and uploads Blitz in one go (npm run upload)
 ├── configure.js                asks for the App ID and DEV_TOKEN and saves them in server/.env (npm run configure)
 ├── dev-manifest.js             works around Root's dev host dropping Blitz's permissions (npm run server)
 ├── networking/src/domain.proto the domain's live messages (grab, drag, throw, poke, state)

@@ -62,19 +62,18 @@ Want to change something? Edit the template or config (see [CUSTOMIZING.md](CUST
 
 While `npm run server` runs, Blitz lives on your computer. To keep it running 24/7, upload it to Root's cloud; Root's developer docs cover publishing in detail.
 
-1. **Bump the version** in `blitz/root-manifest.json` (for example `1.0.0` → `1.0.1`). Root refuses a version it already has, so do this before every upload.
-2. **Package it:**
+1. **Upload it** from the `blitz` folder:
    ```bash
-   npm run package          # builds everything and writes blitz.rootpkg (server, domain client and manifest)
+   npm run upload
    ```
-   It packs a clean copy staged in `blitz/deploy/`: the built server and domain plus only the packages the server needs, never your sources or `server/.env`. If it ever finds a `.env` in there, it stops instead of uploading your tokens.
+   The first time, it asks for the **publishing token** from your Blitz project in the Developer Portal (a different token from `DEV_TOKEN`) and keeps it in `blitz/server/.env`. Then it builds Blitz, packages it under the next version number (Root refuses a version it already has, so it counts up by itself), and uploads it. Your token is blanked out of everything it prints. If Root turns the token down, run it again and paste a fresh one.
+
+   The package is a clean copy staged in `blitz/deploy/`: the built server and domain plus only the packages the server needs, never your sources or `server/.env`. If it ever finds a `.env` in there, it stops instead of uploading your tokens.
 
    **Blitz is private.** The package is locked to communities owned by you (it reads your Root user ID from your DEV_TOKEN). If anyone else installs Blitz, it does nothing in their community except say it's a private App: no setup, no levels, nothing saved. While you test on your computer, it's never locked.
-3. **Upload it** with the publishing token from the Developer Portal (a different token from `DEV_TOKEN`):
-   ```bash
-   npx rootsdk upload package -f blitz.rootpkg -a YOUR_AUTH_TOKEN
-   ```
-4. **Install Blitz in the real community** from Root's app directory, like any App or Bot: [Install Apps and Bots](https://support.rootapp.com/docs/leader/apps/install-apps/). Root shows the permissions Blitz asks for (see [below](#what-blitz-can-do-and-why)) before you approve.
+
+   (By hand instead: `npm run package` writes `blitz.rootpkg`, then `npx rootsdk upload package -f blitz.rootpkg -a YOUR_PUBLISHING_TOKEN`. Bump `"version"` in `root-manifest.json` before each upload, and note that this way prints the token.)
+2. **Install Blitz in the real community** from Root's app directory, like any App or Bot: [Install Apps and Bots](https://support.rootapp.com/docs/leader/apps/install-apps/). Root shows the permissions Blitz asks for (see [below](#what-blitz-can-do-and-why)) before you approve.
 
    Installing an App gives it a channel of its own: that's **Blitz's domain**. Rename it to `blitz-domain` and drag it into **Ze Social Place** (or wherever you like). `!blitz` links to it under whatever name it has.
 
@@ -166,7 +165,7 @@ Blitz can't kick or ban. That stays with you. The domain needs no extra permissi
 | --- | --- |
 | `Unable to find .env with a DEV_TOKEN` | Run `npm run configure` in the `blitz` folder and paste your DEV_TOKEN (step 2). |
 | `Manifest validation error: id is not an app id`, or "Blitz doesn't know its App ID yet" | Run `npm run configure` and paste the App ID from the Developer Portal. |
-| The upload is refused because of the version | Bump `"version"` in `root-manifest.json`; it must go up on every upload. |
+| The upload is refused because of the version | Run `npm run upload` again: it uses the next version each time. |
 | Blitz doesn't answer commands | Is it running (`npm run server`) or installed? Commands start with `!`. Blitz ignores other bots, so test from your own account. |
 | In testing, Blitz starts fine but never answers `!setup` | Look at the line **Blitz is up in the community "…"**: type `!setup` in *that* community. Your DEV_TOKEN picks it, and Root names it after your project (like `Blitz-test`), so it's not the community you made yourself. When Blitz sees a command it logs **heard !setup**; if nothing shows, it's in a different community. If the log says **Blitz can't read the chat**, Root didn't give it its permissions: make sure you have the latest version (it starts the dev host with `root-manifest.dev.json` to work around a dev host bug), then stop Blitz (Ctrl+C) and run `npm run server` again. |
 | Blitz says "is a private App made for another community" in your own community | The package was made with a DEV_TOKEN from a different Root account, or the community changed owner. Run `npm run configure` with your own DEV_TOKEN (or list owners' user IDs as `BLITZ_OWNERS=...` in `blitz/server/.env`), then package and upload again. |

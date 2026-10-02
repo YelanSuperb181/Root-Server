@@ -31,7 +31,9 @@ if (!owners) fail("Couldn't work out your Root user ID from your DEV_TOKEN, whic
 
 fs.rmSync(deploy, { recursive: true, force: true });
 fs.mkdirSync(deploy, { recursive: true });
-fs.writeFileSync(path.join(deploy, "root-manifest.json"), JSON.stringify({ ...manifest, id: appId }, null, 2) + "\n");
+// `npm run upload` picks the version (Root refuses one it already has).
+const version = process.env.BLITZ_VERSION || manifest.version;
+fs.writeFileSync(path.join(deploy, "root-manifest.json"), JSON.stringify({ ...manifest, id: appId, version }, null, 2) + "\n");
 
 // What the manifest deploys: the built server and the domain client.
 const list = (x) => (x === undefined ? [] : Array.isArray(x) ? x : [x]);
