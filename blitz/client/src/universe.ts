@@ -318,6 +318,9 @@ export interface UniverseView {
 
 /** Layers that only drift: everything except the twinkling stars, dust and shooting stars. */
 const FAR_ROCK_P = 0.5;
+/** Bright stars start to streak above this camera speed (screen px/s at their depth) and are fully streaks above STREAK_FULL. */
+const STREAK_FROM = 35;
+const STREAK_FULL = 160;
 const PLANET_P = 0.11;
 
 export class Universe {
@@ -346,6 +349,8 @@ export class Universe {
   private nextShooting = 2.5;
   private lastFocus: { x: number; y: number } | undefined;
   private camVel = { x: 0, y: 0 };
+  /** How far the bright stars have turned into streaks, 0 to 1 (eased; see drawLively). */
+  private streak = 0;
 
   constructor(private reduced: boolean) {
     this.layers = [
@@ -557,6 +562,16 @@ export class Universe {
     // Bright stars: twinkling, with soft spikes, and streaking when the camera rushes along.
     ctx.globalCompositeOperation = "lighter";
     const speed = Math.hypot(this.camVel.x, this.camVel.y) * REF;
+    // Streaks grow out of the stars as the camera picks up speed and shrink back into them as it
+    // slows, crossfading between the two looks instead of switching at one speed.
+    const u = Math.min(1, Math.max(0, (speed * 0.32 - STREAK_FROM) / (STREAK_FULL - STREAK_FROM)));
+    // Quick to appear, slower to melt away: the camera brakes faster than the eye wants the streaks to go.
+    const target = u * u * (3 - 2 * u);
+    this.streak += (target - this.streak) * Math.min(1, dt * (target > this.streak ? 7 : 2.6));
+    if (this.streak < 0.01 && target === 0) this.streak = 0;
+    const streak = this.streak;
+    const vx = this.camVel.x * REF * 0.32 * 0.07;
+    const vy = this.camVel.y * REF * 0.32 * 0.07;
     this.cells(cam, 0.32, W, H, 190, 20, (ix, iy, cx, cy) => {
       const rnd = cellRandom(ix, iy, 3);
       if (rnd() > 0.24) return;
@@ -566,23 +581,22 @@ export class Universe {
       const tint = rnd();
       const color: RGB = tint < 0.2 ? [255, 214, 170] : tint < 0.5 ? [170, 205, 255] : [235, 242, 255];
       const tw = (this.reduced ? 1 : 0.55 + 0.45 * Math.sin(t * (1 + rnd() * 2.5) + rnd() * 6.28)) * dim(x, y);
-      if (speed * 0.32 > 90) {
-        const vx = this.camVel.x * REF * 0.32 * 0.07;
-        const vy = this.camVel.y * REF * 0.32 * 0.07;
-        ctx.strokeStyle = rgba(color, 0.7 * tw);
+      if (streak > 0) {
+        ctx.strokeStyle = rgba(color, 0.7 * tw * streak);
         ctx.lineWidth = r;
         ctx.lineCap = "round";
         ctx.beginPath();
         ctx.moveTo(x, y);
         ctx.lineTo(x + vx, y + vy);
         ctx.stroke();
-        return;
       }
+      if (streak >= 1) return;
+      const still = 1 - streak;
       const size = r * 7;
-      ctx.globalAlpha = view.alpha * tw;
+      ctx.globalAlpha = view.alpha * tw * still;
       ctx.drawImage(glowSprite(color), x - size, y - size, size * 2, size * 2);
       if (r > 1.6) {
-        ctx.strokeStyle = rgba(color, 0.35 * tw);
+        ctx.strokeStyle = rgba(color, 0.35 * tw * still);
         ctx.lineWidth = 0.8;
         ctx.beginPath();
         ctx.moveTo(x - r * 7, y);
