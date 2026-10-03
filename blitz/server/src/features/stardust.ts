@@ -11,6 +11,7 @@ import { Command, UsageError } from "../core/commands";
 import { serialize } from "../core/lock";
 import { AccessLevel, atLeast, isPerson, knownPeople, nickname } from "../core/members";
 import { settings } from "../core/settings";
+import { remember } from "../core/memo";
 import { kv } from "../core/store";
 import { formatDuration } from "../logic/parse";
 import { CHAT_COOLDOWN_MS, chatEarning, claimDaily, levelUpReward, nextDailyAt } from "../logic/stardust";
@@ -115,13 +116,17 @@ export async function wearCosmetic(userId: string, item: Cosmetic | undefined, s
   });
 }
 
-export async function stardustTop(count: number): Promise<Array<{ userId: string; earned: number; balance: number }>> {
+/** Everyone who's collected Stardust and is still here, most first (a few seconds old at most). */
+const collectors = remember(15_000, async () => {
   const present = new Set(knownPeople());
   return (await kv.entries<Wallet>("dust:"))
     .map(({ key: k, value }) => ({ userId: k.slice(5), earned: value.earned ?? 0, balance: value.balance ?? 0 }))
     .filter((e) => present.has(e.userId) && e.earned > 0)
-    .sort((a, b) => b.earned - a.earned)
-    .slice(0, count);
+    .sort((a, b) => b.earned - a.earned);
+});
+
+export async function stardustTop(count: number): Promise<Array<{ userId: string; earned: number; balance: number }>> {
+  return (await collectors()).slice(0, count);
 }
 
 function needsStardust(): void {

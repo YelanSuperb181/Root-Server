@@ -60,7 +60,7 @@
           {
             "key": "log",
             "title": "Staff log",
-            "description": "Where Blitz notes reports, moderation, auto-mod removals, joins and leaves, for the team. Leave empty for no staff log.",
+            "description": "Where Blitz notes reports, moderation, shield catches, auto-mod removals, inbox transcripts, joins and leaves, for the team. Leave empty for no staff log.",
             "required": false,
             "confirmation": "Save",
             "channel": {
@@ -215,7 +215,7 @@
           {
             "key": "automodOff",
             "title": "Turn off auto-mod",
-            "description": "Tick to stop Blitz removing floods, copy-paste spam and mass mentions. Auto-mod is on while this is unticked.",
+            "description": "Tick to stop Blitz removing floods, copy-paste spam, mass mentions, glitchy text and blocked words. Auto-mod is on while this is unticked.",
             "required": false,
             "confirmation": "Save",
             "checkbox": {

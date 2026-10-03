@@ -428,7 +428,13 @@ const moderation: Section = {
       },
       mod.picked,
     );
-    root.append(card(cardTitle("Find a member"), picker));
+    root.append(
+      card(
+        cardTitle("Find a member"),
+        picker,
+        !mod.picked && note("Pick someone to see their record and act on it. Warnings, mutes, kicks and bans become numbered cases, and the member is told why (unless that's turned off in Blitz's settings); notes stay with the team."),
+      ),
+    );
 
     const c = mod.card;
     if (mod.picked && (mod.loading || !c)) root.append(card(h("p.mnote.loading", { text: mod.loading ? "Looking them up…" : "Couldn't look them up." })));

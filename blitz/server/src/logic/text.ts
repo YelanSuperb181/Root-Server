@@ -8,9 +8,6 @@ export const MAX_MESSAGE = 9500;
 export const MAX_NOTIFY_TITLE = 50;
 export const MAX_NOTIFY_BODY = 150;
 
-/** Channel descriptions; Root shows short topics best. */
-export const MAX_TOPIC = 250;
-
 export function userMention(name: string, userId: string): string {
   return `[@${linkText(name)}](root://user/${userId})`;
 }

@@ -180,16 +180,6 @@ export async function markRead(id: number, side: "member" | "team"): Promise<voi
   });
 }
 
-export async function claimTicket(id: number, staffId: string): Promise<Ticket> {
-  return serialize(`ticket:${id}`, async () => {
-    const t = await getTicket(id);
-    if (!t) throw new UsageError(`There's no conversation #${id}.`);
-    t.claimedBy = staffId;
-    await save(t);
-    return t;
-  });
-}
-
 function transcript(t: Ticket, names: Map<string, string>): string {
   return t.messages
     .slice(-12)

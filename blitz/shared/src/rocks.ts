@@ -138,9 +138,3 @@ export function rocksNear(x: number, y: number, reach: number, t: number): Rock[
   }
   return out;
 }
-
-/** The point on a rock's surface nearest `p`. */
-export function rockSurface(rock: Rock, p: Point): Point {
-  const d = Math.hypot(p.x - rock.x, p.y - rock.y) || 1;
-  return { x: rock.x + ((p.x - rock.x) / d) * rock.r, y: rock.y + ((p.y - rock.y) / d) * rock.r };
-}

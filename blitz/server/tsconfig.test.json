@@ -4,5 +4,5 @@
     "outDir": "build-test",
     "rootDir": "."
   },
-  "include": ["src/content/**/*.ts", "src/logic/**/*.ts", "src/config.ts", "src/polyfills.ts", "src/core/lock.ts", "test/**/*.ts"]
+  "include": ["src/content/**/*.ts", "src/logic/**/*.ts", "src/config.ts", "src/polyfills.ts", "src/core/lock.ts", "src/core/memo.ts", "test/**/*.ts"]
 }

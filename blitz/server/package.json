@@ -7,7 +7,7 @@
     "@blitz/shared": "*"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\" && tsc",
     "server": "node ../dev-manifest.js && rootsdk-devhost --project-folder=../ --manifest=root-manifest.dev.json",
     "test": "tsc -p tsconfig.test.json && node run-tests.js"
   }

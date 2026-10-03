@@ -4,6 +4,14 @@
 
 It doesn't come with a server template and never creates channels or roles. It fits whatever your community already has: you point it at your channels and roles on its settings page in Root, and anything you leave empty is simply off.
 
+![Blitz's menu beside its domain: the shop, with Blitz trying on a crown](docs/images/menu.jpg)
+
+| | |
+| --- | --- |
+| ![In open space, Blitz summons its menu as cards that orbit it](docs/images/dream.jpg) | ![Guardian: the scam shield, the raid shield, lockdowns and what they caught](docs/images/guardian.jpg) |
+
+**Reviewing Blitz?** [docs/REVIEW.md](docs/REVIEW.md) has a two-minute way to see it working (no Root account needed), how it's built, the permissions it asks for and why, what it keeps, and what it sends outside Root.
+
 ## What Blitz does
 
 | | |
@@ -152,27 +160,29 @@ blitz/
 ├── upload.js                   builds, packages and uploads Blitz in one go (npm run upload)
 ├── configure.js                asks for the App ID and DEV_TOKEN and saves them in server/.env (npm run configure)
 ├── dev-manifest.js             works around Root's dev host dropping Blitz's permissions (npm run server)
-├── networking/src/domain.proto the domain's live messages (grab, drag, throw, poke, state)
+├── networking/src/domain.proto what someone types to Blitz in its domain, and Blitz's answer
 ├── networking/src/menu.proto   the menu's requests (what's on it, run a command, find a member)
-├── shared/src/                 run identically by the server and every window:
+├── shared/src/                 shared by the server and the domain window:
 │   ├── physics.ts              Blitz's physics, the wall cracking, the burst and open space
 │   ├── rocks.ts                the space rocks: where they are and how they drift
 │   ├── tricks.ts               loops, spins, zooms, hops, the heart
 │   ├── brain.ts                Blitz's persona and the answer format Claude fills in
-│   └── mood.ts                 the keyword fallback for reading what people say
+│   ├── mood.ts                 the keyword fallback for reading what people say
+│   ├── cosmetics.ts            the shop: hats, trails and glows
+│   └── richtext.ts             Blitz's chat formatting, for the menu to draw
 ├── server/                     the App's server: everything that happens in chat, plus Blitz's brain
 │   ├── src/
 │   │   ├── config.ts           ⭐ defaults for every community
 │   │   ├── domain/             Blitz's brain (Claude): chat answers, report triage and context checks, !tldr and Ask Blitz; domain thoughts, !blitz and the menu's service
 │   │   ├── content/            Blitz's welcome, level-up and birthday lines, 8-ball answers
-│   │   ├── core/               rate-limited API calls, commands, storage, jobs, each community's settings
+│   │   ├── core/               rate-limited API calls, commands, storage, locks, jobs, members and access, each community's settings
 │   │   ├── features/           guardian (scam and raid shields, locks), moderation, inbox, auto-mod, levels, Stardust, giveaways, pulse, welcome, quote wall, birthdays, polls, staff, fun, !help and !settings
 │   │   ├── logic/              pure helpers (scam links, raids and the warning ladder, parsing, XP and Stardust math, automod checks, polls, pulse, dates)
 │   │   └── main.ts             wiring
 │   └── test/                   unit tests (node:test)
-└── client/                     the domain window, shown in Blitz's channel: faces, effects, cracks, the shatter, the universe and its rocks
-    └── src/menu/               the menu: the panel beside the domain, the dream menu Blitz summons in space, Pulse's charts and the shop's portrait
-docs/                           setup guide, commands, customizing
+└── client/                     the domain window, shown in Blitz's channel: everyone's own Blitz and its physics, faces, effects, cracks, the shatter, the universe and its rocks
+    └── src/menu/               the menu: the panel beside the domain, the dream menu Blitz summons in space, the quick finder, Pulse's charts and the shop's portrait
+docs/                           setup guide, commands, customizing, the reviewer's guide, how Blitz compares, screenshots
 ```
 
 Built on the official [Root SDK](https://docs.rootapp.com) 0.21 (`@rootsdk/server-app` and `@rootsdk/client-app`), with Claude (`@anthropic-ai/sdk`) as Blitz's brain. Root runs Blitz for you once it's uploaded, and each community gets its own private data store.

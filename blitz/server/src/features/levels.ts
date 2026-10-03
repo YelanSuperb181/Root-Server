@@ -15,6 +15,7 @@ import { matchRole } from "../logic/moderation";
 import { levelUpBonus } from "./stardust";
 import { settings } from "../core/settings";
 import { kv } from "../core/store";
+import { remember } from "../core/memo";
 import { EMPTY_XP, XpRecord, applyMessage, levelFromXp, rankEntries, totalXpForLevel } from "../logic/levels";
 import { fillTemplate, formatNumber, mentionedRoleIds, mentionedUserIds, pick, placeLabel, progressBar, userMention } from "../logic/text";
 
@@ -97,13 +98,14 @@ export async function levelsFor(userId: string, topCount: number): Promise<{
   };
 }
 
-async function leaderboard(): Promise<Array<{ userId: string; xp: number }>> {
+/** Everyone with XP who's still here, best first (a few seconds old at most). */
+const leaderboard = remember(15_000, async (): Promise<Array<{ userId: string; xp: number }>> => {
   const present = new Set(knownPeople());
   const entries = (await kv.entries<XpRecord>("xp:"))
     .map(({ key, value }) => ({ userId: key.slice(3), xp: value.xp }))
     .filter((e) => present.has(e.userId) && e.xp > 0);
   return rankEntries(entries);
-}
+});
 
 async function nicknames(userIds: string[]): Promise<Map<string, string>> {
   const names = new Map<string, string>();
@@ -198,9 +200,10 @@ export const levelCommands: Command[] = [
         const list = await levelRewards();
         if (list.length === 0) throw new UsageError("There are no level rewards to hand out yet.");
         let given = 0;
+        const present = new Set(knownPeople());
         for (const { key, value } of await kv.entries<XpRecord>("xp:")) {
           const userId = key.slice(3);
-          if (!knownPeople().includes(userId)) continue;
+          if (!present.has(userId)) continue;
           given += (await grantRewards(userId, levelFromXp(value.xp).level)).length;
         }
         await ctx.reply(`🎁 Handed out ${given} reward role${given === 1 ? "" : "s"} to members who'd already earned them.`);
@@ -295,6 +298,7 @@ export const levelCommands: Command[] = [
       }
       const xp = levelMode ? totalXpForLevel(amount) : amount;
       await kv.update<XpRecord>(xpKey(target), (r) => ({ ...r, xp }), EMPTY_XP);
+      leaderboard.forget();
       const level = levelFromXp(xp).level;
       const earned = await grantRewards(target, level);
       await ctx.reply(`✅ **${await nickname(target)}** now has ${formatNumber(xp)} XP (level ${level}).${earned.length ? ` 🎁 ${earned.join(", ")}` : ""}`);

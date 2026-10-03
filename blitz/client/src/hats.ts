@@ -242,5 +242,3 @@ export function drawHat(ctx: CanvasRenderingContext2D, hat: string | undefined, 
   const draw = HATS[hat];
   if (draw) draw(ctx, r, t);
 }
-
-export const HAT_IDS = Object.keys(HATS);

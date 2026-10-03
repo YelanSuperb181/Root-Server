@@ -48,5 +48,22 @@ export function serverMenu(): MenuApi {
   };
 }
 
-export { demoMenu } from "./demo";
+/**
+ * The made-up community the browser preview shows, fetched only when it's
+ * used: inside Root it's never needed, so it isn't part of the main bundle.
+ */
+export function demoMenu(): MenuApi {
+  let loaded: Promise<MenuApi> | undefined;
+  const real = () => (loaded ??= import("./demo").then((m) => m.demoMenu()));
+  return {
+    demo: true,
+    overview: async () => (await real()).overview(),
+    run: async (command, args, channelId) => (await real()).run(command, args, channelId),
+    searchMembers: async (query) => (await real()).searchMembers(query),
+    member: async (userId) => (await real()).member(userId),
+    ticket: async (id) => (await real()).ticket(id),
+    ticketReply: async (id, text) => (await real()).ticketReply(id, text),
+    ask: async (question) => (await real()).ask(question),
+  };
+}
 
