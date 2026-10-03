@@ -330,6 +330,8 @@ export class Universe {
   private camVel = { x: 0, y: 0 };
   /** How far the bright stars have turned into streaks, 0 to 1 (eased; see drawLively). */
   private streak = 0;
+  /** How long each kind of piece prewarm paints takes on this computer, roughly (ms). */
+  private pieceMs = { stars: 6, planet: 2, deep: 2 };
 
   constructor(private reduced: boolean) {
     this.layers = [
@@ -388,26 +390,25 @@ export class Universe {
 
   /**
    * Paints one more thing open space will need when the bubble bursts (its
-   * star tiles, planet and deep-sky tiles), so the burst doesn't have to.
-   * Call when there's time to spare; false once there's nothing left to do.
+   * star tiles, planet and deep-sky tiles for `cam`), so the burst doesn't
+   * have to: only if it's likely to take less than `budget` ms. "done" once
+   * there's nothing left, "wait" when the next piece wouldn't fit.
    */
-  prewarm(W: number, H: number, cam: Cam): boolean {
+  prewarm(W: number, H: number, cam: Cam, budget: number): "more" | "wait" | "done" {
     const k = this.screen.k;
+    const piece = (kind: keyof Universe["pieceMs"], paint: () => HTMLCanvasElement): "more" | "wait" => {
+      if (this.pieceMs[kind] > budget) return "wait";
+      const t0 = performance.now();
+      finishPainting(paint());
+      this.pieceMs[kind] += (performance.now() - t0 - this.pieceMs[kind]) * 0.5;
+      return "more";
+    };
     for (const layer of this.layers) {
-      if (!layer.tiles.has(k)) {
-        if (layer.tiles.size >= 3) layer.tiles.clear();
-        const tile = paintStars(...layer.stars, Math.round(512 * k));
-        finishPainting(tile);
-        layer.tiles.set(k, tile);
-        return true;
-      }
+      if (!layer.tiles.has(k)) return piece("stars", () => this.paintStarTile(layer, k));
     }
     const zoom = this.zoom();
-    if (this.planetSized?.k !== k || this.planetSized.zoom !== zoom) {
-      finishPainting(this.sizedPlanet(k, zoom));
-      return true;
-    }
-    if (this.deepFor !== `${k}|${zoom}`) return false; // the bubble hasn't drawn any sky yet
+    if (this.planetSized?.k !== k || this.planetSized.zoom !== zoom) return piece("planet", () => this.sizedPlanet(k, zoom));
+    if (this.deepFor !== `${k}|${zoom}`) return "done"; // the bubble hasn't drawn any sky yet
     const px = Math.round(DEEP_TILE * k);
     const size = px / k;
     const o = this.offset(cam, DEEP_P);
@@ -415,14 +416,15 @@ export class Universe {
       for (let ty = Math.floor(-o.y / size) - 1; ty <= Math.floor((H - o.y) / size) + 1; ty++) {
         const id = `${tx},${ty}`;
         if (this.deep.has(id)) continue;
-        if (this.deep.size >= DEEP_KEEP) return false;
-        const tile = this.paintDeepTile(tx, ty, px, k, zoom);
-        finishPainting(tile);
-        this.deep.set(id, tile);
-        return true;
+        if (this.deep.size >= DEEP_KEEP) return "done";
+        return piece("deep", () => {
+          const tile = this.paintDeepTile(tx, ty, px, k, zoom);
+          this.deep.set(id, tile);
+          return tile;
+        });
       }
     }
-    return false;
+    return "done";
   }
 
   /** Whether every deep-sky tile this view needs is painted (they come a few per frame). */
@@ -482,12 +484,7 @@ export class Universe {
     // whole and on exact device pixels: far cheaper than a shifted pattern fill.
     for (let i = Math.max(0, from - 1); i < Math.min(this.layers.length, to - 1); i++) {
       const layer = this.layers[i];
-      let tile = layer.tiles.get(k);
-      if (!tile) {
-        if (layer.tiles.size >= 3) layer.tiles.clear();
-        tile = paintStars(...layer.stars, Math.round(512 * k));
-        layer.tiles.set(k, tile);
-      }
+      const tile = layer.tiles.get(k) ?? this.paintStarTile(layer, k);
       const size = tile.width / k;
       const o = this.offset(cam, layer.p);
       const x0 = snapX(m, (((o.x % size) + size) % size) - size);
@@ -513,6 +510,14 @@ export class Universe {
     if (from <= 4 && to > 4) this.drawFarRocks(ctx, W, H, cam, m);
     ctx.restore();
     return complete;
+  }
+
+  /** A star layer's tile for pixel density `k` (keeping the last few densities' too). */
+  private paintStarTile(layer: StarLayer, k: number): HTMLCanvasElement {
+    const tile = paintStars(...layer.stars, Math.round(512 * k));
+    if (layer.tiles.size >= 3) layer.tiles.delete(layer.tiles.keys().next().value as number);
+    layer.tiles.set(k, tile);
+    return tile;
   }
 
   /** The planet, painted at `zoom` for pixel density `k`. */
@@ -723,7 +728,8 @@ export class Universe {
       for (let ty = y0; ty <= y1; ty++) if (!this.deep.has(`${tx},${ty}`)) missing.push([tx, ty, (tx + 0.5 - mx) ** 2 + (ty + 0.5 - my) ** 2]);
     }
     missing.sort((a, b) => a[2] - b[2]);
-    let budget = DEEP_PER_FRAME;
+    // Where an older tile can stand in (the sharpness just changed), there's no hurry: a couple a frame.
+    let budget = missing.some(([tx, ty]) => !this.deepPrev?.has(`${tx},${ty}`)) ? DEEP_PER_FRAME : 2;
     const complete = missing.length <= budget;
     for (const [tx, ty] of missing) {
       if (budget-- <= 0) break;
@@ -758,13 +764,15 @@ export class Universe {
     }
     ctx.imageSmoothingEnabled = smooth;
     if (complete) this.deepPrev = undefined;
-    // Spare time: paint the ring just off screen, so travelling finds it ready.
-    for (let tx = x0 - 1; tx <= x1 + 1 && budget > 0; tx++) {
-      for (let ty = y0 - 1; ty <= y1 + 1 && budget > 0; ty++) {
+    // Spare time: paint the ring just off screen, so travelling finds it ready. One tile a frame at
+    // most (and none while tiles in view are still missing), so travelling never stalls a frame.
+    let ahead = missing.length === 0 ? 1 : 0;
+    for (let tx = x0 - 1; tx <= x1 + 1 && ahead > 0; tx++) {
+      for (let ty = y0 - 1; ty <= y1 + 1 && ahead > 0; ty++) {
         if (tx >= x0 && tx <= x1 && ty >= y0 && ty <= y1) continue;
         const id = `${tx},${ty}`;
         if (this.deep.has(id)) continue;
-        budget--;
+        ahead--;
         this.deep.set(id, this.paintDeepTile(tx, ty, px, k, zoom));
       }
     }
@@ -776,7 +784,15 @@ export class Universe {
     return complete;
   }
 
-  /** One deep-sky tile, `px` device pixels square, covering layer pixels from (tx, ty) * its size. */
+  /** Half-resolution scratch canvas for a deep tile's soft light (see paintDeepTile). */
+  private soft: [HTMLCanvasElement, CanvasRenderingContext2D] | undefined;
+
+  /**
+   * One deep-sky tile, `px` device pixels square, covering layer pixels from
+   * (tx, ty) * its size. Its soft light (the color washes and nebulae, blurry
+   * by nature) is painted at half resolution and stretched over the tile,
+   * which is several times quicker; the faint stars and galaxies stay sharp.
+   */
   private paintDeepTile(tx: number, ty: number, px: number, k: number, zoom: number): HTMLCanvasElement {
     const spare = this.deepSpare.pop();
     // Opaque: every pixel is painted, and opaque tiles are quicker to copy.
@@ -787,32 +803,63 @@ export class Universe {
     const size = px / k;
     const left = tx * size;
     const top = ty * size;
-    g.setTransform(k, 0, 0, k, -left * k, -top * k);
-    g.fillStyle = SPACE;
-    g.fillRect(left, top, size, size);
-    const overlaps = (x: number, y: number, r: number) => x + r > left && x - r < left + size && y + r > top && y - r < top + size;
 
-    g.globalCompositeOperation = "lighter";
+    // The soft light, with a pixel to spare all round so neighbouring tiles blend across their edges.
+    const half = k / 2;
+    const sp = Math.ceil(px / 2) + 2;
+    if (this.soft?.[0].width !== sp) this.soft = canvas(sp, sp, true);
+    const [sc, s] = this.soft;
+    const m = 1 / half;
+    s.setTransform(half, 0, 0, half, -(left - m) * half, -(top - m) * half);
+    s.globalCompositeOperation = "source-over";
+    s.globalAlpha = 1;
+    s.fillStyle = SPACE;
+    s.fillRect(left - m, top - m, size + 2 * m, size + 2 * m);
+    const near = (x: number, y: number, r: number) => x + r > left - m && x - r < left + size + m && y + r > top - m && y - r < top + size + m;
+    s.globalCompositeOperation = "lighter";
     // Huge, faint washes of color: the far depths.
     for (const [lx, ly, color] of WASHES) {
       const r = 900 * zoom;
       const x = lx * zoom;
       const y = ly * zoom;
-      if (!overlaps(x, y, r)) continue;
-      const grad = g.createRadialGradient(x, y, 0, x, y, r);
+      if (!near(x, y, r)) continue;
+      const grad = s.createRadialGradient(x, y, 0, x, y, r);
       grad.addColorStop(0, rgba(color, 0.2));
       grad.addColorStop(1, rgba(color, 0));
-      g.fillStyle = grad;
-      g.fillRect(left, top, size, size);
+      s.fillStyle = grad;
+      s.fillRect(left - m, top - m, size + 2 * m, size + 2 * m);
     }
+    // Nebulae. The cells around the middle always have some, so there's color the moment the bubble bursts.
+    this.layerCells(left, top, size, 1500, 1100, (ix, iy) => {
+      const rnd = cellRandom(ix, iy, 2);
+      const home = ix === 0 && iy === 0;
+      const neighbour = ix === -1 && iy === 0;
+      if (!home && !neighbour && rnd() > 0.55) return;
+      const sprite = this.nebulae[home ? 0 : neighbour ? 2 : Math.floor(rnd() * this.nebulae.length)];
+      const sz = (1000 + rnd() * 800) * zoom;
+      const x = ix * 1500 + (home ? 300 : neighbour ? 1100 : rnd() * 1500);
+      const y = iy * 1500 + (home ? 200 : neighbour ? -250 : rnd() * 1500);
+      // The sprite's soft circle fits inside sz / 2.
+      if (!near(x, y, sz / 2)) return;
+      s.save();
+      s.globalAlpha = 0.55 + rnd() * 0.35;
+      s.translate(x, y);
+      s.rotate(rnd() * Math.PI * 2);
+      s.drawImage(sprite, -sz / 2, -sz / 2, sz, sz);
+      s.restore();
+    });
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.imageSmoothingEnabled = true;
+    g.drawImage(sc, 1, 1, px / 2, px / 2, 0, 0, px, px);
 
+    g.setTransform(k, 0, 0, k, -left * k, -top * k);
+    const overlaps = (x: number, y: number, r: number) => x + r > left && x - r < left + size && y + r > top && y - r < top + size;
     // The faintest stars.
     if (!this.faint || this.faint.k !== k) {
       const tile = paintStars(this.reduced ? 300 : FAINT_STARS[0], FAINT_STARS[1], FAINT_STARS[2], FAINT_STARS[3], FAINT_STARS[4], Math.round(512 * k));
       this.faint = { k, pattern: g.createPattern(tile, "repeat")! };
     }
     this.faint.pattern.setTransform(new DOMMatrix([1 / k, 0, 0, 1 / k, 0, 0]));
-    g.globalCompositeOperation = "source-over";
     g.fillStyle = this.faint.pattern;
     g.fillRect(left, top, size, size);
 
@@ -822,36 +869,16 @@ export class Universe {
       const rnd = cellRandom(ix, iy, 1);
       if (!(ix === 0 && iy === -1) && rnd() > 0.32) return;
       const sprite = this.galaxies[Math.floor(rnd() * this.galaxies.length)];
-      const s = (120 + rnd() * 140) * zoom;
+      const sz = (120 + rnd() * 140) * zoom;
       const x = ix * 900 + rnd() * 900;
       const y = iy * 900 + rnd() * 900;
-      if (!overlaps(x, y, s / 2)) return;
+      if (!overlaps(x, y, sz / 2)) return;
       g.save();
       g.globalAlpha = 0.45 + rnd() * 0.4;
       g.translate(x, y);
       g.rotate(rnd() * Math.PI);
       g.scale(1, 0.38 + rnd() * 0.3);
-      g.drawImage(sprite, -s / 2, -s / 2, s, s);
-      g.restore();
-    });
-
-    // Nebulae. The cells around the middle always have some, so there's color the moment the bubble bursts.
-    this.layerCells(left, top, size, 1500, 1100, (ix, iy) => {
-      const rnd = cellRandom(ix, iy, 2);
-      const home = ix === 0 && iy === 0;
-      const neighbour = ix === -1 && iy === 0;
-      if (!home && !neighbour && rnd() > 0.55) return;
-      const sprite = this.nebulae[home ? 0 : neighbour ? 2 : Math.floor(rnd() * this.nebulae.length)];
-      const s = (1000 + rnd() * 800) * zoom;
-      const x = ix * 1500 + (home ? 300 : neighbour ? 1100 : rnd() * 1500);
-      const y = iy * 1500 + (home ? 200 : neighbour ? -250 : rnd() * 1500);
-      // The sprite's soft circle fits inside s / 2.
-      if (!overlaps(x, y, s / 2)) return;
-      g.save();
-      g.globalAlpha = 0.55 + rnd() * 0.35;
-      g.translate(x, y);
-      g.rotate(rnd() * Math.PI * 2);
-      g.drawImage(sprite, -s / 2, -s / 2, s, s);
+      g.drawImage(sprite, -sz / 2, -sz / 2, sz, sz);
       g.restore();
     });
     return c;

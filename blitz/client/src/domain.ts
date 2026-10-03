@@ -77,6 +77,15 @@ const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const now = () => performance.now() / 1000;
 const pick = <T>(list: readonly T[]): T => list[(Math.random() * list.length) | 0];
 const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+/** Runs `work` when the browser has a moment between frames (or, where it can't say, a little later with a few ms to use). */
+const whenIdle: (work: (deadline: IdleDeadline) => void) => void =
+  typeof requestIdleCallback === "function"
+    ? (work) => requestIdleCallback(work)
+    : (work) =>
+        setTimeout(() => {
+          const start = performance.now();
+          work({ didTimeout: false, timeRemaining: () => Math.max(0, 5 - (performance.now() - start)) });
+        }, 50);
 
 /** Particle speeds were tuned in pixels on a 250px domain; this turns them into domain units. */
 const PX = 1 / 250;
@@ -964,21 +973,37 @@ export class DomainView {
 
   /**
    * While the bubble sits quietly, open space's textures are painted ahead of
-   * time, one piece per spare frame, so bursting the bubble doesn't stall.
+   * time, so bursting the bubble doesn't stall: in the browser's idle time
+   * between frames, a piece at a time, and only when the piece fits.
    */
   private prewarmed = false;
-  private prewarmTurn = 0;
-  private workAvg = 16;
-  private prewarm(): void {
-    // Only with time to spare: frames keeping up with the screen and quick to make. One piece every third frame.
-    if (this.prewarmed || this.layoutOpen || this.trans || this.t < 3 || this.workAvg > 6 || this.frameAvg > 18 || this.prewarmTurn++ % 3 !== 0) return;
+  private idleAsked = false;
+
+  private askIdle(): void {
+    if (this.idleAsked || this.prewarmed || this.layoutOpen) return;
+    this.idleAsked = true;
+    whenIdle((deadline) => this.idle(deadline));
+  }
+
+  private idle(deadline: IdleDeadline): void {
+    this.idleAsked = false;
+    if (this.prewarmed || this.layoutOpen || this.trans || this.t < 3) return;
+    const view = this.burstView();
+    for (;;) {
+      // A millisecond to spare, so a piece that runs a little long still doesn't hold up the next frame.
+      const state = this.universe.prewarm(view.W, view.H, view.cam, deadline.timeRemaining() - 1);
+      if (state === "done") this.prewarmed = true;
+      if (state !== "more") return;
+    }
+  }
+
+  /** Open space as the burst begins: the full window, the camera centred above the message box, on the middle of the bubble. */
+  private burstView(): { W: number; H: number; cam: Cam } {
     const inset = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--top-inset")) || 0;
     const W = window.innerWidth;
     const H = Math.max(1, window.innerHeight - inset);
     const availH = Math.max(120, H - HUD_TOP - HUD_BOTTOM);
-    // Open space's camera as the burst begins: centred above the message box, on the middle of the bubble.
-    const cam: Cam = { x: W / 2, y: HUD_TOP + availH / 2, s: this.cam.s, fx: 0, fy: 0 };
-    if (!this.universe.prewarm(W, H, cam)) this.prewarmed = true;
+    return { W, H, cam: { x: W / 2, y: HUD_TOP + availH / 2, s: this.cam.s, fx: 0, fy: 0 } };
   }
 
   private frame(ms: number): void {
@@ -1009,9 +1034,7 @@ export class DomainView {
       this.ctx.reset();
       throw err;
     }
-    // How long a frame's own work takes (not the gap between frames, which the screen's refresh sets).
-    this.workAvg += (performance.now() - ms - this.workAvg) * 0.1;
-    this.prewarm();
+    this.askIdle();
   }
 
   private holdTarget(): Point | undefined {
