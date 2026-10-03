@@ -49,5 +49,5 @@ Staff are the community owner, roles that can manage the community, kick or ban,
 
 ## Automatic
 
-- **Auto-mod** (never touches staff; switch it off in Blitz's settings): removes messages with more than 8 mentions, more than 7 messages in 8 seconds, the same text 4 times in 30 seconds, or anything on the blocked-words list in `config.ts`. The person sees a short note that disappears after 10 seconds, it's noted in the staff log, and staff roles get pinged after 3 removals in 10 minutes.
+- **Auto-mod** (never touches staff; tick "Turn off auto-mod" in Blitz's settings): removes messages with more than 8 mentions, more than 7 messages in 8 seconds, the same text 4 times in 30 seconds, or anything on the blocked-words list in `config.ts`. The person sees a short note that disappears after 10 seconds, it's noted in the staff log, and staff roles get pinged after 3 removals in 10 minutes.
 - **Joins and leaves** are noted in the staff log.

@@ -110,23 +110,23 @@
         "title": "Features",
         "items": [
           {
-            "key": "levels",
-            "title": "Levels",
-            "description": "Members earn XP for chatting and level up.",
+            "key": "levelsOff",
+            "title": "Turn off levels",
+            "description": "Tick to stop Blitz handing out XP and level-ups. Levels are on while this is unticked.",
             "required": false,
             "confirmation": "Save",
             "checkbox": {
-              "defaultValue": true
+              "defaultValue": false
             }
           },
           {
-            "key": "automod",
-            "title": "Auto-mod",
-            "description": "Removes floods, copy-paste spam and mass mentions.",
+            "key": "automodOff",
+            "title": "Turn off auto-mod",
+            "description": "Tick to stop Blitz removing floods, copy-paste spam and mass mentions. Auto-mod is on while this is unticked.",
             "required": false,
             "confirmation": "Save",
             "checkbox": {
-              "defaultValue": true
+              "defaultValue": false
             }
           },
           {

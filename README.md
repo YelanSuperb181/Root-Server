@@ -34,7 +34,7 @@ Install Blitz, then open its **App settings** in Root. Everything is optional:
 | Role for new members | Given to everyone who joins. |
 | Birthday role | Worn for the day on someone's birthday. |
 | Staff | Who can use staff commands. The owner, and roles that can manage the community, kick or ban, always can. |
-| Levels, Auto-mod | Switch them off if you'd rather not have them. |
+| Turn off levels, Turn off auto-mod | Tick them if you'd rather not have levels or auto-mod. |
 | Reactions for the quote wall | How many 🗣️ a message needs. |
 | Anthropic API key, About this community | Blitz's brain (see below), and a sentence or two that tells it what your community is like. |
 

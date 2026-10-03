@@ -76,7 +76,7 @@ After uploading, the Developer Portal shows the version as ready to publish. Roo
    | Role for new members | Given to everyone who joins |
    | Birthday role | Worn for the day on someone's birthday |
    | Staff | Who can use staff commands, besides the owner and roles that can manage the community, kick or ban |
-   | Levels, Auto-mod | On unless you switch them off |
+   | Turn off levels, Turn off auto-mod | Both are on until you tick these |
    | Reactions for the quote wall | How many 🗣️ a message needs (2 by default) |
 
    For the roles: Blitz can only hand out roles below its own in **Settings → Roles**.

@@ -69,10 +69,13 @@ export const settings = {
     return memberGroup("roles", "staff")?.communityRoleIds ?? [];
   },
 
-  /** A feature switch; `fallback` until an admin changes it. */
-  on(key: "levels" | "automod", fallback = true): boolean {
-    const value = raw("features", key);
-    return typeof value === "boolean" ? value : fallback;
+  /**
+   * Whether a feature is on. Root sends an untouched checkbox as unticked
+   * (whatever its default says), so the settings are "Turn off …" boxes:
+   * the feature stays on until an admin ticks one.
+   */
+  on(key: "levels" | "automod"): boolean {
+    return raw("features", `${key}Off`) !== true;
   },
 
   /** A whole number setting, kept within bounds. (While testing it arrives as text; see dev-manifest.js.) */
