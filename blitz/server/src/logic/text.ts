@@ -95,3 +95,25 @@ export function pick<T>(items: readonly T[], random: () => number = Math.random)
   if (items.length === 0) throw new Error("pick() needs at least one item");
   return items[Math.min(items.length - 1, Math.floor(random() * items.length))];
 }
+
+/**
+ * People whose name matches `query`, best first: names that start with it,
+ * then words in the name that start with it, then names that contain it,
+ * alphabetically within each. At most `limit` of them.
+ */
+export function rankByName<T extends { name: string }>(query: string, items: readonly T[], limit: number): T[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  const score = (name: string) => {
+    const n = name.toLowerCase();
+    if (n.startsWith(q)) return 0;
+    if (n.split(/[\s_.-]+/).some((w) => w.startsWith(q))) return 1;
+    return n.includes(q) ? 2 : 3;
+  };
+  return items
+    .map((item) => ({ item, s: score(item.name) }))
+    .filter((e) => e.s < 3)
+    .sort((a, b) => a.s - b.s || a.item.name.localeCompare(b.item.name))
+    .slice(0, limit)
+    .map((e) => e.item);
+}

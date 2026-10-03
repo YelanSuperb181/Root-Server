@@ -48,6 +48,7 @@ import { initBrain, refreshFacts } from "./domain/brain";
 import { hearChat } from "./domain/chat";
 import { domainCommands, domainFooter } from "./domain/commands";
 import { domainService, initDomain } from "./domain/domain";
+import { menuService } from "./domain/menu";
 
 /** The command a message starts with ("!help"), if it starts with the prefix. */
 function commandWord(content: string | undefined): string | undefined {
@@ -188,6 +189,7 @@ async function onStarting(state: RootAppStartState): Promise<void> {
 
   // The domain: the App's own channel, where Blitz floats around.
   rootServer.lifecycle.addService(domainService);
+  rootServer.lifecycle.addService(menuService);
   await initDomain(state.channelId);
   const facts = await communityFacts();
   initBrain(facts, state.globalSettings);

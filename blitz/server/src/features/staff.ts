@@ -27,11 +27,12 @@ export const staffCommands: Command[] = [
     summary: "Post an announcement here or in another channel.",
     level: "mod",
     category: "Staff",
+    menu: "channel",
     async run(ctx) {
       const { channelId, text } = channelAndText(ctx.rest);
       if (!text) throw new UsageError(`Usage: \`${config.prefix}announce #news We hit 100 members! 🎉\``);
       await send(channelId ?? ctx.channelId, `📣 **Announcement**\n\n${text}\n\n_— ${await nickname(ctx.userId)}_`);
-      if (channelId) await ctx.reply("✅ Announced!");
+      if (channelId || ctx.from === "menu") await ctx.reply("✅ Announced!");
     },
   },
   {
@@ -40,11 +41,12 @@ export const staffCommands: Command[] = [
     summary: "Post an event here or in another channel.",
     level: "mod",
     category: "Staff",
+    menu: "channel",
     async run(ctx) {
       const { channelId, text } = channelAndText(ctx.rest);
       if (!text) throw new UsageError(`Usage: \`${config.prefix}event #events Game night Friday 8pm UTC 🎮\``);
       await send(channelId ?? ctx.channelId, `📅 **New event!**\n\n${text}\n\n_— ${await nickname(ctx.userId)}_`);
-      if (channelId) await ctx.reply("✅ Event posted!");
+      if (channelId || ctx.from === "menu") await ctx.reply("✅ Event posted!");
     },
   },
   {
@@ -53,12 +55,14 @@ export const staffCommands: Command[] = [
     summary: `Post a message as ${config.botName}.`,
     level: "mod",
     category: "Staff",
+    menu: "channel",
     async run(ctx) {
       const target = mentionedChannelIds(ctx.rest)[0];
       const text = ctx.rest.replace(/^\s*\[#[^\]]*\]\(root:\/\/channel\/[^)\s]+\)\s*/, "").trim();
       if (!text) throw new UsageError(`Usage: \`${config.prefix}say #general Hello everyone!\``);
       await send(target ?? ctx.channelId, text);
-      if (!target) await remove(ctx.channelId, ctx.messageId).catch(() => undefined);
+      if (!target && ctx.from === "chat") await remove(ctx.channelId, ctx.messageId).catch(() => undefined);
+      if (ctx.from === "menu") await ctx.reply("✅ Posted!");
     },
   },
   {
@@ -68,6 +72,7 @@ export const staffCommands: Command[] = [
     summary: "Delete the last messages in this channel.",
     level: "mod",
     category: "Staff",
+    menu: "no",
     async run(ctx) {
       const count = Number(ctx.args[0]);
       if (!Number.isInteger(count) || count < 1 || count > 49) throw new UsageError(`Usage: \`${config.prefix}clear 10\` (1-49 messages).`);

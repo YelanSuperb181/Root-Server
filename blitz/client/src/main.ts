@@ -1,7 +1,11 @@
 // Blitz's domain: the App's client, shown in its own Root channel.
 
 import { DomainView } from "./domain";
-import { serverBrain } from "./net";
+import { demoMenu, serverMenu } from "./menu/api";
+import { DreamMenu } from "./menu/dream";
+import { Menu } from "./menu/menu";
+import { MenuPanel } from "./menu/panel";
+import { insideRoot, serverBrain } from "./net";
 import { viewerBrain } from "./sample";
 
 const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -33,24 +37,46 @@ function main(): void {
     });
   }
 
-  // Talking to Blitz.
+  // The menu: everything Blitz can do here, beside the bubble; out in open space, Blitz summons it.
+  // Outside Root (or with ?demo) it shows a made-up community.
+  const demo = !insideRoot() || new URLSearchParams(location.search).has("demo");
+  const menu = new Menu(demo ? demoMenu() : serverMenu());
+  menu.onReply = (reply) => view.react(reply.text, reply.ok);
+  const panel = new MenuPanel(menu);
+  const dream = new DreamMenu(menu, view, byId("domain"));
+
+  // Talking to Blitz. Asking for the menu brings it up.
   const form = byId<HTMLFormElement>("say");
   const input = byId<HTMLInputElement>("say-input");
   form.addEventListener("submit", (e) => {
     e.preventDefault();
-    void view.say(input.value);
+    if (/^\s*(?:(?:open|show|summon)(?: me)? (?:the |your )?)?(?:menu|options)\s*[.!?]*\s*$/i.test(input.value)) {
+      if (view.isOpen) dream.summon();
+      else {
+        panel.open("you");
+        panel.el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+    } else void view.say(input.value);
     input.value = "";
   });
 
   // The bubble bursts into the whole window, and into fullscreen when the
   // browser (and Root's frame) allow it. Sealing it brings the window back.
   const seal = byId<HTMLButtonElement>("seal");
+  const summon = byId<HTMLButtonElement>("summon");
   const canFullscreen = document.fullscreenEnabled;
   const enterFullscreen = () => document.documentElement.requestFullscreen().catch(() => undefined);
   const syncButtons = () => {
     seal.hidden = !view.isOpen;
+    summon.hidden = !view.isOpen;
+  };
+  summon.addEventListener("click", () => dream.toggle());
+  dream.onToggle = (open) => {
+    summon.setAttribute("aria-pressed", String(open));
+    summon.textContent = open ? "✦ Close menu" : "✦ Summon menu";
   };
   view.onOpenChange = (open) => {
+    if (!open) dream.close();
     syncButtons();
     if (open && canFullscreen) {
       // Only works while the press that burst the bubble still counts as a fresh gesture.
@@ -61,7 +87,9 @@ function main(): void {
   };
   // Leave fullscreen before the universe folds back into the bubble, so the bubble lands in the right place.
   view.beforeReform = async () => {
+    dream.close();
     seal.hidden = true;
+    summon.hidden = true;
     if (!document.fullscreenElement) return;
     await document.exitFullscreen().catch(() => undefined);
     await new Promise((resolve) => setTimeout(resolve, 60));
@@ -74,6 +102,14 @@ function main(): void {
   fitUnderToolbar();
   new MutationObserver(fitUnderToolbar).observe(document.head, { childList: true });
   new MutationObserver(fitUnderToolbar).observe(document.body, { attributes: true, attributeFilter: ["style", "class"] });
+
+  const stage = document.querySelector(".stage")!;
+  const win = document.querySelector<HTMLElement>(".window")!;
+  stage.classList.add("with-menu");
+  stage.insertBefore(panel.el, win);
+  // Side by side, the menu is as tall as the bubble's window.
+  new ResizeObserver(() => document.documentElement.style.setProperty("--menu-h", `${win.offsetHeight}px`)).observe(win);
+  void menu.load();
 
   view.start();
   syncButtons();

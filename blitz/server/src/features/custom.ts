@@ -48,9 +48,9 @@ export async function initCustom(onChange: () => void): Promise<void> {
   });
 }
 
-/** The community's commands, for !help and the brain. */
-export function customCommands(): Array<{ name: string; response: string }> {
-  return [...customs.values()].sort((a, b) => a.name.localeCompare(b.name)).map((c) => ({ name: c.name, response: c.response }));
+/** The community's commands (and how often each was used), for !help, the brain and the menu. */
+export function customCommands(): Array<{ name: string; response: string; uses: number }> {
+  return [...customs.values()].sort((a, b) => a.name.localeCompare(b.name)).map((c) => ({ name: c.name, response: c.response, uses: c.uses }));
 }
 
 function nameFrom(input: string | undefined): string {

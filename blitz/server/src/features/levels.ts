@@ -58,6 +58,37 @@ async function onLevelUp(userId: string, channelId: string, level: number): Prom
   }
 }
 
+/** How levels work, for the menu. */
+export function levelRules(): string {
+  return `You earn ${config.levels.minXp}-${config.levels.maxXp} XP for chatting, at most once every ${config.levels.cooldownSeconds} seconds, so quality beats spam. Level 5 takes ${formatNumber(totalXpForLevel(5))} XP, level 10 takes ${formatNumber(totalXpForLevel(10))}.`;
+}
+
+/** Someone's level card and the top of the leaderboard (with names), for the menu. */
+export async function levelsFor(userId: string, topCount: number): Promise<{
+  level: number;
+  xp: number;
+  into: number;
+  needed: number;
+  messages: number;
+  place: number;
+  top: Array<{ userId: string; name: string; level: number; xp: number }>;
+}> {
+  const record = (await kv.get<XpRecord>(xpKey(userId))) ?? EMPTY_XP;
+  const progress = levelFromXp(record.xp);
+  const board = await leaderboard();
+  const top = board.slice(0, topCount);
+  const names = await nicknames(top.map((e) => e.userId));
+  return {
+    level: progress.level,
+    xp: record.xp,
+    into: progress.into,
+    needed: progress.needed,
+    messages: record.messages,
+    place: board.findIndex((e) => e.userId === userId) + 1,
+    top: top.map((e) => ({ userId: e.userId, name: names.get(e.userId) ?? "someone", level: levelFromXp(e.xp).level, xp: e.xp })),
+  };
+}
+
 async function leaderboard(): Promise<Array<{ userId: string; xp: number }>> {
   const present = new Set(knownPeople());
   const entries = (await kv.entries<XpRecord>("xp:"))

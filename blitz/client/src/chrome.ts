@@ -9,6 +9,8 @@ export interface ChromeRects {
   window: DOMRect;
   bar: DOMRect;
   say: DOMRect;
+  /** The menu beside the bubble, if it's showing. */
+  menu?: DOMRect;
 }
 
 const el = (selector: string) => document.querySelector(selector) as HTMLElement | null;
@@ -18,7 +20,26 @@ export function measureChrome(): ChromeRects | undefined {
   const bar = el(".bar");
   const say = el(".say");
   if (!w || !bar || !say) return undefined;
-  return { window: w.getBoundingClientRect(), bar: bar.getBoundingClientRect(), say: say.getBoundingClientRect() };
+  const menu = el(".menu-panel");
+  return { window: w.getBoundingClientRect(), bar: bar.getBoundingClientRect(), say: say.getBoundingClientRect(), menu: menu?.offsetParent ? menu.getBoundingClientRect() : undefined };
+}
+
+/** A glass panel's outline breaking away outward from where `rect` was. */
+function breakAway(rect: DOMRect): void {
+  const ghost = document.createElement("div");
+  ghost.className = "ghost-window";
+  Object.assign(ghost.style, { left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px` });
+  document.body.append(ghost);
+  ghost
+    .animate(
+      // Scale and fade only: animating a blur this big costs a lot every frame.
+      [
+        { transform: "scale(1)", opacity: 1 },
+        { transform: "scale(1.22)", opacity: 0 },
+      ],
+      { duration: 750, easing: "cubic-bezier(.1, .7, .3, 1)", fill: "forwards" },
+    )
+    .finished.finally(() => ghost.remove());
 }
 
 /** Moves `node` from where it was (`from`) to where it is now, smoothly. */
@@ -40,25 +61,8 @@ function slideFrom(node: HTMLElement | null, from: DOMRect, delay: number, durat
 export function chromeBurst(before: ChromeRects | undefined): void {
   if (!before) return;
   if (!reduced) {
-    const ghost = document.createElement("div");
-    ghost.className = "ghost-window";
-    Object.assign(ghost.style, {
-      left: `${before.window.left}px`,
-      top: `${before.window.top}px`,
-      width: `${before.window.width}px`,
-      height: `${before.window.height}px`,
-    });
-    document.body.append(ghost);
-    ghost
-      .animate(
-        // Scale and fade only: animating a blur this big costs a lot every frame.
-        [
-          { transform: "scale(1)", opacity: 1 },
-          { transform: "scale(1.22)", opacity: 0 },
-        ],
-        { duration: 750, easing: "cubic-bezier(.1, .7, .3, 1)", fill: "forwards" },
-      )
-      .finished.finally(() => ghost.remove());
+    breakAway(before.window);
+    if (before.menu) breakAway(before.menu);
   }
   slideFrom(el(".bar"), before.bar, 120, 900);
   slideFrom(el(".say"), before.say, 200, 900);
@@ -79,6 +83,7 @@ export function chromeReform(before: ChromeRects | undefined): void {
       { duration: 700, easing: glide },
     );
     el(".hints")?.animate([{ opacity: 0, transform: "translateY(8px)" }, {}], { duration: 600, delay: 150, easing: glide, fill: "backwards" });
+    el(".menu-panel")?.animate([{ opacity: 0, transform: "translateX(-18px) scale(0.98)" }, {}], { duration: 650, delay: 120, easing: glide, fill: "backwards" });
   }
   if (!before) return;
   slideFrom(el(".bar"), before.bar, 0, 750);

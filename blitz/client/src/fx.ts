@@ -430,6 +430,11 @@ export class Shatter {
     }
   }
 
+  /** A ring of light spreading out from (x, y) px: Blitz summoning something. */
+  ring(x: number, y: number, t: number): void {
+    this.shocks.push({ x, y, born: t, speed: 1300, width: 4, color: [200, 168, 255] });
+  }
+
   flash(t: number, power: number): void {
     this.flashAt = t;
     this.flashPower = power;

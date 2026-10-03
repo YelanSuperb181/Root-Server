@@ -15,6 +15,15 @@ async function pickable(): Promise<NamedRole[]> {
   return (await communityRoles()).filter((r) => ids.has(r.id)).map((r) => ({ id: r.id, name: r.name }));
 }
 
+/** The roles someone can pick, their colors, and whether they have each, for the menu. */
+export async function roleChoices(userId: string): Promise<Array<{ id: string; name: string; color: string; mine: boolean }>> {
+  const ids = new Set<string>(settings.selfRoles());
+  if (ids.size === 0) return [];
+  return (await communityRoles())
+    .filter((r) => ids.has(r.id))
+    .map((r) => ({ id: r.id, name: r.name, color: r.colorHex ?? "", mine: hasRole(userId, r.id) }));
+}
+
 const NONE = `This community hasn't picked any roles for people to choose yet (it's in ${config.botName}'s settings).`;
 
 export const selfRoleCommands: Command[] = [

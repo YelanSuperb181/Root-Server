@@ -10,6 +10,7 @@ import {
   pick,
   progressBar,
   quote,
+  rankByName,
   roleMention,
   truncate,
   userMention,
@@ -65,4 +66,15 @@ test("emojiKey normalizes Root's reaction shortcodes", () => {
   assert.ok(isEmoji(":thumbsup:", E.thumbsUp));
   assert.ok(isEmoji(":+1:", E.thumbsUp));
   assert.ok(!isEmoji(":star2:", E.star));
+});
+
+test("member search puts names that start with the query first", () => {
+  const people = [{ name: "Zoe Moon" }, { name: "moonbeam" }, { name: "Harmony" }, { name: "Alex" }, { name: "Simone" }];
+  assert.deepEqual(
+    rankByName("mo", people, 10).map((p) => p.name),
+    ["moonbeam", "Zoe Moon", "Harmony", "Simone"],
+  );
+  assert.deepEqual(rankByName("MOON", people, 1).map((p) => p.name), ["moonbeam"]);
+  assert.deepEqual(rankByName("  ", people, 10), []);
+  assert.deepEqual(rankByName("xyz", people, 10), []);
 });

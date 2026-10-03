@@ -1,6 +1,6 @@
 // Reminders: "!remind 2h take the pizza out" and Blitz pings you back in the
-// same channel (plus a notification) when it's time. They're saved, so a
-// restart doesn't lose them.
+// same channel (plus a notification) when it's time; set from Blitz's menu,
+// just the notification. They're saved, so a restart doesn't lose them.
 
 import { config } from "../config";
 import { Command, UsageError } from "../core/commands";
@@ -43,13 +43,20 @@ async function deliver(id: number): Promise<void> {
     await kv.delete(key(id));
     const late = Date.now() - r.at > 5 * 60_000 ? " _(a little late, sorry!)_" : "";
     const text = `⏰ ${userMention(await nickname(r.userId), r.userId)}, you asked me to remind you: ${r.text}${late}`;
-    try {
-      await send(r.channelId, text, r.messageId).catch(() => send(r.channelId, text));
-    } catch (err) {
-      log("warn", "couldn't deliver a reminder", { error: errMessage(err) });
+    if (r.channelId) {
+      try {
+        await send(r.channelId, text, r.messageId || undefined).catch(() => send(r.channelId, text));
+      } catch (err) {
+        log("warn", "couldn't deliver a reminder", { error: errMessage(err) });
+      }
     }
     await notify([r.userId], "⏰ Reminder", r.text);
   });
+}
+
+/** Someone's upcoming reminders, soonest first, for the menu. */
+export async function remindersOf(userId: string): Promise<Array<{ id: number; text: string; at: number }>> {
+  return (await mine(userId)).map((r) => ({ id: r.id, text: r.text, at: r.at }));
 }
 
 async function mine(userId: string): Promise<Reminder[]> {
@@ -83,7 +90,8 @@ export const reminderCommands: Command[] = [
       };
       await kv.set(key(id), reminder);
       await scheduleOnce(JOB_TAG, resource(id), new Date(reminder.at));
-      await ctx.reply(`⏰ Got it! I'll remind you in ${formatDuration(timed.ms)}. _(reminder ${id})_`);
+      const how = ctx.from === "menu" ? " with a notification" : "";
+      await ctx.reply(`⏰ Got it! I'll remind you in ${formatDuration(timed.ms)}${how}. _(reminder ${id})_`);
     },
   },
   {

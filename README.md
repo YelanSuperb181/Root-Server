@@ -9,6 +9,7 @@ It doesn't come with a server template and never creates channels or roles. It f
 | | |
 | --- | --- |
 | 🔮 **Its domain** | Blitz's own channel: a round, glowing bubble where it floats, zooms around and does tricks. Drag it, fling it, slam it, poke it, or pin it to the wall until the bubble shatters and opens into an endless universe full of drifting space rocks to fling it into. Everyone who opens the domain gets their own Blitz, just for them. |
+| 🧭 **Its menu** | Everything Blitz can do, without typing a single command: next to the domain sits a menu where anyone can check their level and the leaderboard, pick roles, set reminders and their birthday, suggest ideas, report someone or browse every command, and the team gets moderation (find a member, see their history, warn, mute, kick, ban, lift bans), posting and setup. In open space Blitz summons the menu itself. |
 | 💬 **Talk to it** | Say "blitz" in any chat (or @mention it, or reply to it) and Blitz answers: with Claude as its brain it reads the conversation, replies in its own voice, reacts with an emoji, and acts out how it feels in the domain while everyone watches. |
 | ✨ **Levels** | XP for chatting (once a minute, so spam doesn't count), `!rank` and `!top`. Level-ups are announced where they happen, or in a channel you pick. |
 | 🗣️ **Quote wall** | Pick a quote wall channel, and anything that gets 🗣️ reactions (2 by default, not counting whoever said it) is saved there with a live count. `!quote` pulls a random one back up. |
@@ -64,7 +65,9 @@ Type `!blitz` anywhere and Blitz replies with a link into its domain. Inside:
 - **Hold it against the wall… if you dare.** The wall bulges, cracks spread from where Blitz is pressing, and Blitz strains and sweats. Let go and the cracks slowly heal. Keep pushing for a couple of seconds and the bubble shatters: everything slows for a heartbeat, glass flies, the window breaks away and the universe opens out from where the bubble was, filling the screen (fullscreen, where Root allows it).
 - **Out in the universe** there are no walls: deep space in layers that slide past as the camera follows Blitz (nebulae, galaxies, a ringed planet, shooting stars it turns to watch). Fling Blitz and it streaks off with the stars blurring behind it, then settles wherever it lands; carry it to the edge of the screen to travel.
 - **Space rocks** drift and tumble everywhere out there, lit by Blitz's glow as it passes, a few glittering with crystal. Fling Blitz into one and it bonks off with a puff of dust and chips ("BONK").
-- **Seal the bubble** (the only button up top out in space) folds the universe back in and the window gathers around it; it also re-forms on its own after two quiet minutes.
+- **The menu** sits beside the domain (below it on narrow screens): pick a section on the left, and Blitz answers whatever you do there with a little speech bubble in the domain. People only see what they're allowed to use; the team's tools have their own group.
+- **Summon the menu** out in space with the ✦ button up top (or just type "menu"): Blitz lights up, rings out light, and the sections bloom out of it as glowing cards that hang in the dark around it, drifting like something half-remembered from a dream. Pick one and it unfolds into a floating page with Blitz hovering beside it, watching; send it away and it dissolves back into Blitz in a stream of light.
+- **Seal the bubble** (up top out in space) folds the universe back in and the window gathers around it; it also re-forms on its own after two quiet minutes.
 - Leave it alone and it does tricks on its own: loop-de-loops, spins, hops, zooming laps, the odd heart drawn in the air. After a while it dozes off. Any touch wakes it.
 
 ### Talking to Blitz
@@ -134,6 +137,7 @@ blitz/
 ├── configure.js                asks for the App ID and DEV_TOKEN and saves them in server/.env (npm run configure)
 ├── dev-manifest.js             works around Root's dev host dropping Blitz's permissions (npm run server)
 ├── networking/src/domain.proto the domain's live messages (grab, drag, throw, poke, state)
+├── networking/src/menu.proto   the menu's requests (what's on it, run a command, find a member)
 ├── shared/src/                 run identically by the server and every window:
 │   ├── physics.ts              Blitz's physics, the wall cracking, the burst and open space
 │   ├── rocks.ts                the space rocks: where they are and how they drift
@@ -143,7 +147,7 @@ blitz/
 ├── server/                     the App's server: everything that happens in chat, plus Blitz's brain
 │   ├── src/
 │   │   ├── config.ts           ⭐ defaults for every community
-│   │   ├── domain/             Blitz's brain (Claude), its memory, chat answers, domain thoughts and !blitz
+│   │   ├── domain/             Blitz's brain (Claude), its memory, chat answers, domain thoughts, !blitz and the menu's service
 │   │   ├── content/            Blitz's welcome, level-up and birthday lines, 8-ball answers
 │   │   ├── core/               rate-limited API calls, commands, storage, jobs, each community's settings
 │   │   ├── features/           welcome, quote wall, levels, birthdays, polls, auto-mod, staff, fun, !help and !settings
@@ -151,6 +155,7 @@ blitz/
 │   │   └── main.ts             wiring
 │   └── test/                   unit tests (node:test)
 └── client/                     the domain window, shown in Blitz's channel: faces, effects, cracks, the shatter, the universe and its rocks
+    └── src/menu/               the menu: the panel beside the domain and the dream menu Blitz summons in space
 docs/                           setup guide, commands, customizing
 ```
 

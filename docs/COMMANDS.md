@@ -4,6 +4,8 @@ Commands start with `!` (change it with `prefix` in [`config.ts`](../blitz/serve
 
 When someone uses one of the commands for everyone (the community's own included), Blitz's reply ends with a 🔮 link into its domain. Not in private channels or the staff logs, not for `!report`, `!warnings` or reminders, and not when the community ticks **Turn off domain links** in Blitz's settings.
 
+Every command can also be run from **Blitz's menu**, beside its domain, with the same rules about who can use what. Commands that post into a channel (`!announce`, `!event`, `!poll`, `!say`) ask which channel there; `!clear` only works in chat, since it clears the channel it's typed in.
+
 ## For everyone
 
 | Command | What it does |

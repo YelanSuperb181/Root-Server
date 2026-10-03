@@ -4,3 +4,4 @@ export * from "./rocks";
 export * from "./physics";
 export * from "./mood";
 export * from "./brain";
+export * from "./richtext";

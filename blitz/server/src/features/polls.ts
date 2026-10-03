@@ -58,6 +58,7 @@ export const pollCommands: Command[] = [
     summary: "Start a reaction poll. Leave out the options for yes/no; add a time like 30m or 2d to auto-close.",
     level: "everyone",
     category: "Community",
+    menu: "channel",
     async run(ctx) {
       const input = parsePoll(ctx.rest);
       if (typeof input === "string") throw new UsageError(input);
@@ -80,6 +81,7 @@ export const pollCommands: Command[] = [
       await kv.set(pollKey(id), poll);
       for (const e of pollEmojis(poll.options)) await react(ctx.channelId, msg.id, e);
       if (poll.closesAt !== undefined) await scheduleOnce(JOB_TAG, jobResource(id), new Date(poll.closesAt));
+      if (ctx.from === "menu") await ctx.reply(`📊 Poll #${id} is up!`);
     },
   },
   {

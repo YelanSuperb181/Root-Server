@@ -5,7 +5,7 @@
 import { config } from "../config";
 import { Command, UsageError } from "../core/commands";
 import { nickname } from "../core/members";
-import { messageLink, modLog, notify, remove, sendEphemeral } from "../core/messaging";
+import { messageLink, modLog, notify, remove } from "../core/messaging";
 import { channelLink, settings, staffPing } from "../core/settings";
 import { parseTarget } from "../logic/moderation";
 import { defuseMentions, quote, truncate, userMention } from "../logic/text";
@@ -27,22 +27,22 @@ export const reportCommands: Command[] = [
       if (!what && !parent) throw new UsageError(`Usage: \`${config.prefix}report @someone keeps sending scam links\`, or reply to the message with \`${config.prefix}report\`.`);
 
       // Take the report out of the chat first, so it stays between them and the team.
-      await remove(ctx.channelId, ctx.messageId).catch(() => undefined);
+      if (ctx.from === "chat") await remove(ctx.channelId, ctx.messageId).catch(() => undefined);
       const me = userMention(await nickname(ctx.userId), ctx.userId);
 
       const now = Date.now();
       if (now - (lastReport.get(ctx.userId) ?? 0) < COOLDOWN_MS) {
-        sendEphemeral(ctx.channelId, `🕐 ${me}, the team already has your last report. Give them a couple of minutes.`);
+        await ctx.notice(`🕐 ${me}, the team already has your last report. Give them a couple of minutes.`);
         return;
       }
       if (!settings.channel("log")) {
-        sendEphemeral(ctx.channelId, `${me}, this community hasn't set up a staff log for ${config.botName} yet, so please message someone on the team directly.`, 15_000);
+        await ctx.notice(`${me}, this community hasn't set up a staff log for ${config.botName} yet, so please message someone on the team directly.`, 15_000);
         return;
       }
       lastReport.set(ctx.userId, now);
 
       const aboutId = named?.userId ?? parent?.userId;
-      const where = await channelLink(ctx.channelId);
+      const where = ctx.from === "menu" ? `${config.botName}'s menu` : await channelLink(ctx.channelId);
       const lines = [`🚩 **Report** from ${me} in ${where}`];
       if (aboutId) lines.push(`About: ${userMention(await nickname(aboutId), aboutId)}`);
       if (what) lines.push(quote(truncate(defuseMentions(what), 1000)));
@@ -55,7 +55,7 @@ export const reportCommands: Command[] = [
       if (ping) lines.push(ping);
       await modLog(lines.join("\n"));
       await notify([], "🚩 New report", `${await nickname(ctx.userId)} reported a problem. It's in the staff log.`, settings.staffRoles());
-      sendEphemeral(ctx.channelId, `🚩 Thanks ${me}, the team has been told.`);
+      await ctx.notice(`🚩 Thanks ${me}, the team has been told.`);
     },
   },
 ];

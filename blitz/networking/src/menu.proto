@@ -1,0 +1,199 @@
+// Blitz's menu: everything Blitz can do in the community, laid out in its
+// domain for people to browse and use (and for the team, the staff tools).
+// The window asks for an overview to draw the menu from; actions run Blitz's
+// own commands, with the same checks as in chat, and their replies come back
+// here instead of being posted in a channel.
+
+syntax = "proto3";
+
+message MenuRequest {}
+
+message MenuOverview {
+  string user_id = 1;
+  // What the person may do: everyone, mod or admin.
+  string access = 2;
+  string community = 3;
+  // What the community's admins wrote about it in Blitz's settings.
+  string about = 4;
+  int32 members = 5;
+  LevelsInfo levels = 6;
+  // Roles people can give themselves.
+  repeated RoleChoice roles = 7;
+  repeated ReminderInfo reminders = 8;
+  BirthdayInfo birthday = 9;
+  // Blitz's commands the person may use, and the community's own.
+  repeated CommandInfo commands = 10;
+  repeated CustomCommandInfo customs = 11;
+  // Whether there's a suggestions channel, and a staff log for reports.
+  bool suggestions_on = 12;
+  bool reports_on = 13;
+  // The latest suggestions.
+  repeated SuggestionInfo suggestions = 14;
+  int32 my_warnings = 15;
+  // The team only: who's banned, and the channels they can post in.
+  repeated BanInfo bans = 16;
+  repeated ChannelInfo channels = 17;
+  // The person's name in the community.
+  string name = 18;
+}
+
+message LevelsInfo {
+  bool on = 1;
+  int32 level = 2;
+  int32 xp = 3;
+  // XP into this level, and needed for the next.
+  int32 into = 4;
+  int32 needed = 5;
+  int32 messages = 6;
+  // Leaderboard spot, 0 when not on it.
+  int32 place = 7;
+  repeated LeaderLine top = 8;
+  // How levels work, in a sentence or two.
+  string how = 9;
+}
+
+message LeaderLine {
+  string user_id = 1;
+  string name = 2;
+  int32 level = 3;
+  int32 xp = 4;
+}
+
+message RoleChoice {
+  string id = 1;
+  string name = 2;
+  // "#rrggbb", or empty.
+  string color = 3;
+  bool mine = 4;
+}
+
+message ReminderInfo {
+  int32 id = 1;
+  string text = 2;
+  // When it's due, in milliseconds since 1970.
+  double at = 3;
+}
+
+message BirthdayInfo {
+  // Whether there's a birthday channel (shout-outs are on).
+  bool on = 1;
+  // The person's saved birthday; 0 when none.
+  int32 month = 2;
+  int32 day = 3;
+  repeated BirthdayLine upcoming = 4;
+}
+
+message BirthdayLine {
+  string user_id = 1;
+  string name = 2;
+  int32 month = 3;
+  int32 day = 4;
+  int32 in_days = 5;
+}
+
+message CommandInfo {
+  string name = 1;
+  repeated string aliases = 2;
+  string usage = 3;
+  string summary = 4;
+  // everyone, mod or admin.
+  string level = 5;
+  string category = 6;
+  // How it works from the menu: "" as it is, "channel" if it posts in a channel the team picks, "no" if only in chat.
+  string menu = 7;
+}
+
+message CustomCommandInfo {
+  string name = 1;
+  string response = 2;
+  int32 uses = 3;
+}
+
+message SuggestionInfo {
+  int32 id = 1;
+  string user_id = 2;
+  string name = 3;
+  string text = 4;
+  // open, approved or denied.
+  string status = 5;
+  string note = 6;
+}
+
+message BanInfo {
+  string user_id = 1;
+  string name = 2;
+  string reason = 3;
+  // When it ends, in milliseconds since 1970; 0 for never.
+  double until = 4;
+}
+
+message ChannelInfo {
+  string id = 1;
+  string name = 2;
+  string group = 3;
+}
+
+// One of Blitz's commands, as if typed: `command` without the prefix, `args` after it.
+message RunRequest {
+  string command = 1;
+  string args = 2;
+  // For commands that post in a channel (the team only).
+  string channel_id = 3;
+}
+
+message RunResponse {
+  // False when it didn't run (no such command, not allowed, too fast) or failed.
+  bool ok = 1;
+  // Blitz's replies, in the same text it would post.
+  repeated string replies = 2;
+}
+
+message MemberSearchRequest {
+  string query = 1;
+}
+
+message MemberLine {
+  string user_id = 1;
+  string name = 2;
+}
+
+message MemberSearchResponse {
+  repeated MemberLine members = 1;
+}
+
+message MemberCardRequest {
+  string user_id = 1;
+}
+
+message CaseInfo {
+  int32 id = 1;
+  // warn, mute, unmute, kick, ban, unban or note.
+  string kind = 2;
+  string reason = 3;
+  string by = 4;
+  double at = 5;
+  double duration_ms = 6;
+  bool revoked = 7;
+}
+
+// A member, as the team sees them.
+message MemberCard {
+  string user_id = 1;
+  string name = 2;
+  repeated string roles = 3;
+  double joined_at = 4;
+  int32 level = 5;
+  int32 messages = 6;
+  int32 warnings = 7;
+  repeated CaseInfo cases = 8;
+  double muted_until = 9;
+  // Their own access: everyone, mod or admin.
+  string access = 10;
+}
+
+service BlitzMenuService {
+  rpc Overview(MenuRequest) returns (MenuOverview);
+  rpc Run(RunRequest) returns (RunResponse);
+  rpc SearchMembers(MemberSearchRequest) returns (MemberSearchResponse);
+  rpc Member(MemberCardRequest) returns (MemberCard);
+}

@@ -57,6 +57,8 @@ export interface Forces {
   open?: boolean;
   /** In open space, the spot Blitz drifts around (where it was last flung or let go). */
   anchor?: Point;
+  /** Blitz keeps close to its anchor (it's showing the menu): the drift shrinks to a gentle bob and it settles without overshooting. */
+  still?: boolean;
 }
 
 export interface Impact {
@@ -95,6 +97,10 @@ const STRAIN_FREE_CAP = 0.5;
 const OPEN_PULL_MAX = 0.9;
 /** How far a throw in open space carries, as seconds of its speed: where Blitz will settle. */
 const OPEN_CARRY = 0.8;
+/** Keeping still (showing the menu): a firmer pull, damped so Blitz settles on its spot without swinging past it. */
+const STILL_PULL = 3.2;
+const STILL_PULL_MAX = 3.6;
+const STILL_DRAG = 3.6;
 
 /** The slowly moving point Blitz drifts around when nobody is holding it. */
 export function wanderPoint(t: number, open = false): Point {
@@ -210,16 +216,19 @@ export function step(body: Body, f: Forces): Impact | undefined {
     const calm = f.asleep ? 0.25 : 1;
     const pull = f.t < f.flingUntil ? 0.08 : 1;
     const w = wanderPoint(f.t, open);
-    let ax = (w.x + center.x - body.x) * 0.55 * calm * pull;
-    let ay = (w.y + center.y - body.y) * 0.55 * calm * pull;
+    const roam = f.still ? 0.1 : 1;
+    const k = f.still ? STILL_PULL : 0.55;
+    let ax = (w.x * roam + center.x - body.x) * k * calm * pull;
+    let ay = (w.y * roam + center.y - body.y) * k * calm * pull;
     const a = Math.hypot(ax, ay);
-    if (open && a > OPEN_PULL_MAX) {
-      ax *= OPEN_PULL_MAX / a;
-      ay *= OPEN_PULL_MAX / a;
+    const max = f.still ? STILL_PULL_MAX : OPEN_PULL_MAX;
+    if (open && a > max) {
+      ax *= max / a;
+      ay *= max / a;
     }
     body.vx += ax * dt;
     body.vy += (ay + Math.sin(f.t * 1.6) * 0.024 * calm) * dt;
-    const drag = Math.exp(-(f.asleep ? 1.8 : 0.9) * dt);
+    const drag = Math.exp(-(f.still ? STILL_DRAG : f.asleep ? 1.8 : 0.9) * dt);
     body.vx *= drag;
     body.vy *= drag;
   }

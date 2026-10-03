@@ -59,6 +59,15 @@ async function decide(id: number, status: Status, by: string, note: string): Pro
   });
 }
 
+/** The latest suggestions, newest first, for the menu. */
+export async function recentSuggestions(count: number): Promise<Array<{ id: number; userId: string; name: string; text: string; status: Status; note: string }>> {
+  const latest = (await kv.entries<Suggestion>("suggestion:"))
+    .map((e) => e.value)
+    .sort((a, b) => b.id - a.id)
+    .slice(0, count);
+  return Promise.all(latest.map(async (s) => ({ id: s.id, userId: s.userId, name: await nickname(s.userId), text: s.text, status: s.status, note: s.note ?? "" })));
+}
+
 function decision(status: Status): Command {
   const name = status === "approved" ? "approve" : "deny";
   return {

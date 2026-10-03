@@ -35,6 +35,7 @@ import {
   isBursting,
   isSplash,
   landingPoint,
+  plainText,
   pokeImpulse,
   readMessage,
   rocksNear,
@@ -355,6 +356,8 @@ export class DomainView {
   private rockHits = new Map<number, { born: number; power: number; x: number; y: number }>();
   /** A screen point Blitz is watching for a moment (a shooting star). */
   private watch: { x: number; y: number; until: number } | undefined;
+  /** Where Blitz floats while showing the menu it summoned out in open space (world units), if it is. */
+  private dreamHold: Point | undefined;
   private lastStatus = "";
   private cardTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -381,7 +384,7 @@ export class DomainView {
   }
 
   private forces(target: Point | undefined) {
-    return { target, asleep: this.asleep, flingUntil: this.flingUntil, trick: this.trick, open: this.open, anchor: this.anchor };
+    return { target, asleep: this.asleep, flingUntil: this.flingUntil, trick: this.trick, open: this.open, anchor: this.anchor, still: this.dreamHold !== undefined };
   }
 
   private launchMote(delay: number): void {
@@ -468,6 +471,90 @@ export class DomainView {
 
   get isOpen(): boolean {
     return this.open;
+  }
+
+  // ---- The menu Blitz summons out in open space (see menu/dream.ts) ------------------
+
+  /** Where Blitz is drawn, in CSS pixels within the domain, and its radius. */
+  blitzAt(): { x: number; y: number; r: number } {
+    return { ...this.blitzPx(), r: ORB_RADIUS * this.cam.s };
+  }
+
+  /** The domain's size, and the open space between the floating bar (top) and the message box (bottom). */
+  stageBox(): { w: number; h: number; top: number; bottom: number } {
+    return { w: this.W, h: this.H, top: HUD_TOP, bottom: this.H - HUD_BOTTOM };
+  }
+
+  /**
+   * Blitz floats over to a point on screen and stays there, looking at
+   * `look`, until let go (no point). The camera holds still meanwhile.
+   */
+  hold(at?: { x: number; y: number }, look?: { x: number; y: number }): void {
+    if (!at) {
+      this.dreamHold = undefined;
+      this.watch = undefined;
+      return;
+    }
+    const p = toWorld(this.cam, at.x, at.y);
+    this.dreamHold = p;
+    this.anchor = p;
+    this.trick = undefined;
+    this.flingUntil = 0;
+    // A push toward it, so Blitz goes there with purpose rather than drifting.
+    const dx = p.x - this.body.x;
+    const dy = p.y - this.body.y;
+    const d = Math.hypot(dx, dy);
+    if (d > 0.05) {
+      const v = Math.min(3, d * 1.3);
+      this.body.vx = (dx / d) * v;
+      this.body.vy = (dy / d) * v;
+    }
+    this.watch = look ? { x: look.x, y: look.y, until: Infinity } : undefined;
+    this.wake();
+  }
+
+  /** The summoning: Blitz lights up, light rings out, and sparks trail out to each of `points` (where the menu appears). */
+  summonFx(points: Array<{ x: number; y: number }>, say: string): void {
+    const b = this.drawnBody();
+    const t = this.fxT;
+    this.applyMood("excited", say, 2.6);
+    const [bx, by] = toScreen(this.cam, b.x, b.y);
+    if (!reduced) this.shatter.ring(bx, by, t);
+    for (const pt of points) {
+      const w = toWorld(this.cam, pt.x, pt.y);
+      for (let i = 0; i < (reduced ? 2 : 8); i++) {
+        const k = (i + Math.random()) / 8;
+        // Along a gentle curve out to the point.
+        const bend = Math.sin(k * Math.PI) * 0.25;
+        const x = b.x + (w.x - b.x) * k - (w.y - b.y) * bend;
+        const y = b.y + (w.y - b.y) * k + (w.x - b.x) * bend;
+        this.particles.emit(x, y, rand(-25, 25) * PX, rand(-25, 25) * PX, rand(0.5, 1.2), rand(1, 2.6), pick([CYAN, VIOLET, WHITE, GOLD]));
+      }
+    }
+  }
+
+  /** The menu fading away: motes of it drift back into Blitz from around `from`, and Blitz says goodbye to it. */
+  dismissFx(from: { x: number; y: number }, spread: number, say: string): void {
+    if (!this.speech) this.speak(say, 1.4);
+    const b = this.drawnBody();
+    for (let i = 0; i < (reduced ? 6 : 36); i++) {
+      const a = Math.random() * Math.PI * 2;
+      const d = Math.random() * spread;
+      const w = toWorld(this.cam, from.x + Math.cos(a) * d, from.y + Math.sin(a) * d * 0.7);
+      // Fast enough to reach Blitz before they fade (particles slow down as they go).
+      this.particles.emit(w.x, w.y, (b.x - w.x) * 1.5, (b.y - w.y) * 1.5, rand(0.7, 1), rand(1, 2.4), pick([CYAN, VIOLET, WHITE]));
+    }
+    this.wobble = 1;
+  }
+
+  /** Blitz reacts to something picked in the menu: says (the start of) its reply, pleased or puzzled. */
+  react(text: string, ok: boolean): void {
+    // The first line, and the next too when the first is only a heading (like the 8-ball's question before its answer).
+    const lines = plainText(text).split("\n").map((l) => l.trim()).filter(Boolean);
+    const line = lines[0] && lines[0].length < 40 && lines[1] ? `${lines[0]} ${lines[1]}` : lines[0] ?? "";
+    const short = line.length > 80 ? `${line.slice(0, 77).trimEnd()}…` : line;
+    this.wake();
+    this.applyMood(ok ? pick(["happy", "excited"] as const) : "curious", short, 3);
   }
 
   // ---- Input ------------------------------------------------------------------
@@ -712,7 +799,7 @@ export class DomainView {
 
   /** Out in the universe, a shooting star catches Blitz's eye now and then. */
   private noticeShootingStar(x: number, y: number): void {
-    if (!this.layoutOpen || this.trans || this.asleep || this.holding || this.mood || this.thinking || this.speech) return;
+    if (!this.layoutOpen || this.trans || this.asleep || this.holding || this.mood || this.thinking || this.speech || this.dreamHold) return;
     this.watch = { x, y, until: this.t + 1.2 };
     if (Math.random() < 0.3) this.speak(pick(["ooh!! a shooting star", "make a wish!", "✨ did you see that ✨", "woah"]), 1.6);
   }
@@ -847,6 +934,12 @@ export class DomainView {
       return;
     }
     if (this.holding || this.trans) return;
+    // Showing the menu: Blitz stays put and attentive (no naps, no wandering off, no sealing the bubble on its own).
+    if (this.dreamHold) {
+      this.lastInteraction = nowSim;
+      this.anchor = this.dreamHold;
+      return;
+    }
     if (this.open && nowSim - this.lastInteraction > OPEN_FOR) this.seal();
     if (!this.asleep && nowSim - this.lastInteraction > SLEEP_AFTER) {
       this.asleep = true;
@@ -964,6 +1057,8 @@ export class DomainView {
       if (k >= 1) this.finishReform();
       return;
     }
+    // While Blitz shows its menu the camera holds still, so the menu and Blitz stay where they were put.
+    if (this.dreamHold && this.layoutOpen) return;
     this.cam = this.layoutOpen ? this.followCam(dt) : this.bubbleCam();
   }
 

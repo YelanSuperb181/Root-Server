@@ -200,8 +200,8 @@ export const moderationCommands: Command[] = [
       const { userId, rest } = targetOf(ctx, "note @someone was rude in voice, keep an eye out");
       if (!rest) throw new UsageError(`Add the note, like \`${config.prefix}note @someone keeps arguing in #general\`.`);
       const c = await addCase("note", userId, ctx.userId, rest);
-      await remove(ctx.channelId, ctx.messageId).catch(() => undefined);
-      sendEphemeral(ctx.channelId, `📝 Noted (case #${c.id}).`, 5000);
+      if (ctx.from === "chat") await remove(ctx.channelId, ctx.messageId).catch(() => undefined);
+      await ctx.notice(`📝 Noted (case #${c.id}).`, 5000);
       await modLog(`📝 **${await nickname(ctx.userId)}** added a note about ${await who(userId)}${because(rest)} _(case #${c.id})_`);
     },
   },

@@ -24,6 +24,19 @@ async function allBirthdays(): Promise<BirthdayEntry[]> {
     .filter((e) => present.has(e.userId));
 }
 
+/** Someone's saved birthday and the next few, with names, for the menu. */
+export async function birthdaysFor(userId: string, count: number): Promise<{
+  mine?: MonthDay;
+  upcoming: Array<{ userId: string; name: string; month: number; day: number; inDays: number }>;
+}> {
+  const all = await allBirthdays();
+  const upcoming = upcomingBirthdays(all, Date.now(), count);
+  return {
+    mine: await kv.get<MonthDay>(entryKey(userId)),
+    upcoming: await Promise.all(upcoming.map(async (e) => ({ userId: e.userId, name: await nickname(e.userId), month: e.birthday.month, day: e.birthday.day, inDays: e.inDays }))),
+  };
+}
+
 interface Wearing {
   roleId: string;
   userIds: string[];

@@ -8,21 +8,27 @@ import { parseCommand } from "../logic/parse";
 import { describeError, errDetail } from "./api";
 import { log } from "./log";
 import { AccessLevel, accessLevel, atLeast } from "./members";
-import { send } from "./messaging";
+import { send, sendEphemeral } from "./messaging";
 
 export type Category = "Community" | "Levels" | "Fun" | "Moderation" | "Staff";
 
 export interface CommandContext {
   evt: ChannelMessageCreatedEvent;
   userId: string;
+  /** Where it was used; "" from Blitz's menu (unless it posts in a channel the team picked). */
   channelId: string;
+  /** The command message; "" from Blitz's menu. */
   messageId: string;
   args: string[];
   /** Everything after the command name. */
   rest: string;
   level: AccessLevel;
+  /** Typed in a channel, or used from Blitz's menu in its domain (where replies go back to the menu). */
+  from: "chat" | "menu";
   /** Replies to the command message. */
   reply(text: string): Promise<void>;
+  /** A short notice just for them: a message that cleans itself up in chat, a reply in the menu. */
+  notice(text: string, ttlMs?: number): Promise<void>;
 }
 
 export interface Command {
@@ -33,6 +39,12 @@ export interface Command {
   summary: string;
   level: AccessLevel;
   category: Category;
+  /**
+   * How it works from Blitz's menu: "channel" if it posts in a channel (from
+   * the menu, the team picks which), "no" if it only makes sense typed in a
+   * channel. Left out, it works from the menu as it is.
+   */
+  menu?: "channel" | "no";
   run(ctx: CommandContext): Promise<void>;
 }
 
@@ -111,7 +123,8 @@ export async function handleCommand(evt: ChannelMessageCreatedEvent): Promise<bo
     }
     await reply(text);
   };
-  const base = { evt, userId: evt.userId, channelId: evt.channelId, messageId: evt.id, args: parsed.args, rest: parsed.rest };
+  const notice = async (text: string, ttlMs?: number) => sendEphemeral(evt.channelId, text, ttlMs);
+  const base = { evt, userId: evt.userId, channelId: evt.channelId, messageId: evt.id, args: parsed.args, rest: parsed.rest, from: "chat" as const, notice };
   const use = { userId: evt.userId, channelId: evt.channelId };
 
   if (!cmd) {
@@ -126,20 +139,80 @@ export async function handleCommand(evt: ChannelMessageCreatedEvent): Promise<bo
   if (now - (lastUse.get(evt.userId) ?? 0) < COOLDOWN_MS) return true;
   lastUse.set(evt.userId, now);
 
+  await runChecked(cmd, base, reply, replyAs({ ...use, name: cmd.name, level: cmd.level }));
+  return true;
+}
+
+/** Checks who's asking, runs the command, and turns failures into a friendly reply (`plain`, for locks, hints and errors). True if it ran without failing. */
+async function runChecked(cmd: Command, base: Omit<CommandContext, "level" | "reply">, plain: (text: string) => Promise<void>, reply: (text: string) => Promise<void>): Promise<boolean> {
   try {
-    const level = await accessLevel(evt.userId);
+    const level = await accessLevel(base.userId);
     if (!atLeast(level, cmd.level)) {
-      await reply(`🔒 \`${config.prefix}${cmd.name}\` is for ${cmd.level === "admin" ? "admins" : "the team"} only.`);
-      return true;
+      await plain(`🔒 \`${config.prefix}${cmd.name}\` is for ${cmd.level === "admin" ? "admins" : "the team"} only.`);
+      return false;
     }
-    await cmd.run({ ...base, level, reply: replyAs({ ...use, name: cmd.name, level: cmd.level }) });
+    await cmd.run({ ...base, level, reply });
+    return true;
   } catch (err) {
     if (err instanceof UsageError) {
-      await reply(`💡 ${err.message}`).catch(() => undefined);
+      await plain(`💡 ${err.message}`).catch(() => undefined);
     } else {
       log("error", `command ${cmd.name} failed`, { error: errDetail(err) });
-      await reply(`⚠️ ${describeError(err)}`).catch(() => undefined);
+      await plain(`⚠️ ${describeError(err)}`).catch(() => undefined);
     }
+    return false;
   }
-  return true;
+}
+
+/** Menu uses per person: at most MENU_BURST in MENU_WINDOW_MS (buttons are quicker to press than commands are to type). */
+const menuUses = new Map<string, number[]>();
+const MENU_BURST = 8;
+const MENU_WINDOW_MS = 10_000;
+
+/**
+ * Runs one of Blitz's commands (or the community's own) from Blitz's menu,
+ * as `userId` typing \`!name rest\`: the same permission checks as in chat,
+ * but the replies come back for the menu to show instead of being posted.
+ * `channelId` is where commands that post in a channel post; only the team
+ * may pick one, and it must be a text channel (`isTextChannel` checks).
+ */
+export async function runFromMenu(
+  userId: string,
+  name: string,
+  rest: string,
+  channelId: string,
+  isTextChannel: (id: string) => Promise<boolean>,
+): Promise<{ ok: boolean; replies: string[] }> {
+  const replies: string[] = [];
+  const reply = async (text: string) => {
+    replies.push(text);
+  };
+  const now = Date.now();
+  const recent = (menuUses.get(userId) ?? []).filter((at) => now - at < MENU_WINDOW_MS);
+  if (recent.length >= MENU_BURST) return { ok: false, replies: ["✋ One moment! That's a lot at once; try again in a few seconds."] };
+  recent.push(now);
+  menuUses.set(userId, recent);
+
+  const parsed = parseCommand(`${config.prefix}${name} ${rest}`, config.prefix);
+  if (!parsed) return { ok: false, replies: [`🤷 I don't know that one.`] };
+  const cmd = byName.get(parsed.name);
+  // Commands read only what a message gives them; from the menu there's no message, so this stands in for one.
+  const evt = { id: "", channelId: "", userId, messageContent: `${config.prefix}${parsed.name} ${parsed.rest}`.trim(), parentMessages: [] } as unknown as ChannelMessageCreatedEvent;
+  const base = { evt, userId, channelId: "", messageId: "", args: parsed.args, rest: parsed.rest, from: "menu" as const, notice: reply };
+
+  if (!cmd) {
+    const ran = fallback ? await fallback(parsed.name, { ...base, reply }).catch(() => false) : false;
+    return ran ? { ok: true, replies } : { ok: false, replies: [`🤷 I don't know \`${config.prefix}${parsed.name}\`.`] };
+  }
+  if (cmd.menu === "no") return { ok: false, replies: [`💬 \`${config.prefix}${cmd.name}\` works in a channel: type it there.`] };
+  if (cmd.menu === "channel") {
+    if (!atLeast(await accessLevel(userId), "mod")) {
+      return { ok: false, replies: [`💬 From the menu, posting in a channel is for the team. Type \`${config.prefix}${cmd.name}\` in the channel instead.`] };
+    }
+    if (!channelId || !(await isTextChannel(channelId))) return { ok: false, replies: ["📍 Pick a channel for it first."] };
+    base.channelId = channelId;
+    base.evt = { ...evt, channelId } as unknown as ChannelMessageCreatedEvent;
+  }
+  const ok = await runChecked(cmd, base, reply, reply);
+  return { ok, replies };
 }
