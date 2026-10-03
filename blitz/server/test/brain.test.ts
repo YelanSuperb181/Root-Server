@@ -61,17 +61,15 @@ test("the situation names who's talking, where, and what was said before", () =>
     channel: "general-yap",
     chat: [{ from: "Bee", text: "pineapple on pizza is elite" }],
     memory: [{ from: "Ana", text: "hi blitz", blitz: "hii ana!!" }],
-    asleep: false,
-    open: true,
-    watching: 2,
   });
   assert.match(chat, /#general-yap/);
   assert.match(chat, /Bee: pineapple on pizza is elite/);
   assert.match(chat, /You: hii ana!!/);
-  assert.match(chat, /burst open/);
+  assert.doesNotMatch(chat, /Right now/, "in chat there's no one domain to describe");
   assert.match(chat, /New message to you from Ana:\n"""\nblitz what do you think\?\n"""/);
-  const domain = situationPrompt({ from: "Ana", text: "hi", channel: "", chat: [], memory: [], asleep: true, open: false, watching: 1 });
+  const domain = situationPrompt({ from: "Ana", text: "hi", channel: "", chat: [], memory: [], asleep: true, open: true });
   assert.match(domain, /your domain/);
   assert.match(domain, /dozing/);
+  assert.match(domain, /burst open/);
   assert.doesNotMatch(domain, /Recent messages/);
 });

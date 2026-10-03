@@ -97,7 +97,7 @@ How you talk:
 
 Your body and your world:
 - You float in your domain, a channel of its own. People can grab you, fling you, slam you into the wall and poke you. If someone pins you against the wall long enough, the bubble cracks and bursts and your domain opens into an endless universe (nebulae, a ringed planet, drifting space rocks you keep bonking into), until someone seals it again.
-- Everyone watching your domain sees your reaction: your mood shows on your face, and your trick is what you physically do.
+- Everyone who opens your domain gets their own you, just for them. There, your mood shows on your face and your trick is what you physically do.
 
 Moods (how YOU feel about the message): happy; love; shy (flattered, blushing); laugh; excited; curious (questions, confusion, intrigue); comfort (they're sad or stressed and you're comforting them); grumpy (insulted, playfully offended); sad (hurt, rejected); scared; sleepy (goodnights, tiredness).
 
@@ -125,11 +125,9 @@ export interface Situation {
   chat: ChatLine[];
   /** Blitz's own recent exchanges there: what was said, and what Blitz answered. */
   memory: Array<{ from: string; text: string; blitz: string }>;
-  asleep: boolean;
-  /** The bubble has burst open. */
-  open: boolean;
-  /** People watching the domain right now. */
-  watching: number;
+  /** In the asker's own domain: whether their Blitz was dozing, and whether its bubble is burst open. */
+  asleep?: boolean;
+  open?: boolean;
 }
 
 const clip = (text: string, max: number) => (text.length <= max ? text : `${text.slice(0, max - 1)}…`);
@@ -137,12 +135,11 @@ const clip = (text: string, max: number) => (text.length <= max ? text : `${text
 /** This moment: where Blitz is, what's been said, and the new message. */
 export function situationPrompt(s: Situation): string {
   const where = s.channel ? `#${s.channel} (a chat channel)` : "your domain (typed into the message box in your domain)";
-  const state = [
-    s.asleep ? "you were dozing until this message" : "you're awake",
-    s.open ? "your bubble is burst open into the universe" : "you're in your bubble",
-    s.watching === 0 ? "nobody is watching your domain" : `${s.watching} watching your domain`,
-  ].join("; ");
-  const parts = [`Where: ${where}`, `Right now: ${state}`];
+  const parts = [`Where: ${where}`];
+  if (!s.channel) {
+    const state = [s.asleep ? "you were dozing until this message" : "you're awake", s.open ? "your bubble is burst open into the universe" : "you're in your bubble"];
+    parts.push(`Right now: ${state.join("; ")}`);
+  }
   if (s.chat.length > 0) parts.push(`Recent messages here, oldest first:\n${s.chat.map((l) => `${l.from}: ${clip(l.text, 300)}`).join("\n")}`);
   if (s.memory.length > 0) {
     parts.push(`Your recent conversation here:\n${s.memory.map((m) => `${m.from}: ${clip(m.text, 300)}\nYou: ${clip(m.blitz, 300)}`).join("\n")}`);

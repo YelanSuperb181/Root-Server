@@ -44,13 +44,18 @@ export async function nameLines(list: readonly Line[]): Promise<ChatLine[]> {
   return Promise.all(list.map(async (l) => ({ from: await nameOf(l.userId), text: l.text })));
 }
 
+/** Conversations kept at once (a channel each, and each person's own domain); the quietest are forgotten first. */
+const MAX_PLACES = 300;
+
 export function rememberTalk(place: string, from: string, text: string, blitz: string): void {
   const keep = config.brain.memory;
   if (keep <= 0) return;
   const list = talks.get(place) ?? [];
   list.push({ from, text: text.slice(0, 500), blitz: blitz.slice(0, 500) });
   while (list.length > keep) list.shift();
+  talks.delete(place); // re-insert, so the map stays ordered by last use
   talks.set(place, list);
+  if (talks.size > MAX_PLACES) talks.delete(talks.keys().next().value as string);
 }
 
 export function recentTalk(place: string): Array<{ from: string; text: string; blitz: string }> {

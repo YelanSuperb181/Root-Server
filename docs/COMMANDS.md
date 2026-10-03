@@ -2,14 +2,14 @@
 
 Commands start with `!` (change it with `prefix` in [`config.ts`](../blitz/server/src/config.ts)). `!help` shows the commands *you* can use; `!help poll` explains one.
 
-When someone uses one of the commands for everyone (the community's own included), Blitz's reply ends with a 🔮 link into its domain, and Blitz spins there for everyone watching (at most every 15 seconds). Not in private channels or the staff logs, not for `!report`, `!warnings` or reminders, and not when the community ticks **Turn off domain links** in Blitz's settings.
+When someone uses one of the commands for everyone (the community's own included), Blitz's reply ends with a 🔮 link into its domain. Not in private channels or the staff logs, not for `!report`, `!warnings` or reminders, and not when the community ticks **Turn off domain links** in Blitz's settings.
 
 ## For everyone
 
 | Command | What it does |
 | --- | --- |
 | `!help [command]` | All commands, or details about one. Also `!commands`. |
-| `!blitz` | Summon Blitz: links its domain, and Blitz lights up for everyone already inside. Also `!summon`, `!domain`. |
+| `!blitz` | A link into Blitz's domain, where you get your own Blitz to play with. Also `!summon`, `!domain`. |
 | `!rank [@someone]` | Level, XP progress bar, message count and leaderboard spot. Also `!level`, `!xp`. |
 | `!top` | The 10 most active members. Also `!leaderboard`, `!lb`. |
 | `!levels` | How XP works. |
@@ -40,7 +40,7 @@ When someone uses one of the commands for everyone (the community's own included
 | Join the community | Welcomes you in the welcome channel (with the community's own message, if it wrote one) and gives you the role for new members, if the community picked them. |
 | Chat | Earns 15-25 XP, at most once a minute (not in private channels or the staff log). Level-ups are announced where they happened, or in the level-up channel. |
 | Say "blitz" (or @mention it, or reply to it) | Answers you. With its brain on (an Anthropic API key, see the [setup guide](SETUP-GUIDE.md#give-blitz-its-brain-optional)) it reads the conversation and replies in its own voice; without, it reacts to the mood with a canned line. Either way it leaves an emoji and acts it out in the domain. See [the README](../README.md#talking-to-blitz). |
-| Open Blitz's domain | Drag Blitz to carry it, let go to fling it, slam it into the wall, tap to poke it (arrow keys and space work too), or type to it. Hold it against the wall long enough and the bubble bursts into an endless universe full of space rocks to crash into; **Seal the bubble** brings it back. Everyone inside shares the same Blitz. |
+| Open Blitz's domain | Drag Blitz to carry it, let go to fling it, slam it into the wall, tap to poke it (arrow keys and space work too), or type to it. Hold it against the wall long enough and the bubble bursts into an endless universe full of space rocks to crash into; **Seal the bubble** brings it back. Everyone gets their own Blitz. |
 | Have a birthday | A shout-out in the birthday channel and the birthday role for the day (16:00 UTC), if the community picked them. |
 
 ## For staff

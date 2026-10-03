@@ -22,7 +22,7 @@ Blitz saves a few things in the private storage Root gives each App for each com
 - It reads messages in the channels it can see to answer commands, count XP and catch spam (floods, copy-paste spam, mass mentions, and words or links the community blocks). When it removes a message, it posts a short excerpt of it in the community's staff log channel (if it picked one) so the team can check. It also notes joins and leaves there.
 - **Reports:** `!report` is removed from the chat and posted, with what you wrote (and the message you replied to, if any), in the staff log for the team.
 - **Message log:** if the community picked a message log channel, Blitz remembers recent messages in memory (never on disk, for at most two days, and never from private channels) so that when one is edited or deleted, it can post what it said before in that channel for the team.
-- In Blitz's own channel, everyone there sees who is around and who is carrying Blitz, live. None of that is saved.
+- In Blitz's own channel, everyone gets their own Blitz, which lives in their own window: nobody else sees what you do with it, and none of it is saved. What you type to it there goes to Blitz's server only to be answered (with Claude, if the community added a key), and the answer comes back just to you.
 - Root and the computer Blitz runs on may keep technical logs (like which command ran, or an error) for fixing problems.
 
 ## Claude (optional)

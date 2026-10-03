@@ -1,35 +1,34 @@
 // Blitz's domain: the App's client, shown in its own Root channel.
 
 import { DomainView } from "./domain";
-import { connect } from "./net";
+import { serverBrain } from "./net";
 import { viewerBrain } from "./sample";
 
 const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
-async function main(): Promise<void> {
-  const { link, joined } = await connect(2500);
+function main(): void {
+  // Everyone gets their own Blitz, right away. Inside Root it thinks with the
+  // community's Claude (on Blitz's server); elsewhere it reads moods from keywords.
   const view = new DomainView(
     byId<HTMLCanvasElement>("canvas"),
     {
       status: byId("status"),
-      watchers: byId("watchers"),
       card: byId("card"),
       cardName: byId("card-name"),
       cardWhere: byId("card-where"),
       cardText: byId("card-text"),
     },
-    link,
+    serverBrain(),
   );
 
-  if (link.mode === "solo") {
-    const note = byId("note");
-    note.textContent = "Not connected to Root, so this Blitz is just yours. Inside Root, everyone in the channel shares the same Blitz.";
-    note.hidden = false;
+  if (!view.brain) {
     // In the browser prototype, Blitz can think with Claude, but only for the page's creator.
     void viewerBrain().then((brain) => {
       if (!brain) return;
       view.brain = brain;
-      note.textContent = "Not connected to Root, so this Blitz is just yours. Talk to it: it thinks with your Claude (you'll be asked once).";
+      const note = byId("note");
+      note.textContent = "Talk to Blitz: it thinks with your Claude (you'll be asked once).";
+      note.hidden = false;
     });
   }
 
@@ -50,9 +49,9 @@ async function main(): Promise<void> {
   const syncButtons = () => {
     seal.hidden = !view.isOpen;
   };
-  view.onOpenChange = (open, byMe) => {
+  view.onOpenChange = (open) => {
     syncButtons();
-    if (open && byMe && canFullscreen) {
+    if (open && canFullscreen) {
       // Only works while the press that burst the bubble still counts as a fresh gesture.
       const active = (navigator as Navigator & { userActivation?: { isActive: boolean } }).userActivation?.isActive ?? true;
       if (active) void enterFullscreen();
@@ -68,8 +67,15 @@ async function main(): Promise<void> {
   };
   seal.addEventListener("click", () => view.seal());
 
-  view.start(joined?.state, joined?.watchers);
+  // Root's local test page puts a toolbar across the top (as a margin on the
+  // page); keep the full-window universe, and its buttons, below it.
+  const fitUnderToolbar = () => document.documentElement.style.setProperty("--top-inset", getComputedStyle(document.body).marginTop);
+  fitUnderToolbar();
+  new MutationObserver(fitUnderToolbar).observe(document.head, { childList: true });
+  new MutationObserver(fitUnderToolbar).observe(document.body, { attributes: true, attributeFilter: ["style", "class"] });
+
+  view.start();
   syncButtons();
 }
 
-void main();
+main();

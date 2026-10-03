@@ -41,7 +41,7 @@ Wait for **Blitz is up in the community "…"**, then open that community in Roo
 2. Open Blitz's **App settings** in that community and try picking a welcome channel, a quote wall and so on. `!settings` shows what's set.
 3. Say "hey blitz" and watch it react.
 
-**The domain:** in a second terminal (also in `blitz/`), run `npm run client`. The domain opens in your browser and connects to the Blitz running in the first terminal. In the Root bar at the top of the page, pick yourself under **Current User**. Open it in two tabs and drag Blitz in one: the other follows. (Root's app shows the domain itself only once Blitz is installed from the store.)
+**The domain:** in a second terminal (also in `blitz/`), run `npm run client`. The domain opens in your browser with your own Blitz to play with. In the Root bar at the top of the page, pick yourself under **Current User**; when you type to Blitz, it asks the Blitz running in the first terminal what to say. (Root's app shows the domain itself only once Blitz is installed from the store.)
 
 Leave `npm run server` running while you test; closing it turns Blitz off.
 
@@ -137,7 +137,7 @@ Blitz never creates, renames or deletes channels or roles.
 | `!kick` or `!ban` says it has no permission | Blitz's role needs to be above the person's roles, and Blitz needs the kick and ban permissions (approve them when you install or update it). |
 | `They're on the team too` | Staff can only act on people ranked below them. Ask an admin or the owner. |
 | `🔒 … is for the team only` | Staff commands need the owner, a role that can manage the community, kick or ban, or someone on the Staff list in Blitz's settings. |
-| The domain says "just yours" (solo) | It couldn't reach Blitz's server. Inside Root: is Blitz installed? In development: is `npm run server` still running? Solo Blitz still works, it just isn't shared. |
+| Blitz in the domain only answers with short canned lines | It couldn't reach Blitz's server (or the community has no API key), so it reads your mood from keywords. Inside Root: is Blitz installed? In development: is `npm run server` still running? |
 | `!blitz` says the domain isn't set up | Blitz didn't get its App channel. Make sure it was registered as an App and reinstall it. |
 | Blitz only answers with short canned lines | It has no brain yet, or the key isn't working. Blitz's log says "Claude rejected Blitz's API key" if the key is wrong. |
 | Blitz takes a few seconds to answer | That's Claude thinking; the domain shows a thought bubble meanwhile. |

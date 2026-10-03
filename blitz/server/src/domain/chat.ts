@@ -1,6 +1,5 @@
 // Talking to Blitz in chat. A message that says "blitz", @mentions Blitz or
-// replies to one of its messages gets a reaction emoji and an answer, and
-// everyone in the domain watches it fly over and Blitz react. With an API key
+// replies to one of its messages gets a reaction emoji and an answer. With an API key
 // Claude reads the message (plus the last few messages in the channel) and
 // answers as Blitz; without one, Blitz reads the mood from keywords.
 
@@ -14,9 +13,8 @@ import { botUserId, nickname } from "../core/members";
 import { react, send } from "../core/messaging";
 import { addressedToBlitz } from "../logic/address";
 import { emoji } from "../logic/emoji";
-import { defuseMentions, truncate } from "../logic/text";
+import { defuseMentions } from "../logic/text";
 import { think } from "./brain";
-import { MAX_SAY, domain } from "./domain";
 import { nameLines, recentTalk, rememberLine, rememberTalk, snapshotLines } from "./memory";
 
 /** One reaction per person this often, so "blitz blitz blitz" isn't a flood. */
@@ -51,7 +49,7 @@ function plain(text: string, keepLines = false): string {
 export async function hearChat(evt: ChannelMessageCreatedEvent): Promise<void> {
   const text = evt.messageContent ?? "";
   if (text.trim().startsWith(config.prefix)) return;
-  // Private channels (picked in Blitz's settings) are never sent to Claude or shown in the domain.
+  // Private channels (picked in Blitz's settings) are never sent to Claude.
   const private_ = settings.isPrivate(evt.channelId);
   // What was said before this message, then this message itself for next time.
   const before = private_ ? [] : snapshotLines(evt.channelId);
@@ -66,13 +64,7 @@ export async function hearChat(evt: ChannelMessageCreatedEvent): Promise<void> {
     const name = await nickname(evt.userId);
     const where = await channelName(evt.channelId);
     const said = plain(text);
-    const heard = { id: evt.id, userId: evt.userId, nickname: name, text: truncate(said, MAX_SAY), channelName: where };
-    const showInDomain = !private_;
-    if (showInDomain) domain.listen(heard);
-
-    const smart = private_
-      ? undefined
-      : await think({ from: name, text: said, channel: where, chat: await nameLines(before), memory: recentTalk(evt.channelId), ...domain.status() });
+    const smart = private_ ? undefined : await think({ from: name, text: said, channel: where, chat: await nameLines(before), memory: recentTalk(evt.channelId) });
     const reaction = smart ?? readMessage(text);
     await react(evt.channelId, evt.id, emoji(reaction.emoji.code, reaction.emoji.glyph));
 
@@ -88,7 +80,6 @@ export async function hearChat(evt: ChannelMessageCreatedEvent): Promise<void> {
       await send(evt.channelId, `${reaction.say} *${reaction.action}*`, evt.id);
     }
 
-    if (showInDomain) domain.respond(heard, reaction);
   } catch (err) {
     log("warn", "couldn't answer a message for Blitz", { error: errMessage(err) });
   }

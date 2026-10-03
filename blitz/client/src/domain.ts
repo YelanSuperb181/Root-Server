@@ -1,21 +1,21 @@
-// The domain window: draws Blitz and its world, turns pointer input into
-// grabs, throws and pokes, keeps the local Blitz in step with the server's, and
-// decides how Blitz looks and feels from moment to moment.
+// The domain window: everyone who opens it gets their own Blitz, which lives
+// entirely here. It draws Blitz and its world, turns pointer input into
+// grabs, throws and pokes, runs Blitz's life (naps, tricks, the bursting
+// bubble), and decides how Blitz looks and feels from moment to moment. The
+// only thing it asks anyone else is a thought, when someone types to Blitz.
 //
 // Physics runs in domain units (the bubble's radius is 1) through
-// @blitz/shared, the same code the server runs. Everything visual (the
-// universe, faces, emotes, particles, ripples, cracks, the shatter) is local
-// decoration on top. Inside the bubble the camera holds still; once the
-// bubble bursts it follows Blitz through open space.
+// @blitz/shared. Everything visual (the universe, faces, emotes, particles,
+// ripples, cracks, the shatter) is decoration on top. Inside the bubble the
+// camera holds still; once the bubble bursts it follows Blitz through open
+// space.
 
-import type { MessageEvent, StateEvent, Watcher, BlitzState } from "@blitz/gen-shared";
 import {
   BURST_COAST,
   Body,
   FLING_COAST,
   FLING_SPEED,
   Impact,
-  MOODS,
   Mood,
   OPEN_FOR,
   ORB_RADIUS,
@@ -28,14 +28,12 @@ import {
   TRICKS,
   Trick,
   TrickKind,
-  advance,
   burstLaunch,
   clampTarget,
   hash32,
   idleTrick,
   isBursting,
   isSplash,
-  isTrick,
   landingPoint,
   pokeImpulse,
   readMessage,
@@ -70,7 +68,6 @@ import {
   toScreen,
   toWorld,
 } from "./fx";
-import type { DomainLink } from "./net";
 import { Universe } from "./universe";
 import { RockArt, SUN, drawRockArt, makeRockArt } from "./rockart";
 import { Brows, Eyes, Look, Mouth, drawBlitz, drawHalo } from "./blitz";
@@ -182,6 +179,9 @@ const SLOW_FRAME_MS = 22;
 const SMOOTH_FRAME_MS = 18;
 const MIN_QUALITY = 0.45;
 
+/** How long a typed message takes to fly over to Blitz, in seconds. */
+const MESSAGE_FLIGHT = 0.7;
+
 /** The first moments after the burst play in slow motion. */
 const SLOW_MO = 0.35;
 /** How far Blitz's light reaches across open space, in domain units. */
@@ -189,15 +189,14 @@ const LIGHT_REACH = 3.2;
 
 export interface DomainUi {
   status: HTMLElement;
-  watchers: HTMLElement;
   card: HTMLElement;
   cardName: HTMLElement;
   cardWhere: HTMLElement;
   cardText: HTMLElement;
 }
 
-/** A way for a solo domain to ask Claude how Blitz reacts (the browser prototype has one). */
-export type SoloBrain = (situation: Situation) => Promise<Reaction | undefined>;
+/** A way to ask Claude how Blitz reacts to something typed to it (Blitz's server inside Root; the prototype's viewer outside). */
+export type Brain = (situation: Situation) => Promise<Reaction | undefined>;
 
 interface Transition {
   kind: "burst" | "reform";
@@ -211,12 +210,12 @@ interface Transition {
 }
 
 export class DomainView {
-  /** Called when the bubble bursts or re-forms; `byMe` when this viewer burst it. */
-  onOpenChange: ((open: boolean, byMe: boolean) => void) | undefined;
+  /** Called when the bubble bursts (with the press that burst it, for fullscreen) or re-forms. */
+  onOpenChange: ((open: boolean) => void) | undefined;
   /** Called before the universe folds back into the bubble (to leave fullscreen first). */
   beforeReform: (() => Promise<void>) | undefined;
-  /** When set, a solo domain asks it how Blitz reacts to what's typed in. */
-  brain: SoloBrain | undefined;
+  /** Asked how Blitz reacts to what's typed in; without one (or when it has no answer) Blitz reads the mood from keywords. */
+  brain: Brain | undefined;
 
   private ctx: CanvasRenderingContext2D;
   private W = 0;
@@ -232,30 +231,25 @@ export class DomainView {
   private font: string;
   private universe = new Universe(reduced);
 
-  // Shared state (domain units, server clock)
+  // Blitz (domain units, seconds on the page's clock)
   private body: Body = { x: 0, y: 0, vx: 0, vy: 0, strain: 0 };
-  private clockOffset = 0;
-  private haveClock = false;
   private simulatedUntil = 0;
   private asleep = false;
   private open = false;
   private anchor: Point = { x: 0, y: 0 };
   private flingUntil = 0;
   private trick: Trick | undefined;
-  private holder: { userId: string; nickname: string } | undefined;
-  private remoteTarget: Point | undefined;
   private lastInteraction = 0;
-  private watchers: Watcher[] = [];
   private nextIdleTrick = 0;
 
   // Me
   private pointer = { x: 0, y: 0, cx: 0, cy: 0, inside: false, down: false, dragging: false, downAt: 0, downX: 0, downY: 0 };
   private samples: Array<{ x: number; y: number; at: number }> = [];
   private holding = false;
-  private lastDragSent = 0;
   private notice = "";
   private noticeUntil = 0;
-  private soloTalk: Array<{ from: string; text: string; blitz: string }> = [];
+  /** Recent exchanges with Blitz, for a brain that doesn't keep its own. */
+  private talk: Array<{ from: string; text: string; blitz: string }> = [];
 
   // Looks
   private t = 0;
@@ -312,179 +306,33 @@ export class DomainView {
   constructor(
     private canvas: HTMLCanvasElement,
     private ui: DomainUi,
-    private link: DomainLink,
+    brain?: Brain,
   ) {
+    this.brain = brain;
     this.ctx = canvas.getContext("2d")!;
     this.font = getComputedStyle(document.body).fontFamily;
     new ResizeObserver(() => this.resize()).observe(canvas);
     this.resize();
     this.bindInput();
-    link.onState((e) => this.applyEvent(e));
-    link.onWatchers((w) => this.setWatchers(w));
-    link.onMessage((m) => this.applyMessage(m));
     this.universe.onShootingStar = (x, y) => this.noticeShootingStar(x, y);
-    this.simulatedUntil = this.simNow();
-    this.lastInteraction = this.simNow();
-    this.nextIdleTrick = this.simNow() + 6;
-    this.renderWatchers();
+    this.simulatedUntil = now();
+    this.lastInteraction = now();
+    this.nextIdleTrick = now() + 6;
   }
 
-  // ---- Clock and shared state ----------------------------------------------
-
-  private simNow(): number {
-    return now() + this.clockOffset;
-  }
-
-  private syncClock(serverTime: number): void {
-    const estimate = serverTime - now();
-    if (!this.haveClock) {
-      this.clockOffset = estimate;
-      this.simulatedUntil = this.simNow();
-      this.haveClock = true;
-    } else {
-      this.clockOffset += (estimate - this.clockOffset) * 0.1;
-    }
-  }
-
-  /** The state the domain opened with. */
-  start(initial?: BlitzState, watchers?: Watcher[]): void {
-    if (initial) {
-      this.syncClock(initial.simTime);
-      this.adopt(initial, false);
-      if (this.open) {
-        this.follow = { fx: this.body.x, fy: this.body.y, s: 0 };
-        this.setLayout(true);
-      }
-    }
-    if (watchers) this.setWatchers(watchers);
+  start(): void {
     this.summonMotes();
     requestAnimationFrame((ms) => this.frame(ms));
-  }
-
-  /** Takes a server state as the truth, advanced to now. `smooth` hides the jump (up to `maxJump`). */
-  private adopt(s: BlitzState, smooth: boolean, maxJump = 0.3): void {
-    this.asleep = s.asleep;
-    this.flingUntil = s.flingUntil;
-    this.open = s.open;
-    this.anchor = { x: s.anchorX, y: s.anchorY };
-    this.holder = s.holderUserId ? { userId: s.holderUserId, nickname: s.holderNickname || "someone" } : undefined;
-    this.remoteTarget = this.holder && this.holder.userId !== this.link.me ? { x: s.targetX, y: s.targetY } : undefined;
-    this.trick = s.trick && isTrick(s.trick) ? { kind: s.trick, start: s.trickStart, x: s.trickX, y: s.trickY, dir: s.trickDir } : undefined;
-    if (this.holding) return; // My own hand is the truth while I hold Blitz.
-
-    const snap: Body = { x: s.x, y: s.y, vx: s.vx, vy: s.vy, strain: s.strain };
-    advance(snap, s.simTime, this.simNow(), this.forces(this.remoteTarget), 1);
-    if (smooth) {
-      this.renderOffset.x += this.body.x - snap.x;
-      this.renderOffset.y += this.body.y - snap.y;
-      const m = Math.hypot(this.renderOffset.x, this.renderOffset.y);
-      if (m > maxJump) {
-        this.renderOffset.x *= maxJump / m;
-        this.renderOffset.y *= maxJump / m;
-      }
-    }
-    this.body = snap;
-    this.simulatedUntil = this.simNow();
   }
 
   private forces(target: Point | undefined) {
     return { target, asleep: this.asleep, flingUntil: this.flingUntil, trick: this.trick, open: this.open, anchor: this.anchor };
   }
 
-  private applyEvent(e: StateEvent): void {
-    if (!e.state) return;
-    this.syncClock(e.state.simTime);
-    const me = this.link.me;
-    const byMe = e.byUserId !== "" && e.byUserId === me;
-    const byOther = e.byUserId !== "" && !byMe;
-    // The burst knocks Blitz out of whoever's hand; the server letting go of me (timeout) ends my hold too.
-    if (this.holding && (e.cause === "burst" || (e.cause === "release" && byMe))) this.dropHold();
-    const wasOpen = this.open;
-    const before = { x: this.body.x + this.renderOffset.x, y: this.body.y + this.renderOffset.y };
-    this.adopt(e.state, true, e.cause === "reform" ? 0 : 0.3);
-    switch (e.cause) {
-      case "grab":
-        if (byOther) this.reactGrab();
-        break;
-      case "release":
-        if (byOther && Math.hypot(this.body.vx, this.body.vy) > FLING_SPEED) this.reactFling();
-        break;
-      case "poke":
-        if (byOther) this.giggle();
-        break;
-      case "summon":
-        this.summonFx(e.byNickname || "someone");
-        break;
-      case "wake":
-        this.wakeFx();
-        break;
-      case "sleep":
-        this.yawnUntil = this.t + 1.4;
-        break;
-      case "burst":
-        this.startBurst(byMe, e.byNickname || "someone");
-        break;
-      case "reform":
-        this.glideFrom(before);
-        void this.startReform(e.byNickname);
-        break;
-    }
-    // Joined mid-burst, or missed the moment: just match the layout.
-    if (this.open !== wasOpen && e.cause !== "burst" && e.cause !== "reform") {
-      this.setLayout(this.open);
-      this.onOpenChange?.(this.open, false);
-    }
-  }
-
-  private applyMessage(m: MessageEvent): void {
-    const mine = m.fromUserId !== "" && m.fromUserId === this.link.me;
-    const name = mine ? "You" : m.fromNickname || "someone";
-    const where = m.channelName ? `in #${m.channelName}` : "in the domain";
-    const delay = Math.max(0.25, Math.min(2, m.reactAt - this.simNow()));
-    if (m.thinking) {
-      this.showCard(name, where, m.text || "…");
-      this.keepCard(30); // up for as long as Blitz ponders
-      this.launchMote(delay);
-      this.thinking = { id: m.id, since: this.t, landsAt: this.t + delay };
-      this.pending = undefined;
-      return;
-    }
-    const mood = (MOODS as readonly string[]).includes(m.mood) ? (m.mood as Mood) : "happy";
-    if (m.id !== "" && this.thinking?.id === m.id) {
-      // Blitz has made up its mind about the message it was pondering.
-      const landsAt = this.thinking.landsAt;
-      this.thinking = undefined;
-      this.keepCard(4.5);
-      this.pending = { mood, say: m.say, at: Math.max(this.t + 0.12, landsAt) };
-      return;
-    }
-    this.showCard(name, where, m.text || "…");
-    this.launchMote(delay);
-    this.pending = { mood, say: m.say, at: this.t + delay };
-  }
-
   private launchMote(delay: number): void {
     const rect = this.ui.card.getBoundingClientRect();
     const canvasRect = this.canvas.getBoundingClientRect();
     this.mote = { x: rect.left + rect.width / 2 - canvasRect.left, y: rect.bottom - canvasRect.top, born: this.t, arrive: this.t + delay };
-  }
-
-  private setWatchers(w: Watcher[]): void {
-    this.watchers = w;
-    this.renderWatchers();
-  }
-
-  private renderWatchers(): void {
-    if (this.link.mode === "solo") {
-      this.ui.watchers.textContent = "Just you (not connected to Root)";
-      return;
-    }
-    const others = this.watchers.filter((w) => w.userId !== this.link.me).map((w) => w.nickname || "someone");
-    let text = "Just you here";
-    if (others.length === 1) text = `You and ${others[0]}`;
-    else if (others.length === 2) text = `You, ${others[0]} and ${others[1]}`;
-    else if (others.length > 2) text = `You, ${others[0]}, ${others[1]} and ${others.length - 2} more`;
-    this.ui.watchers.textContent = text;
   }
 
   private showCard(name: string, where: string, text: string): void {
@@ -516,45 +364,43 @@ export class DomainView {
 
   // ---- Talking to Blitz, sealing the bubble -------------------------------------
 
-  /** Something typed into the domain's message box. */
+  /** Something typed into the domain's message box: it flies over to Blitz, who thinks it over and reacts. */
   async say(text: string): Promise<void> {
     const clean = text.replace(/\s+/g, " ").trim().slice(0, 160);
     if (!clean) return;
-    if (this.link.mode === "live") {
-      this.link.say(clean);
-      return;
-    }
-    const id = `solo-${Date.now()}`;
-    const base = { id, fromUserId: "", fromNickname: "You", text: clean, channelName: "", mood: "", say: "" };
+    this.showCard("You", "to Blitz", clean);
+    const landsAt = this.t + MESSAGE_FLIGHT;
+    this.launchMote(MESSAGE_FLIGHT);
+    this.pending = undefined;
     let reaction: Reaction | undefined;
     if (this.brain) {
-      this.applyMessage({ ...base, thinking: true, reactAt: this.simNow() + 0.7 });
-      reaction = await this.brain({ from: "you", text: clean, channel: "", chat: [], memory: this.soloTalk, asleep: this.asleep, open: this.open, watching: 1 }).catch(() => undefined);
+      const id = `${Date.now()}`;
+      this.thinking = { id, since: this.t, landsAt };
+      this.keepCard(30); // up for as long as Blitz ponders
+      reaction = await this.brain({ from: "you", text: clean, channel: "", chat: [], memory: this.talk, asleep: this.asleep, open: this.open }).catch(() => undefined);
+      if (this.thinking?.id !== id) return; // a newer message took over
+      this.thinking = undefined;
+      this.keepCard(4.5);
       if (reaction) {
-        this.soloTalk.push({ from: "you", text: clean, blitz: reaction.say });
-        if (this.soloTalk.length > 6) this.soloTalk.shift();
+        this.talk.push({ from: "you", text: clean, blitz: reaction.say });
+        if (this.talk.length > 6) this.talk.shift();
       }
     }
     reaction ??= readMessage(clean);
-    this.applyMessage({ ...base, thinking: false, mood: reaction.mood, say: reaction.say, reactAt: this.simNow() + (this.brain ? 0.1 : 0.7) });
+    this.pending = { mood: reaction.mood, say: reaction.say, at: Math.max(this.t + 0.12, landsAt) };
     if (reaction.mood === "sleepy") {
+      // Blitz yawns and dozes off where it is.
       this.asleep = true;
       this.trick = undefined;
-      this.yawnUntil = this.t + 1.4;
       return;
     }
     this.wake();
-    const delay = this.pending ? Math.max(0.1, this.pending.at - this.t) : 0.7;
-    if (!this.holding && reaction.trick) this.startTrickLocal(reaction.trick, delay);
+    if (!this.holding && reaction.trick) this.startTrick(reaction.trick, this.pending.at - this.t);
   }
 
   /** Puts the bubble back together. */
   seal(): void {
     if (!this.open || this.reforming) return;
-    if (this.link.mode === "live") {
-      this.link.reform();
-      return;
-    }
     const before = { x: this.body.x, y: this.body.y };
     this.open = false;
     this.anchor = { x: 0, y: 0 };
@@ -562,7 +408,7 @@ export class DomainView {
     const inside = sanitize(this.body);
     this.body = { x: inside.x, y: inside.y, vx: inside.vx * 0.3, vy: inside.vy * 0.3, strain: 0 };
     this.glideFrom(before);
-    void this.startReform("");
+    void this.startReform();
   }
 
   get isOpen(): boolean {
@@ -584,7 +430,7 @@ export class DomainView {
   }
 
   private wake(): void {
-    this.lastInteraction = this.simNow();
+    this.lastInteraction = now();
     if (this.asleep) {
       this.asleep = false;
       this.wakeFx();
@@ -602,10 +448,6 @@ export class DomainView {
       const p = this.toDomain(e.clientX, e.clientY);
       Object.assign(this.pointer, p, { cx: e.clientX, cy: e.clientY, inside: true });
       if (!this.overBlitz(p) || this.trans) return;
-      if (this.holder && this.holder.userId !== this.link.me) {
-        this.setNotice(`${this.holder.nickname} has Blitz`, 1.5);
-        return;
-      }
       this.wake();
       c.setPointerCapture(e.pointerId);
       Object.assign(this.pointer, { down: true, dragging: false, downAt: performance.now(), downX: p.x, downY: p.y });
@@ -616,17 +458,12 @@ export class DomainView {
       const p = this.toDomain(e.clientX, e.clientY);
       Object.assign(this.pointer, p, { cx: e.clientX, cy: e.clientY });
       this.pointer.inside = this.insideArena(p);
-      if (this.pointer.inside && !this.asleep) this.lastInteraction = this.simNow();
+      if (this.pointer.inside && !this.asleep) this.lastInteraction = now();
       if (this.pointer.down) {
         if (!this.pointer.dragging && Math.hypot(p.x - this.pointer.downX, p.y - this.pointer.downY) * this.cam.s > 6) this.startHold();
         const at = performance.now();
         this.samples.push({ ...p, at });
         while (this.samples.length > 2 && at - this.samples[0].at > 90) this.samples.shift();
-        if (this.holding) {
-          const target = clampTarget(p, this.open);
-          this.link.drag(target.x, target.y);
-          this.lastDragSent = this.t;
-        }
       }
       const over = this.overBlitz(p);
       if (over && !this.pointer.down) {
@@ -667,24 +504,14 @@ export class DomainView {
     this.pointer.dragging = true;
     this.holding = true;
     this.trick = undefined;
-    this.holder = { userId: this.link.me, nickname: "you" };
     this.reactGrab();
-    const at = clampTarget({ x: this.pointer.x, y: this.pointer.y }, this.open);
-    void this.link.grab(at.x, at.y).then((res) => {
-      if (res.ok) return;
-      // Someone else got there first.
-      this.dropHold();
-      if (res.event) this.applyEvent(res.event);
-      if (this.holder && this.holder.userId !== this.link.me) this.setNotice(`${this.holder.nickname} has Blitz`, 1.5);
-    });
   }
 
-  /** Lets go without throwing (the bubble burst, or the server let go for me). */
+  /** Lets go without throwing (the bubble burst out of my hand). */
   private dropHold(): void {
     this.holding = false;
     this.pointer.dragging = false;
     this.pointer.down = false;
-    if (this.holder?.userId === this.link.me) this.holder = undefined;
     this.canvas.style.cursor = "default";
   }
 
@@ -696,24 +523,21 @@ export class DomainView {
     const strain = this.body.strain ?? 0;
     this.body = { ...sanitize({ x: this.body.x, y: this.body.y, vx: (b.x - a.x) / dt, vy: (b.y - a.y) / dt }, this.open), strain };
     const fast = Math.hypot(this.body.vx, this.body.vy) > FLING_SPEED;
-    if (fast) this.flingUntil = this.simNow() + FLING_COAST;
-    // Out in open space Blitz settles wherever it's flung (the server works it out the same way).
+    if (fast) this.flingUntil = now() + FLING_COAST;
+    // Out in open space Blitz settles wherever it's flung.
     if (this.open) this.anchor = landingPoint(this.body);
     this.holding = false;
-    this.holder = undefined;
-    this.link.release(this.body);
     if (fast) this.reactFling();
   }
 
   private poke(angle: number, smile = true): void {
-    if (this.holder && this.holder.userId !== this.link.me) return;
+    if (this.holding) return;
     this.wake();
     this.trick = undefined;
     const push = pokeImpulse(angle);
     this.body.vx += push.vx;
     this.body.vy += push.vy;
     if (smile) this.giggle();
-    this.link.poke(angle);
   }
 
   // ---- Reactions to what happens ----------------------------------------------------
@@ -804,13 +628,6 @@ export class DomainView {
     this.particles.burst(this.body.x, this.body.y, reduced ? 4 : 10, 120 * PX, [CYAN, WHITE]);
   }
 
-  private summonFx(by: string): void {
-    this.setNotice(`summoned by ${by}!`, 3);
-    this.speak(pick(["you called?", "✨ i'm here ✨", "hiii!"]));
-    this.particles.burst(this.body.x, this.body.y, reduced ? 12 : 40, 320 * PX, [CYAN, VIOLET, GOLD]);
-    this.wobble = 1;
-  }
-
   private impact(hit: Impact): void {
     if (this.t - this.lastImpact < 0.12) return;
     this.lastImpact = this.t;
@@ -862,7 +679,7 @@ export class DomainView {
    * and the universe opens out from where the bubble was while the camera
    * swings over to follow Blitz.
    */
-  private startBurst(byMe: boolean, by: string): void {
+  private startBurst(): void {
     const chrome = measureChrome();
     const from = this.viewportCam();
     const [bx, by_] = toScreen(this.cam, 0, 0);
@@ -881,8 +698,8 @@ export class DomainView {
     this.crackLevel = 0;
     this.particles.burst(this.body.x, this.body.y, reduced ? 24 : 90, 700 * PX, [CYAN, VIOLET, WHITE, GOLD], undefined, undefined, 1.4);
     this.applyMood("excited", pick(["WHEEEEE!!", "FREEDOM!!", "I'M FREE!!", "WOOOOO!"]), 3.5);
-    this.setNotice(byMe ? "you burst the bubble!" : `${by} burst the bubble!`, 3);
-    this.onOpenChange?.(true, byMe);
+    this.setNotice("you burst the bubble!", 3);
+    this.onOpenChange?.(true);
   }
 
   /**
@@ -890,7 +707,7 @@ export class DomainView {
    * in toward where the bubble will be, its glass gathering out of the dark
    * while the camera glides home; then the window settles back around it.
    */
-  private async startReform(by: string | undefined): Promise<void> {
+  private async startReform(): Promise<void> {
     if (this.reforming) return;
     this.reforming = true;
     try {
@@ -903,7 +720,6 @@ export class DomainView {
       this.shatter.gather(to.x - this.rectLeft, to.y - this.rectTop, to.s, Math.hypot(this.W, this.H) * 0.7, this.fxT, GATHER, reduced ? 14 : 44);
       this.cracks = [];
       this.crackLevel = 0;
-      if (by) this.setNotice(`${by} sealed the bubble`, 2.5);
     } finally {
       this.reforming = false;
     }
@@ -924,7 +740,7 @@ export class DomainView {
       this.particles.emit(Math.cos(a), Math.sin(a), -Math.cos(a) * 0.35, -Math.sin(a) * 0.35, rand(0.6, 1.2), rand(1, 2.5), Math.random() < 0.3 ? VIOLET : CYAN);
     }
     this.applyMood("curious", pick(["oh!", "home sweet bubble", "huh?"]), 1.8);
-    this.onOpenChange?.(false, false);
+    this.onOpenChange?.(false);
   }
 
   /** Where the bubble sits once the window is back, in viewport pixels (measured without showing anything). */
@@ -957,15 +773,14 @@ export class DomainView {
     }
   }
 
-  // ---- Solo mode: the server's jobs, done here ------------------------------------------
+  // ---- Blitz's life: bursting, re-forming, naps and tricks ----------------------------
 
-  private startTrickLocal(kind: TrickKind, delay: number): void {
-    this.trick = { kind, start: this.simNow() + delay, x: this.body.x, y: this.body.y, dir: Math.random() < 0.5 ? -1 : 1 };
-    this.nextIdleTrick = this.simNow() + delay + 9 + Math.random() * 10;
+  private startTrick(kind: TrickKind, delay: number): void {
+    this.trick = { kind, start: now() + delay, x: this.body.x, y: this.body.y, dir: Math.random() < 0.5 ? -1 : 1 };
+    this.nextIdleTrick = now() + delay + 9 + Math.random() * 10;
   }
 
-  private soloDuties(nowSim: number): void {
-    if (this.link.mode !== "solo") return;
+  private live(nowSim: number): void {
     if (!this.open && this.holding && isBursting(this.body)) {
       this.dropHold();
       burstLaunch(this.body);
@@ -973,7 +788,7 @@ export class DomainView {
       this.anchor = landingPoint(this.body);
       this.flingUntil = nowSim + BURST_COAST;
       this.lastInteraction = nowSim;
-      this.startBurst(true, "you");
+      this.startBurst();
       return;
     }
     if (this.holding || this.trans) return;
@@ -983,7 +798,7 @@ export class DomainView {
       this.trick = undefined;
       this.yawnUntil = this.t + 1.4;
     }
-    if (!this.asleep && !this.trick && nowSim > this.nextIdleTrick) this.startTrickLocal(idleTrick(), 0);
+    if (!this.asleep && !this.trick && nowSim > this.nextIdleTrick) this.startTrick(idleTrick(), 0);
   }
 
   // ---- Frame ----------------------------------------------------------------------
@@ -1107,7 +922,7 @@ export class DomainView {
   }
 
   private holdTarget(): Point | undefined {
-    if (!this.holding) return this.remoteTarget;
+    if (!this.holding) return undefined;
     // The camera may have moved under a still pointer; aim where the pointer is now.
     const p = this.toDomain(this.pointer.cx, this.pointer.cy);
     this.pointer.x = p.x;
@@ -1117,7 +932,7 @@ export class DomainView {
 
   private simulate(): void {
     const target = this.holdTarget();
-    const until = this.simNow();
+    const until = now();
     if (until - this.simulatedUntil > 0.5) this.simulatedUntil = until - STEP;
     while (this.simulatedUntil + STEP <= until) {
       const hit = step(this.body, { t: this.simulatedUntil, ...this.forces(target) });
@@ -1129,18 +944,11 @@ export class DomainView {
       if (this.trick.kind === "spin") this.dizzyUntil = this.t + 0.8;
       this.trick = undefined;
     }
-    // Holding still still counts as holding; and in open space the camera can move the aim.
-    if (this.holding && target && (this.t - this.lastDragSent > 0.5 || this.layoutOpen)) {
-      this.link.drag(target.x, target.y);
-      this.lastDragSent = this.t;
-    }
-    this.soloDuties(until);
+    this.live(until);
   }
 
-  /** The strain to show. While I'm the one pressing, my screen runs a hair ahead of the server, so the burst waits for its word. */
   private shownStrain(): number {
-    const s = this.open ? 0 : this.body.strain ?? 0;
-    return this.holding && this.link.mode === "live" ? Math.min(s, 0.985) : s;
+    return this.open ? 0 : this.body.strain ?? 0;
   }
 
   private every(key: string, seconds: number): boolean {
@@ -1222,7 +1030,7 @@ export class DomainView {
     if (this.asleep && Math.random() < dt * 0.7) this.emotes.float("z", x + ORB_RADIUS * 0.8, y - ORB_RADIUS * 0.9, 0.06, -0.12, ft, 2.4, 0.4);
 
     // Tricks have their own flourishes.
-    const trickNow = this.trick && trickAge(this.trick, this.simNow()) !== undefined ? this.trick.kind : undefined;
+    const trickNow = this.trick && trickAge(this.trick, now()) !== undefined ? this.trick.kind : undefined;
     if (trickNow === "dance" && this.every("note", 0.35)) this.emotes.float("note", x + rand(-0.06, 0.06), y - 0.08, rand(-0.2, 0.2), -0.35, ft, 1.3, 0.45);
     if (trickNow === "heart" && !reduced) {
       // Blitz draws the heart in light as it flies.
@@ -1352,7 +1160,7 @@ export class DomainView {
     if (t < this.yawnUntil) return { eyes: "sleepy", mouth: "yawn", brows: "none", blush: 0 };
     if (t < this.bonkUntil) return { eyes: "bonk", mouth: "wavy", brows: "none", blush: 0 };
     if (t < this.dizzyUntil) return { eyes: "dizzy", mouth: "wavy", brows: "none", blush: 0 };
-    if (this.holding || this.holder) {
+    if (this.holding) {
       if (strain > 0.12) return { eyes: "strain", mouth: "grit", brows: "sad", blush: 0.2 };
       if (t < this.surprisedUntil) return { eyes: "wide", mouth: "o", brows: "none", blush: 0 };
       if (speed > 2.6) return { eyes: "happy", mouth: "open", brows: "none", blush: 0.3 };
@@ -1373,7 +1181,7 @@ export class DomainView {
   private computeLook(): Look {
     const t = this.t;
     const strain = this.shownStrain();
-    const trickNow = this.trick && trickAge(this.trick, this.simNow()) !== undefined ? this.trick : undefined;
+    const trickNow = this.trick && trickAge(this.trick, now()) !== undefined ? this.trick : undefined;
     const face = this.face(trickNow?.kind, strain);
     // A new expression arrives with a little pop.
     const key = `${face.eyes}|${face.mouth}`;
@@ -1402,7 +1210,7 @@ export class DomainView {
     if (face.eyes === "laugh") tilt += Math.sin(t * 22) * 0.12;
     if (this.mood === "shy") tilt -= 0.15;
     if (trickNow?.kind === "spin") {
-      const u = (this.simNow() - trickNow.start) / TRICKS.spin;
+      const u = (now() - trickNow.start) / TRICKS.spin;
       tilt += (trickNow.dir < 0 ? -1 : 1) * Math.PI * 2 * 3 * (u * u * (3 - 2 * u));
     }
     if (trickNow?.kind === "wiggle" || trickNow?.kind === "dance") tilt += Math.sin(t * 16) * 0.18;
@@ -1452,7 +1260,7 @@ export class DomainView {
     const t = this.t;
     const speed = Math.hypot(this.body.vx, this.body.vy);
     const strain = this.shownStrain();
-    const trickNow = this.trick && trickAge(this.trick, this.simNow()) !== undefined ? this.trick.kind : undefined;
+    const trickNow = this.trick && trickAge(this.trick, now()) !== undefined ? this.trick.kind : undefined;
     let s = "drifting";
     if (t < 1.2) s = "summoning…";
     else if (t < this.noticeUntil) s = this.notice;
@@ -1460,7 +1268,6 @@ export class DomainView {
     else if (t < this.bonkUntil) s = "bonk!";
     else if (t < this.dizzyUntil) s = "dizzy…";
     else if (this.holding) s = strain > 0.15 ? "the wall is cracking…" : this.open ? "carrying Blitz through space" : "held by you";
-    else if (this.holder) s = strain > 0.15 ? `${this.holder.nickname} is cracking the wall…` : `held by ${this.holder.nickname}`;
     else if (this.thinking) s = "thinking…";
     else if (this.pending || this.mote) s = "listening…";
     else if (this.mood) s = MOOD_STATUS[this.mood];
@@ -1551,7 +1358,6 @@ export class DomainView {
       });
       drawRipples(ctx, this.cam, this.ripples, t, wallR);
     }
-    this.drawHolderTag(look);
     if (this.thinking && t >= this.thinking.landsAt && look.r > 0.5) drawThought(ctx, look, t - this.thinking.landsAt, W);
     else if (this.speech && look.r > 0.5) {
       drawSpeech(ctx, this.speech.text, look, t - this.speech.born, this.speech.life, W, H, this.font);
@@ -1575,7 +1381,7 @@ export class DomainView {
   private drawRocks(): void {
     const { W, H, cam } = this;
     const middle = toWorld(cam, W / 2, H / 2);
-    const rocks = rocksNear(middle.x, middle.y, Math.hypot(W, H) / 2 / cam.s + 0.2, this.simNow());
+    const rocks = rocksNear(middle.x, middle.y, Math.hypot(W, H) / 2 / cam.s + 0.2, now());
     const blitz = this.drawnBody();
     for (const rock of rocks) this.drawRock(rock, blitz);
   }
@@ -1738,8 +1544,8 @@ export class DomainView {
 
   /** A thread of light from Blitz to the hand holding it. */
   private drawTether(look: Look): void {
-    const target = this.holding ? clampTarget({ x: this.pointer.x, y: this.pointer.y }, this.open) : this.remoteTarget;
-    if (!target) return;
+    if (!this.holding) return;
+    const target = clampTarget({ x: this.pointer.x, y: this.pointer.y }, this.open);
     const [tx, ty] = toScreen(this.cam, target.x, target.y);
     const d = Math.hypot(tx - look.x, ty - look.y);
     if (d < look.r * 1.2) return;
@@ -1757,28 +1563,6 @@ export class DomainView {
     ctx.restore();
   }
 
-  /** Whose hand Blitz is in, when it isn't mine. */
-  private drawHolderTag(look: Look): void {
-    if (!this.holder || this.holder.userId === this.link.me || !this.remoteTarget || look.r <= 0.5) return;
-    const ctx = this.ctx;
-    const [tx, ty] = toScreen(this.cam, this.remoteTarget.x, this.remoteTarget.y);
-    const label = this.holder.nickname;
-    ctx.save();
-    ctx.font = `600 12px ${this.font}`;
-    const w = ctx.measureText(label).width + 14;
-    const x = Math.max(4, Math.min(this.W - w - 4, tx - w / 2));
-    const y = Math.max(4, Math.min(this.H - 24, ty + 10));
-    ctx.fillStyle = "rgba(14, 20, 38, 0.85)";
-    ctx.strokeStyle = rgba(this.tint, 0.6);
-    ctx.beginPath();
-    ctx.roundRect(x, y, w, 20, 10);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = "#E7EDFB";
-    ctx.textBaseline = "middle";
-    ctx.fillText(label, x + 7, y + 10.5);
-    ctx.restore();
-  }
 
   private drawDizzyStars(look: Look): void {
     const ctx = this.ctx;

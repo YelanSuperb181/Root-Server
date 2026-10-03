@@ -6,7 +6,7 @@
 // the viewer, gets Blitz's keyword reactions and never sees Claude's prompt.
 
 import { CommunityFacts, MOODS, REACTION_EMOJI, TRICKS, personaPrompt, readThought, situationPrompt } from "@blitz/shared";
-import type { SoloBrain } from "./domain";
+import type { Brain } from "./domain";
 
 interface Sample {
   json(input: string, options?: { modelTier?: "quick" | "default" | "complex"; cache?: boolean }): Promise<unknown>;
@@ -27,7 +27,7 @@ const FACTS: CommunityFacts = { name: "this community", prefix: "!", groups: [],
 /** Codes after which asking again is pointless for the rest of the visit. */
 const FOR_GOOD = ["not_granted", "sampling_disabled", "not_declared", "capability_disabled", "capability_removed"];
 
-export async function viewerBrain(): Promise<SoloBrain | undefined> {
+export async function viewerBrain(): Promise<Brain | undefined> {
   if (!window.claude?.use) return undefined;
   const viewer = (await window.claude.use("user").catch(() => null)) as Viewer | null;
   if (!(await viewer?.isOwner().catch(() => false))) return undefined;
