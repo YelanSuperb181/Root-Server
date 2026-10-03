@@ -210,7 +210,8 @@ async function hold(evt: ChannelMessageCreatedEvent, notice: string | undefined,
 export async function screenGuardian(evt: ChannelMessageCreatedEvent): Promise<boolean> {
   if (settings.isLog(evt.channelId)) return false;
   const text = evt.messageContent ?? "";
-  const extra = (evt.messageUris ?? []).map((u) => u.uri);
+  // Uploaded files (pictures and the like) aren't links: only addresses people shared count.
+  const extra = (evt.messageUris ?? []).filter((u) => !u.attachment).map((u) => u.uri);
   const level = await accessLevel(evt.userId);
   const staff = level !== "everyone";
   const now = Date.now();
@@ -313,7 +314,6 @@ export const guardianCommands: Command[] = [
       if (target.channelId !== "all") {
         await send(target.channelId, `🔒 **This channel is locked**${length}${reason ? `: ${truncate(reason, 200)}` : ""}. Only the team can post until it opens again.`).catch(() => undefined);
       }
-      noteCatch("lockdown", ctx.userId, target.channelId === "all" ? "" : target.channelId, `locked${length}`);
       await ctx.reply(`🔒 Locked ${await where(target.channelId)}${length}. \`${config.prefix}unlock\` opens it again.`);
       await modLog(`🔒 **${await nickname(ctx.userId)}** locked ${await where(target.channelId)}${length}${reason ? `: ${truncate(reason, 200)}` : ""}`);
     },

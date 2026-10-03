@@ -13,6 +13,10 @@ export type RichPart =
 export interface RichLine {
   /** A "> " line: shown as a quote. */
   quote: boolean;
+  /** A "- " (or "* ", "• ") line: a point in a list. */
+  bullet?: boolean;
+  /** A "## " line (Blitz's brain sometimes writes them): a little heading. */
+  heading?: boolean;
   parts: RichPart[];
 }
 
@@ -23,7 +27,12 @@ const LINK = /^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/;
 export function parseRich(text: string): RichLine[] {
   return text.split("\n").map((line) => {
     const quote = line.startsWith("> ") || line === ">";
-    return { quote, parts: parseInline(quote ? line.slice(2) : line) };
+    const body = quote ? line.slice(2) : line;
+    const bullet = /^\s*[-*•]\s+/.exec(body);
+    if (bullet) return { quote, bullet: true, parts: parseInline(body.slice(bullet[0].length)) };
+    const heading = /^#{1,4}\s+/.exec(body);
+    if (heading) return { quote, heading: true, parts: parseInline(body.slice(heading[0].length)) };
+    return { quote, parts: parseInline(body) };
   });
 }
 

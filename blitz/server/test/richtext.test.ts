@@ -31,3 +31,13 @@ test("underscores inside words and unclosed marks stay as text", () => {
   assert.deepEqual(parseRich("[click](javascript:alert(1))")[0].parts, [{ kind: "text", text: "[click](javascript:alert(1))" }]);
   assert.equal(plainText("**Done:** _case #3_ for [@Zoe](root://user/u1)"), "Done: case #3 for @Zoe");
 });
+
+test("list points and headings from Blitz's brain become their own kinds of line", () => {
+  const lines = parseRich("## This week\n- **2,940** messages\n* 19 joined\nplain - not a point");
+  assert.equal(lines[0].heading, true);
+  assert.deepEqual(lines[0].parts, [{ kind: "text", text: "This week" }]);
+  assert.equal(lines[1].bullet, true);
+  assert.equal(lines[1].parts[0].kind, "bold");
+  assert.equal(lines[2].bullet, true);
+  assert.equal(lines[3].bullet, undefined);
+});

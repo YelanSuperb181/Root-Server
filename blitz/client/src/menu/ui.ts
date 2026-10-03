@@ -32,7 +32,7 @@ export function h<S extends string>(spec: S, attrs: Attrs = {}, ...children: Chi
 export function rich(text: string): HTMLElement {
   const box = h("div.rich");
   for (const line of parseRich(text)) {
-    const el = h(line.quote ? "blockquote" : "p");
+    const el = h(line.quote ? "blockquote" : line.bullet ? "p.bullet" : line.heading ? "p.heading" : "p");
     for (const part of line.parts) el.append(richPart(part));
     if (!line.parts.length) el.append(" ");
     box.append(el);

@@ -3,130 +3,14 @@
 // space. Everything a section does runs one of Blitz's own commands through
 // the menu (so the server checks it like in chat), then the menu refreshes.
 
-import type { MemberCard, MemberLine, MenuOverview } from "./api";
+import type { MemberCard, MemberLine } from "./api";
 import { Menu } from "./menu";
+import { MEDALS, Section, SectionContext, bar, busy, button, card, cardTitle, empty, input, memberPicker, note, segmented, select, textarea } from "./pieces";
 import { MONTHS, avatar, dateLabel, fromNow, h, rich } from "./ui";
+import { constellation } from "./constellation";
+import { MORE, startAppeal } from "./sections-plus";
 
-export interface SectionContext {
-  menu: Menu;
-  data: MenuOverview;
-  /** Draw this section again (after its own state changed). */
-  redraw(): void;
-  /** Open another section. */
-  go(id: string): void;
-}
-
-export interface Section {
-  id: string;
-  icon: string;
-  title: string;
-  /** A few words on what's in it. */
-  blurb: string;
-  /** Only for the team (mods and admins). */
-  team?: boolean;
-  render(ctx: SectionContext): HTMLElement;
-}
-
-// ---- Small pieces -------------------------------------------------------------------
-
-/** Runs `work` with the button showing it's busy (and pressed only once). */
-async function busy(button: HTMLButtonElement, work: () => Promise<unknown>): Promise<void> {
-  if (button.disabled) return;
-  button.disabled = true;
-  button.classList.add("busy");
-  try {
-    await work();
-  } finally {
-    button.disabled = false;
-    button.classList.remove("busy");
-  }
-}
-
-function button(label: string, onclick: (b: HTMLButtonElement) => void, kind = ""): HTMLButtonElement {
-  const b: HTMLButtonElement = h(`button.mbtn${kind ? `.${kind}` : ""}`, { type: "button" }, label);
-  b.addEventListener("click", () => onclick(b));
-  return b;
-}
-
-const card = (...children: Array<Node | string | false | null | undefined>) => h("div.mcard", {}, ...children);
-const cardTitle = (text: string) => h("h3.mcard-title", { text });
-const note = (text: string) => h("p.mnote", { text });
-const empty = (icon: string, text: string) => h("div.mempty", {}, h("span.mempty-icon", { "aria-hidden": "true" }, icon), h("p", { text }));
-
-function input(placeholder: string, value = "", max = 500): HTMLInputElement {
-  return h("input.minput", { type: "text", placeholder, value, maxlength: max, autocomplete: "off" });
-}
-
-function textarea(placeholder: string, value = "", max = 1500): HTMLTextAreaElement {
-  const t = h("textarea.minput", { placeholder, maxlength: max, rows: 3 });
-  t.value = value;
-  return t;
-}
-
-function select(options: Array<[value: string, label: string]>, value = ""): HTMLSelectElement {
-  const s = h("select.minput");
-  for (const [v, label] of options) s.append(h("option", { value: v, selected: v === value }, label));
-  return s;
-}
-
-/** A row of pill buttons, one picked. */
-function segmented(options: Array<[value: string, label: string]>, value: string, onPick: (v: string) => void): HTMLElement {
-  const row = h("div.mseg", { role: "radiogroup" });
-  for (const [v, label] of options) {
-    const b = h("button.mseg-btn", { type: "button", role: "radio", "aria-checked": String(v === value) }, label);
-    b.addEventListener("click", () => {
-      for (const other of row.children) other.setAttribute("aria-checked", "false");
-      b.setAttribute("aria-checked", "true");
-      onPick(v);
-    });
-    row.append(b);
-  }
-  return row;
-}
-
-/** Finds members by name as you type, and calls `onPick` with the one chosen. */
-function memberPicker(ctx: SectionContext, onPick: (m: MemberLine | undefined) => void, picked?: MemberLine): HTMLElement {
-  const box = h("div.mpicker");
-  const results = h("div.mpicker-results");
-  const field = input("Search by name…", "", 64);
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let asked = 0;
-  const showPicked = (m: MemberLine) => {
-    box.replaceChildren(
-      h("div.mpicked", {}, avatar(m.userId, m.name, 26), h("span", { text: m.name }), button("✕", () => onPick(undefined), "ghost.small")),
-    );
-  };
-  field.addEventListener("input", () => {
-    if (timer) clearTimeout(timer);
-    const q = field.value.trim();
-    if (!q) {
-      results.replaceChildren();
-      return;
-    }
-    timer = setTimeout(async () => {
-      const mine = ++asked;
-      const found = await ctx.menu.api.searchMembers(q).catch(() => []);
-      if (mine !== asked) return;
-      results.replaceChildren(
-        ...(found.length
-          ? found.map((m) => {
-              const row = h("button.mpicker-row", { type: "button" }, avatar(m.userId, m.name, 24), h("span", { text: m.name }));
-              row.addEventListener("click", () => onPick(m));
-              return row;
-            })
-          : [h("p.mnote", { text: "Nobody by that name." })]),
-      );
-    }, 220);
-  });
-  if (picked) showPicked(picked);
-  else box.append(field, results);
-  return box;
-}
-
-/** A progress bar, `fraction` of the way. */
-const bar = (fraction: number) => h("div.mbar", {}, h("span", { style: `width:${Math.round(Math.min(1, Math.max(0, fraction)) * 100)}%` }));
-
-const MEDALS = ["🥇", "🥈", "🥉"];
+export type { Section, SectionContext } from "./pieces";
 
 // ---- The sections --------------------------------------------------------------------
 
@@ -152,10 +36,37 @@ const you: Section = {
           ),
         ),
         lv?.on && h("div.mlevel", {}, bar(lv.needed ? lv.into / lv.needed : 0), h("p.mnote", { text: `${lv.into.toLocaleString()} / ${lv.needed.toLocaleString()} XP to level ${lv.level + 1} · ${lv.messages.toLocaleString()} messages` })),
-        data.myWarnings > 0 &&
-          h("div.mwarn", {}, h("span", { text: `⚠️ You have ${data.myWarnings} warning${data.myWarnings === 1 ? "" : "s"}.` }), button("See them", (b) => void busy(b, () => menu.run("warnings")), "ghost.small")),
       ),
     );
+    const dust = data.stardust;
+    if (dust?.on) {
+      root.append(
+        card(
+          h(
+            "div.mrow.between",
+            {},
+            h("div", {}, h("p.mwallet-balance", {}, h("strong", { text: dust.balance.toLocaleString() }), " Stardust"), h("p.mnote", { text: dust.streak > 0 ? `🔥 ${dust.streak}-day streak` : "Start a streak with your daily gift" })),
+            dust.dailyReady ? button("✨ Daily gift", (b) => void busy(b, () => menu.run("daily")), "primary") : button("Shop", () => go("stardust"), "ghost"),
+          ),
+        ),
+      );
+    }
+    const record = data.myCases.filter((c) => !c.revoked);
+    if (record.length) {
+      const list = h("div.mlist");
+      for (const c of record.slice(-5).reverse()) {
+        list.append(
+          h(
+            "div.mlist-row",
+            {},
+            h("span.mcase-icon", { "aria-hidden": "true" }, KIND_ICON[c.kind] ?? "•"),
+            h("div.mlist-main", {}, h("p", { text: `${KIND_WORD[c.kind] ?? c.kind}${c.reason ? `: ${c.reason}` : ""}` }), h("p.mnote", { text: `#${c.id} · ${dateLabel(c.at)}` })),
+            ["warn", "mute", "kick"].includes(c.kind) && data.inbox?.on ? button("Appeal", () => (startAppeal(c.id), go("inbox")), "ghost.small") : undefined,
+          ),
+        );
+      }
+      root.append(card(cardTitle("Your record"), note("Think one of these was a mistake? Appeal it and the team will take another look."), list));
+    }
     if (data.community) {
       root.append(
         card(
@@ -167,10 +78,12 @@ const you: Section = {
     }
     const shortcuts = h("div.mshortcuts");
     for (const [id, label] of [
+      ["stardust", "💫 Dress up Blitz"],
       ["roles", "🎭 Pick roles"],
+      ["giveaways", "🎉 Giveaways"],
+      ["inbox", "📬 Talk to the team"],
       ["reminders", "⏰ Set a reminder"],
       ["ideas", "💡 Share an idea"],
-      ["fun", "🎲 Play"],
     ]) {
       shortcuts.append(button(label, () => go(id), "ghost"));
     }
@@ -201,10 +114,14 @@ const levels: Section = {
         ),
       );
     });
+    const rewards = h("div.mrewards");
+    for (const r of data.levelRewards) rewards.append(h(`div.mreward${lv.level >= r.level ? ".got" : ""}`, {}, h("span.mreward-level", { text: `Lv ${r.level}` }), h("span", { text: r.roleName }), h("span.mreward-state", { text: lv.level >= r.level ? "✓ yours" : `${r.level - lv.level} to go` })));
     return h(
       "div.msection",
       {},
+      lv.top.length > 1 && card(cardTitle("✨ The constellation"), note("The ten brightest stars of the community. Yours has a golden ring."), constellation(lv.top, data.userId)),
       card(cardTitle("🏆 Leaderboard"), lv.top.length ? list : empty("🏆", "Nobody's on the leaderboard yet. Start chatting!"), lv.place > 10 && note(`You're #${lv.place} with ${lv.xp.toLocaleString()} XP. Keep it up!`)),
+      data.levelRewards.length > 0 && card(cardTitle("🎁 Level rewards"), note("Roles you unlock by levelling up."), rewards),
       card(cardTitle("How levels work"), h("p.mabout", { text: lv.how })),
     );
   },
@@ -367,38 +284,6 @@ const ideas: Section = {
   },
 };
 
-let reportAbout: MemberLine | undefined;
-const report: Section = {
-  id: "report",
-  icon: "🚩",
-  title: "Report",
-  blurb: "Quietly tell the team",
-  render(ctx) {
-    const { data, menu, redraw } = ctx;
-    if (!data.reportsOn) return h("div.msection", {}, empty("🚩", "This community hasn't set up a staff log for Blitz yet, so please message someone on the team directly."));
-    const what = textarea("What happened?", "", 1000);
-    return h(
-      "div.msection",
-      {},
-      card(
-        cardTitle("Tell the team about a problem"),
-        note("Only the team sees it. Nobody else is told who reported."),
-        h("p.mlabel", { text: "About someone? (optional)" }),
-        memberPicker(ctx, (m) => ((reportAbout = m), redraw()), reportAbout),
-        h("p.mlabel", { text: "What happened" }),
-        what,
-        h("div.mrow.end", {}, button("Tell the team", (b) => {
-          if (!what.value.trim()) return what.focus();
-          void busy(b, async () => {
-            await menu.run("report", `${reportAbout ? `${reportAbout.userId} ` : ""}${what.value.trim()}`);
-            reportAbout = undefined;
-          });
-        }, "primary")),
-      ),
-    );
-  },
-};
-
 const fun: Section = {
   id: "fun",
   icon: "🎲",
@@ -493,6 +378,7 @@ const commands: Section = {
 // ---- The team's sections ---------------------------------------------------------------
 
 const KIND_ICON: Record<string, string> = { warn: "⚠️", mute: "🔇", unmute: "🔊", kick: "👢", ban: "🔨", unban: "🕊️", note: "📝" };
+const KIND_WORD: Record<string, string> = { warn: "Warning", mute: "Mute", unmute: "Unmute", kick: "Kick", ban: "Ban", unban: "Ban lifted", note: "Note" };
 const mod: { picked?: MemberLine; card?: MemberCard; loading?: boolean; confirm?: string; reason: string; muteFor: string; banFor: string } = { reason: "", muteFor: "1h", banFor: "" };
 
 async function loadCard(ctx: SectionContext): Promise<void> {
@@ -506,7 +392,7 @@ async function loadCard(ctx: SectionContext): Promise<void> {
 
 const moderation: Section = {
   id: "moderation",
-  icon: "🛡️",
+  icon: "🔨",
   title: "Moderation",
   blurb: "Warnings, mutes, kicks and bans",
   team: true,
@@ -551,8 +437,8 @@ const moderation: Section = {
             `div.mlist-row${k.revoked ? ".faded" : ""}`,
             {},
             h("span.mcase-icon", { "aria-hidden": "true" }, KIND_ICON[k.kind] ?? "•"),
-            h("div.mlist-main", {}, h("p", { text: `${k.kind}${k.reason ? `: ${k.reason}` : ""}` }), h("p.mnote", { text: `#${k.id} · by ${k.by} · ${dateLabel(k.at)}${k.revoked ? " · taken back" : ""}` })),
-            k.kind === "warn" && !k.revoked
+            h("div.mlist-main", {}, h("p", { text: `${KIND_WORD[k.kind] ?? k.kind}${k.reason ? `: ${k.reason}` : ""}` }), h("p.mnote", { text: `#${k.id} · by ${k.by} · ${dateLabel(k.at)}${k.revoked ? " · taken back" : ""}` })),
+            ["warn", "mute", "ban", "kick", "note"].includes(k.kind) && !k.revoked
               ? button("Take back", (b) =>
                   void busy(b, async () => {
                     await menu.run("unwarn", String(k.id));
@@ -726,7 +612,7 @@ const setup: Section = {
   title: "Setup",
   blurb: "What Blitz is set up to do here",
   team: true,
-  render({ menu, redraw }) {
+  render({ menu, redraw, data }) {
     const fetch = async () => {
       const res = await menu.api.run("settings").catch(() => ({ ok: false, replies: ["⚠️ I couldn't reach my server."] }));
       setupText = res.replies.join("\n\n");
@@ -737,12 +623,33 @@ const setup: Section = {
       "div.msection",
       {},
       card(setupText === undefined ? h("p.mnote.loading", { text: "Checking…" }) : rich(setupText), h("div.mrow.end", {}, button("Refresh", (b) => void busy(b, fetch), "ghost.small"))),
-      card(cardTitle("Changing these"), note("In Root, open Community settings, then Apps, then Blitz. Channels, roles and switches are all there.")),
+      levelRewardsCard(menu, data.levelRewards),
+      card(cardTitle("Changing these"), note("In Root, open Community settings, then Apps, then Blitz. Channels, roles, the shields and the warning ladder are all there.")),
     );
   },
 };
 
-export const SECTIONS: Section[] = [you, levels, roles, reminders, birthday, ideas, report, fun, commands, moderation, customs, post, setup];
+function levelRewardsCard(menu: Menu, rewards: SectionContext["data"]["levelRewards"]): HTMLElement {
+  const level = input("Level", "", 3);
+  level.classList.add("short");
+  level.inputMode = "numeric";
+  const role = input("Role name, like Regular", "", 80);
+  const list = h("div.mlist");
+  for (const r of rewards) list.append(h("div.mlist-row", {}, h("span.mreward-level", { text: `Lv ${r.level}` }), h("div.mlist-main", {}, h("p", { text: r.roleName })), button("Remove", (b) => void busy(b, () => menu.run("levelrole", `remove ${r.level}`)), "ghost.small")));
+  return card(
+    cardTitle("🎁 Level rewards"),
+    note("Give a role to everyone who reaches a level. Free, however many you add. Blitz's role must be above them."),
+    rewards.length > 0 && list,
+    h("div.mrow", {}, level, role, button("Add", (b) => {
+      if (!Number(level.value)) return level.focus();
+      if (!role.value.trim()) return role.focus();
+      void busy(b, () => menu.run("levelrole", `${Number(level.value)} ${role.value.trim()}`));
+    }, "primary")),
+    rewards.length > 0 && h("div.mrow.end", {}, button("Give them to everyone already past", (b) => void busy(b, () => menu.run("levelrole", "sync")), "ghost.small")),
+  );
+}
+
+export const SECTIONS: Section[] = [you, levels, MORE.stardust, roles, MORE.giveaways, reminders, birthday, ideas, MORE.inbox, fun, commands, MORE.guardian, moderation, MORE.pulse, MORE.ask, post, customs, setup];
 
 /** The sections someone sees. */
 export function sectionsFor(menu: Menu): Section[] {

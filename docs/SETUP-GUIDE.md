@@ -72,7 +72,7 @@ After uploading, the Developer Portal shows the version as ready to publish. Roo
    | Quote wall | Where messages that get enough 🗣️ reactions are saved |
    | Birthday channel | Where Blitz wishes people happy birthday |
    | Suggestions channel | Where `!suggest` posts ideas for votes |
-   | Staff log | Where reports, moderation, auto-mod removals, joins and leaves are noted (`!report` needs it) |
+   | Staff log | Where reports, moderation, shield catches, auto-mod removals, inbox transcripts, joins and leaves are noted |
    | Message log | Where edited and deleted messages are shown, with what they said |
    | Private channels | Channels Blitz stays out of: no XP, no quotes, never shown in its domain or sent to its brain |
    | Role for new members | Given to everyone who joins |
@@ -80,9 +80,14 @@ After uploading, the Developer Portal shows the version as ready to publish. Roo
    | Roles people can pick | Roles members can give themselves with `!role` |
    | Staff | Who can use staff commands, besides the owner and roles that can manage the community, kick or ban |
    | Welcome message | Your own welcome; `{user}`, `{name}`, `{community}` and `{members}` are filled in |
-   | Turn off levels, Turn off auto-mod | Both are on until you tick these |
+   | Turn off levels, Stardust, the inbox, auto-mod or cool-offs | All on until you tick them |
    | Turn off domain links | Stops the 🔮 link to Blitz's domain under its replies to commands |
-   | Block invite links, Blocked words | What else auto-mod removes (words separated by commas; `scam*` catches any ending) |
+   | Block invite links, Blocked words, Stricter filters | What else auto-mod removes (words separated by commas; `scam*` catches any ending; stricter filters add shouting, emoji floods and walls of text) |
+   | Guardian: Turn off the scam shield, Turn off the raid shield | Both on until you tick them |
+   | Guardian: Joins that mean a raid | How many joins in a minute raise the raid shield (8 by default) |
+   | Guardian: Newcomer link wait | Minutes before new members can post links (10 by default; 0 for no wait) |
+   | Guardian: Warnings before a mute, kick, ban | The warning ladder (a mute at 3 by default; kick and ban off until you set them) |
+   | Guardian: Don't notify members about moderation | Members are told about their warnings, mutes, kicks and bans (and how to appeal) until you tick this |
    | Reactions for the quote wall | How many 🗣️ a message needs (2 by default) |
 
    For the roles: Blitz can only hand out roles below its own in **Settings → Roles**.
@@ -97,11 +102,12 @@ Out of the box Blitz reacts to messages with keywords: it gets the mood right mo
 2. **Paste it into Blitz's App settings in Root**, under **Blitz's brain**. Save, and Blitz picks it up right away; no restart needed.
 3. **Optionally, fill in "About this community"**: a sentence or two about what your community is and its vibe. Blitz uses it to fit in.
 4. **Try it:** say "hey blitz, what can you do?" in any channel.
+5. **Optionally, tick "Let Blitz's brain help moderate"** (also under **Blitz's brain**): reports get a summary, a severity and a suggestion for the team; blocked-word hits are double-checked in context before they're removed; `!tldr` catches people up on a channel; and the team can **Ask Blitz** questions about the community in its menu (or with `!ask`). The team always decides: the brain never warns, mutes or bans anyone.
 
 Things to know:
 
 - **Cost:** Blitz uses Claude Opus 5.5 at low effort, so most answers take a few seconds and cost around a cent each. Blitz answers at most 200 messages an hour per community (`brain.maxPerHour` in `config.ts`) and falls back to keywords after that. You can also set a spend limit in the Anthropic console.
-- **Privacy:** messages that mention Blitz, plus the last 12 messages in that channel, are sent to Anthropic's API. Blitz keeps no record of them; its memory lasts only while it runs. Channels marked private are never sent. Let your community know before you turn it on. Details: [PRIVACY.md](../PRIVACY.md).
+- **Privacy:** messages that mention Blitz, plus the last 12 messages in that channel, are sent to Anthropic's API. With "Let Blitz's brain help moderate" ticked, so are a reported message and the conversation around it, a message caught for a blocked word with the few before it, the channel being caught up on with `!tldr`, and whatever Ask Blitz looks up for the team. Blitz keeps no record of them; its memory lasts only while it runs. Channels marked private are never sent. Let your community know before you turn it on. Details: [PRIVACY.md](../PRIVACY.md).
 - **Who can see the key:** anyone who can manage Blitz's App settings in the community. Use a key made just for Blitz, so you can revoke it on its own.
 - **While developing:** you can put `ANTHROPIC_API_KEY=...` in `blitz/server/.env` instead.
 - If Claude declines a message or can't be reached, Blitz quietly falls back to keywords for that message.
@@ -116,9 +122,9 @@ These are the permissions in [`root-manifest.json`](../blitz/root-manifest.json)
 | --- | --- |
 | View channels and read history | Hearing commands and people talking to it; the quote wall |
 | Post, mention, react | Answers, welcomes, polls, level-ups, quotes; reacting when someone talks to Blitz |
-| Delete others' messages | Auto-mod, mutes and `!clear` |
-| Manage roles | Only to give the roles you pick: the role for new members, the birthday role and the roles people can pick |
-| Kick, ban, manage bans | Only when your staff use `!kick`, `!ban` or `!unban`. Blitz never kicks or bans on its own |
+| Delete others' messages | The scam and raid shields, auto-mod, mutes, lockdowns, slowmode and `!clear` |
+| Manage roles | Only to give the roles you pick: the role for new members, the birthday role, the roles people can pick and level reward roles |
+| Kick, ban, manage bans | When your staff use `!kick`, `!ban` or `!unban` (or accept a ban appeal), and when the warning ladder reaches a kick or ban step, if you set one (they're off until you do) |
 
 Blitz never creates, renames or deletes channels or roles.
 

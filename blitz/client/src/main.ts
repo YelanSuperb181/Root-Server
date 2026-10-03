@@ -1,6 +1,7 @@
 // Blitz's domain: the App's client, shown in its own Root channel.
 
 import { DomainView } from "./domain";
+import { cosmetic } from "@blitz/shared";
 import { demoMenu, serverMenu } from "./menu/api";
 import { DreamMenu } from "./menu/dream";
 import { Menu } from "./menu/menu";
@@ -42,6 +43,13 @@ function main(): void {
   const demo = !insideRoot() || new URLSearchParams(location.search).has("demo");
   const menu = new Menu(demo ? demoMenu() : serverMenu());
   menu.onReply = (reply) => view.react(reply.text, reply.ok);
+  // Your Blitz wears what you picked in the shop, and stands guard while a shield is up.
+  menu.subscribe(() => {
+    const d = menu.data;
+    if (!d) return;
+    view.setOutfit({ hat: d.stardust?.hat, trail: d.stardust?.trail, glow: d.stardust?.glow ? cosmetic(d.stardust.glow)?.color : undefined });
+    view.setShield(d.shieldUp);
+  });
   const panel = new MenuPanel(menu);
   const dream = new DreamMenu(menu, view, byId("domain"));
 

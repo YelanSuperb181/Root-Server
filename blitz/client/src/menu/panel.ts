@@ -58,7 +58,14 @@ export class MenuPanel {
         teamLabel = true;
         this.nav.append(h("p.mp-group", { text: "For the team" }));
       }
-      const b = h(`button.mp-tab${s.id === this.current ? ".on" : ""}`, { type: "button", "aria-current": s.id === this.current ? "page" : undefined }, h("span.mp-tab-icon", { "aria-hidden": "true" }, s.icon), h("span.mp-tab-label", { text: s.title }));
+      const count = data ? s.badge?.(data) : undefined;
+      const b = h(
+        `button.mp-tab${s.id === this.current ? ".on" : ""}`,
+        { type: "button", "aria-current": s.id === this.current ? "page" : undefined, "aria-label": count ? `${s.title}, ${count} new` : undefined },
+        h("span.mp-tab-icon", { "aria-hidden": "true" }, s.icon),
+        h("span.mp-tab-label", { text: s.title }),
+        count ? h("span.mp-badge", { "aria-hidden": "true", text: String(count) }) : undefined,
+      );
       b.addEventListener("click", () => this.open(s.id));
       this.nav.append(b);
     }

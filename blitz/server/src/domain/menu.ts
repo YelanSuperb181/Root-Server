@@ -6,16 +6,26 @@
 import { rootServer, Client, UserGuid } from "@rootsdk/server-app";
 import { BlitzMenuServiceBase } from "@blitz/gen-server";
 import {
+  AskRequest,
+  AskResponse,
   BanInfo,
-  ChannelInfo,
+  GiveawayInfo,
+  GuardianInfo,
+  InboxInfo,
   MemberCard,
   MemberCardRequest,
   MemberSearchRequest,
   MemberSearchResponse,
   MenuOverview,
   MenuRequest,
+  PulseInfo,
   RunRequest,
   RunResponse,
+  StardustInfo,
+  TicketInfo,
+  TicketReplyRequest,
+  TicketRequest,
+  TicketThread,
 } from "@blitz/gen-shared";
 import { read } from "../core/api";
 import { allCommands, runFromMenu } from "../core/commands";
@@ -32,6 +42,20 @@ import { actorName, casesOf, mutedUntil } from "../features/moderation";
 import { remindersOf } from "../features/reminders";
 import { roleChoices } from "../features/selfroles";
 import { recentSuggestions } from "../features/suggestions";
+import { locksAndSlows, raidStatus, recentCatches } from "../features/guardian";
+import { Ticket, addMessage, getTicket, markRead, openTickets, recentTickets, ticketsOf } from "../features/inbox";
+import { activeGiveaways, recentGiveaways } from "../features/giveaways";
+import { pulseDays } from "../features/pulse";
+import { dailyReady, stardustTop, walletOf } from "../features/stardust";
+import { levelRewards } from "../features/levels";
+import { getCase, ladderText } from "../features/moderation";
+import { channelLink } from "../core/settings";
+import { CASE_LABEL } from "../logic/moderation";
+import { summarize } from "../logic/pulse";
+import { nextDailyAt } from "../logic/stardust";
+import { brainReady } from "./brain";
+import { askBlitz } from "./oracle";
+import { UsageError } from "../core/commands";
 
 /** Runs `get`; if it fails, logs it and gives `fallback`, so one missing piece doesn't empty the whole menu. */
 async function piece<T>(what: string, get: () => Promise<T>, fallback: T): Promise<T> {
@@ -53,6 +77,120 @@ async function bans(): Promise<BanInfo[]> {
       until: b.expiresAt ? new Date(b.expiresAt).getTime() : 0,
     })),
   );
+}
+
+/** A conversation as the menu lists it. The team also sees what Blitz's brain made of a report. */
+async function ticketInfo(t: Ticket, staff: boolean): Promise<TicketInfo> {
+  return {
+    id: t.id,
+    kind: t.kind,
+    subject: t.subject,
+    status: t.status,
+    userId: t.userId,
+    name: await nickname(t.userId),
+    claimedBy: t.claimedBy ? await nickname(t.claimedBy) : "",
+    updatedAt: t.updatedAt,
+    unread: t.unread ?? "",
+    resolution: t.resolution ?? "",
+    caseId: t.caseId ?? 0,
+    messages: t.messages.length,
+    triageSeverity: staff ? (t.triage?.severity ?? "") : "",
+    triageSummary: staff ? (t.triage?.summary ?? "") : "",
+    triageSuggestion: staff ? (t.triage?.suggestion ?? "") : "",
+  };
+}
+
+async function inboxFor(userId: string, staff: boolean): Promise<InboxInfo> {
+  const mine = await Promise.all((await ticketsOf(userId, 10)).map((t) => ticketInfo(t, staff)));
+  if (!staff) return { on: settings.on("inbox"), mine, team: [] };
+  const open = await openTickets();
+  const closed = (await recentTickets(30)).filter((t) => t.status === "closed").slice(0, 8);
+  return { on: settings.on("inbox"), mine, team: await Promise.all([...open, ...closed].map((t) => ticketInfo(t, true))) };
+}
+
+async function stardustFor(userId: string): Promise<StardustInfo> {
+  const w = await walletOf(userId);
+  const top = await stardustTop(5);
+  return {
+    on: settings.on("stardust"),
+    balance: w.balance,
+    earned: w.earned,
+    streak: w.streak,
+    dailyReady: dailyReady(w),
+    nextDaily: nextDailyAt(Date.now()),
+    owned: w.owned,
+    hat: w.wearing.hat ?? "",
+    trail: w.wearing.trail ?? "",
+    glow: w.wearing.glow ?? "",
+    top: await Promise.all(top.map(async (e) => ({ userId: e.userId, name: await nickname(e.userId), earned: e.earned }))),
+  };
+}
+
+async function giveawaysFor(userId: string): Promise<GiveawayInfo[]> {
+  const list = [...(await activeGiveaways()), ...(await recentGiveaways(3))];
+  return Promise.all(
+    list.map(async (g) => ({
+      id: g.id,
+      prize: g.prize,
+      winners: g.winners,
+      endsAt: g.endsAt,
+      entrants: g.entrants.length,
+      entered: g.entrants.includes(userId),
+      channel: (await channelLink(g.channelId)).replace(/^\[#([^\]]*)\].*$/, "$1"),
+      ended: g.ended,
+      winnerNames: await Promise.all(g.winnerIds.map(nickname)),
+    })),
+  );
+}
+
+/** "#general" from a channel link, for plain labels. */
+const channelName = async (id: string) => (id === "all" ? "every channel" : (await channelLink(id)).replace(/^\[#([^\]]*)\].*$/, "#$1"));
+
+async function guardianInfo(): Promise<GuardianInfo> {
+  const raid = raidStatus();
+  const { locks, slows } = locksAndSlows();
+  const catches = [...recentCatches()].reverse().slice(0, 30);
+  const names = new Map<string, string>();
+  for (const c of catches) if (c.userId && !names.has(c.userId)) names.set(c.userId, await nickname(c.userId));
+  return {
+    scamOn: settings.on("scamShield"),
+    raidOn: settings.on("raidShield"),
+    raidActive: raid.active,
+    raidUntil: raid.until,
+    raidManual: raid.manual,
+    raidHeld: raid.joined,
+    newcomerMinutes: settings.number("newcomerMinutes", 10, 0, 1440),
+    locks: await Promise.all(locks.map(async (l) => ({ channelId: l.channelId, name: await channelName(l.channelId), until: l.until ?? 0, reason: l.reason ?? "" }))),
+    slows: await Promise.all(slows.map(async (x) => ({ channelId: x.channelId, name: await channelName(x.channelId), seconds: Math.round(x.ms / 1000) }))),
+    catches: await Promise.all(catches.map(async (c) => ({ kind: c.kind, userId: c.userId, name: names.get(c.userId) ?? "", channel: c.channelId ? await channelName(c.channelId) : "", at: c.at, detail: c.detail }))),
+    ladder: ladderText(),
+    strict: settings.ticked("strictFilters"),
+    coolOff: settings.on("coolOff"),
+    automodOn: settings.on("automod"),
+    raidJoins: settings.number("raidJoins", 8, 3, 100),
+  };
+}
+
+async function pulseInfo(): Promise<PulseInfo> {
+  const s = summarize(await pulseDays(28));
+  const counts = (r: Record<string, number>) => Object.entries(r).map(([kind, count]) => ({ kind, count })).sort((a, b) => b.count - a.count);
+  return {
+    days: s.series,
+    weekMessages: s.week.messages,
+    weekPeople: s.week.people,
+    weekJoins: s.week.joins,
+    weekLeaves: s.week.leaves,
+    weekMod: s.week.mod,
+    weekCaught: s.week.caught,
+    hasChange: s.change.messages !== undefined,
+    changeMessages: s.change.messages ?? 0,
+    changePeople: s.change.people ?? 0,
+    topChannels: await Promise.all(s.topChannels.map(async (c) => ({ name: await channelName(c.channelId), messages: c.messages }))),
+    hours: s.hours,
+    health: s.health,
+    modKinds: counts(s.modKinds),
+    caughtKinds: counts(s.caughtKinds),
+  };
 }
 
 class BlitzMenuService extends BlitzMenuServiceBase {
@@ -105,7 +243,60 @@ class BlitzMenuService extends BlitzMenuServiceBase {
       myWarnings: activeWarnings(cases),
       bans: staff ? await piece("bans", bans, []) : [],
       channels: staff ? await piece("channels", textChannels, []) : [],
+      stardust: await piece("stardust", () => stardustFor(userId), undefined),
+      inbox: await piece("the inbox", () => inboxFor(userId, staff), undefined),
+      giveaways: await piece("giveaways", () => giveawaysFor(userId), []),
+      guardian: staff ? await piece("the shields", guardianInfo, undefined) : undefined,
+      pulse: staff ? await piece("the pulse", pulseInfo, undefined) : undefined,
+      myCases: cases
+        .filter((c) => c.kind !== "note")
+        .slice(-15)
+        .map((c) => ({ id: c.id, kind: c.kind, reason: c.reason ?? "", by: "", at: c.at, durationMs: c.durationMs ?? 0, revoked: c.revoked ?? false })),
+      levelRewards: await piece(
+        "level rewards",
+        async () => {
+          const roles = await communityRoles();
+          return (await levelRewards()).map((r) => ({ level: r.level, roleId: r.roleId, roleName: roles.find((x) => x.id === r.roleId)?.name ?? "a role that's gone" }));
+        },
+        [],
+      ),
+      brain: settings.ticked("brainModeration") && brainReady(),
+      shieldUp: raidStatus().active || locksAndSlows().locks.some((l) => l.channelId === "all"),
     };
+  }
+
+  async ticket(request: TicketRequest, client: Client): Promise<TicketThread> {
+    const staff = atLeast(await accessLevel(client.userId), "mod");
+    const t = await getTicket(request.id);
+    if (!t || (t.userId !== client.userId && !staff)) return { ticket: undefined, messages: [], about: "" };
+    // Reading it clears the unread mark for that side.
+    if (t.userId === client.userId && t.unread === "member") await markRead(t.id, "member");
+    else if (staff && t.userId !== client.userId && t.unread === "team") await markRead(t.id, "team");
+    return threadOf((await getTicket(t.id)) ?? t, staff && t.userId !== client.userId);
+  }
+
+  async ticketReply(request: TicketReplyRequest, client: Client): Promise<TicketThread> {
+    const staff = atLeast(await accessLevel(client.userId), "mod");
+    const t = await getTicket(request.id);
+    if (!t) return { ticket: undefined, messages: [], about: "" };
+    const asMember = t.userId === client.userId;
+    if (!asMember && !staff) return { ticket: undefined, messages: [], about: "" };
+    try {
+      const updated = await addMessage(t.id, client.userId, asMember ? "member" : "team", (request.text ?? "").slice(0, 2000));
+      return threadOf(updated, !asMember);
+    } catch (err) {
+      if (!(err instanceof UsageError)) log("warn", "couldn't add to a conversation", { error: errMessage(err) });
+      return threadOf(t, !asMember);
+    }
+  }
+
+  async ask(request: AskRequest, client: Client): Promise<AskResponse> {
+    if (!atLeast(await accessLevel(client.userId), "mod")) return { ok: false, answer: "🔒 Ask Blitz is for the team." };
+    try {
+      return { ok: true, answer: await askBlitz(request.question ?? "") };
+    } catch (err) {
+      return { ok: false, answer: err instanceof UsageError ? err.message : "⚠️ Blitz's brain couldn't answer just now." };
+    }
   }
 
   async run(request: RunRequest, client: Client): Promise<RunResponse> {
@@ -160,6 +351,22 @@ class BlitzMenuService extends BlitzMenuServiceBase {
       access: await accessLevel(userId),
     };
   }
+}
+
+/** A conversation in full; the team sees names, members see "the team". */
+async function threadOf(t: Ticket, staff: boolean): Promise<TicketThread> {
+  const names = new Map<string, string>();
+  for (const id of new Set(t.messages.map((m) => m.userId))) names.set(id, await nickname(id));
+  let about = "";
+  if (t.caseId) {
+    const c = await getCase(t.caseId);
+    if (c) about = `${CASE_LABEL[c.kind]} #${c.id}${c.reason ? `: ${c.reason}` : ""}`;
+  }
+  return {
+    ticket: await ticketInfo(t, staff),
+    messages: t.messages.map((m) => ({ from: m.from, name: m.from === "team" && !staff ? "The team" : names.get(m.userId) ?? "", text: m.text, at: m.at })),
+    about,
+  };
 }
 
 export const menuService = new BlitzMenuService();

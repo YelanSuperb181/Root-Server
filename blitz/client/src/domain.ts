@@ -99,6 +99,33 @@ const WHITE: RGB = [255, 255, 255];
 const DUST: RGB = [176, 186, 210];
 
 const CALM: RGB = [127, 227, 255];
+
+/** "#ff8fc7" -> [255, 143, 199]. */
+function hexRgb(hex: string): RGB {
+  const n = parseInt(hex.replace("#", ""), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+const TRAIL_COLORS: Record<string, RGB[]> = {
+  bubbles: [[191, 239, 255], [230, 250, 255]],
+  ember: [[255, 154, 74], [255, 210, 110], [255, 100, 60]],
+  frost: [[159, 232, 255], [235, 250, 255], [190, 210, 255]],
+  hearts: [[255, 127, 180], [255, 180, 210]],
+};
+
+/** A trail particle's colour; the rainbow one shifts through the hues as it goes. */
+function trailColor(trail: string, t: number): RGB {
+  if (trail === "rainbow") {
+    const hue = (t * 120 + Math.random() * 40) % 360;
+    const f = (n: number) => {
+      const k = (n + hue / 60) % 6;
+      return Math.round(255 * (1 - 0.55 * Math.max(0, Math.min(k, 4 - k, 1))));
+    };
+    return [f(5), f(3), f(1)];
+  }
+  const list = TRAIL_COLORS[trail] ?? TRAIL_COLORS.frost;
+  return list[Math.floor(Math.random() * list.length)];
+}
 const TINTS: Record<Mood, RGB> = {
   happy: [140, 232, 255],
   love: [255, 140, 200],
@@ -310,6 +337,8 @@ export class DomainView {
   private lookAt: { x: number; y: number; until: number } | undefined;
   private blinkUntil = 0;
   private nextBlink = 2;
+  private outfit: { hat?: string; trail?: string; glow?: RGB } = {};
+  private shieldUp = false;
   private mood: Mood | undefined;
   private moodUntil = 0;
   private pending: { mood: Mood; say: string; at: number } | undefined;
@@ -483,6 +512,20 @@ export class DomainView {
   /** The domain's size, and the open space between the floating bar (top) and the message box (bottom). */
   stageBox(): { w: number; h: number; top: number; bottom: number } {
     return { w: this.W, h: this.H, top: HUD_TOP, bottom: this.H - HUD_BOTTOM };
+  }
+
+  /** What this person's Blitz wears (bought with Stardust in the menu). */
+  setOutfit(outfit: { hat?: string; trail?: string; glow?: string }): void {
+    this.outfit = {
+      hat: outfit.hat || undefined,
+      trail: outfit.trail || undefined,
+      glow: outfit.glow ? hexRgb(outfit.glow) : undefined,
+    };
+  }
+
+  /** A shield is up in the community (a raid, or everything locked): Blitz stands guard. */
+  setShield(on: boolean): void {
+    this.shieldUp = on;
   }
 
   /**
@@ -1305,8 +1348,10 @@ export class DomainView {
     this.gaze.y += ((gy / gl) * gm - this.gaze.y) * Math.min(1, dt * 8);
 
     // Color follows the mood (or the trick), warming toward white as the wall strains.
-    let tintTarget: RGB = this.mood ? TINTS[this.mood] : this.thinking ? TINTS.curious : trickNow ? TINTS[TRICK_MOOD[trickNow]] : this.asleep ? TINTS.sleepy : CALM;
-    if (!this.mood && trickNow) tintTarget = [(tintTarget[0] + CALM[0]) / 2, (tintTarget[1] + CALM[1]) / 2, (tintTarget[2] + CALM[2]) / 2];
+    // A glow bought with Stardust takes the place of Blitz's calm cyan.
+    const calm = this.outfit.glow ?? CALM;
+    let tintTarget: RGB = this.mood ? TINTS[this.mood] : this.thinking ? TINTS.curious : trickNow ? TINTS[TRICK_MOOD[trickNow]] : this.asleep ? TINTS.sleepy : calm;
+    if (!this.mood && trickNow) tintTarget = [(tintTarget[0] + calm[0]) / 2, (tintTarget[1] + calm[1]) / 2, (tintTarget[2] + calm[2]) / 2];
     if (strain > 0) tintTarget = [tintTarget[0] + (255 - tintTarget[0]) * strain * 0.6, tintTarget[1] + (255 - tintTarget[1]) * strain * 0.6, tintTarget[2] + (255 - tintTarget[2]) * strain * 0.6];
     const k = Math.min(1, dt * 4);
     this.tint = [this.tint[0] + (tintTarget[0] - this.tint[0]) * k, this.tint[1] + (tintTarget[1] - this.tint[1]) * k, this.tint[2] + (tintTarget[2] - this.tint[2]) * k];
@@ -1335,15 +1380,19 @@ export class DomainView {
         if (Math.random() < n) {
           const a = Math.random() * Math.PI * 2;
           const r = ORB_RADIUS * 0.6 * Math.random();
+          const trail = this.outfit.trail;
+          const big = trail === "bubbles";
           this.particles.emit(
             o.x + Math.cos(a) * r,
             o.y + Math.sin(a) * r,
             -this.body.vx * 0.12 + rand(-20, 20) * PX,
-            -this.body.vy * 0.12 + rand(-20, 20) * PX,
-            0.6 + Math.random() * 0.9,
-            0.8 + Math.random() * 1.8,
-            Math.random() < 0.25 ? VIOLET : this.tint,
+            -this.body.vy * 0.12 + rand(-20, 20) * PX + (trail === "ember" ? -18 * PX : 0),
+            (0.6 + Math.random() * 0.9) * (big ? 1.4 : 1),
+            (0.8 + Math.random() * 1.8) * (big ? 1.8 : 1),
+            trail ? trailColor(trail, t) : Math.random() < 0.25 ? VIOLET : this.tint,
           );
+          // Hearts now and then, for the heart trail.
+          if (trail === "hearts" && !reduced && Math.random() < 0.05) this.emotes.float("heart", o.x, o.y, rand(-0.2, 0.2), rand(-0.45, -0.25), this.fxT, rand(1, 1.5), rand(0.22, 0.32));
         }
         n -= 1;
       }
@@ -1464,6 +1513,7 @@ export class DomainView {
       blush: face.blush,
       gaze: this.gaze,
       blink: t < this.blinkUntil,
+      hat: this.outfit.hat,
     };
   }
 
@@ -1575,6 +1625,7 @@ export class DomainView {
       drawHalo(ctx, look);
       this.drawTether(look);
       drawBlitz(ctx, look, t);
+      if (this.shieldUp) this.drawGuard(look, t);
       if (t < this.dizzyUntil) this.drawDizzyStars(look);
     }
     this.emotes.draw(ctx, this.cam, look, this.fxT, fxDt, this.font);
@@ -2011,6 +2062,39 @@ export class DomainView {
         if (k === 0) ctx.moveTo(px + Math.cos(aa) * rr, py + Math.sin(aa) * rr);
         else ctx.lineTo(px + Math.cos(aa) * rr, py + Math.sin(aa) * rr);
       }
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /** Standing guard while a shield is up: two arcs of warm light circling Blitz, and three sparks riding them. */
+  private drawGuard(look: Look, t: number): void {
+    const ctx = this.ctx;
+    const R = look.r * 1.75;
+    const pulse = 0.55 + Math.sin(t * 3) * 0.2;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.lineCap = "round";
+    ctx.lineWidth = Math.max(1.5, look.r * 0.09);
+    ctx.strokeStyle = `rgba(250, 178, 25, ${pulse * 0.7})`;
+    for (let i = 0; i < 2; i++) {
+      const a = t * 1.3 + i * Math.PI;
+      ctx.beginPath();
+      ctx.arc(look.x, look.y, R, a, a + Math.PI * 0.62);
+      ctx.stroke();
+    }
+    ctx.fillStyle = `rgba(255, 226, 150, ${pulse})`;
+    for (let i = 0; i < 3; i++) {
+      const a = -t * 0.9 + (i / 3) * Math.PI * 2;
+      const px = look.x + Math.cos(a) * R;
+      const py = look.y + Math.sin(a) * R;
+      const s = look.r * 0.13;
+      ctx.beginPath();
+      ctx.moveTo(px, py - s);
+      ctx.lineTo(px + s * 0.6, py);
+      ctx.lineTo(px, py + s);
+      ctx.lineTo(px - s * 0.6, py);
       ctx.closePath();
       ctx.fill();
     }

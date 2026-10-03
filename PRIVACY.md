@@ -16,11 +16,18 @@ Blitz saves a few things in the private storage Root gives each App for each com
 - **Reminders:** what you asked to be reminded of, where, and when. Deleted once it's delivered or you cancel it.
 - **Suggestions:** the idea, who suggested it, and the team's answer.
 - **Community commands:** the commands the team makes with `!addcmd`, who made them, and how often they're used.
+- **Inbox conversations:** when you write to the team (`!ticket`, `!report`, `!appeal` or the Inbox in Blitz's menu), Blitz keeps the conversation (what you and the team wrote, and when) so both sides can read it, plus how it ended. Only you and the team can see it; a short transcript goes to the staff log when it's closed.
+- **Stardust:** your balance, your daily streak, the looks you've bought and are wearing.
+- **Giveaways:** the prize, who entered and who won.
+- **Activity counts (Pulse):** per day, how many messages were sent in each channel and at what hour, how many people posted, joins and leaves, and how many times the team or the shields acted. Never what anyone said. Kept for 60 days.
+- **Shields:** a short list of the latest things the scam shield, raid shield and auto-mod caught (who, where, and why), for the team's Guardian view, and any lockdowns and slowmodes.
+- **Level rewards:** which role each level unlocks.
 
 ## What Blitz uses without keeping
 
-- It reads messages in the channels it can see to answer commands, count XP and catch spam (floods, copy-paste spam, mass mentions, and words or links the community blocks). When it removes a message, it posts a short excerpt of it in the community's staff log channel (if it picked one) so the team can check. It also notes joins and leaves there.
-- **Reports:** `!report` is removed from the chat and posted, with what you wrote (and the message you replied to, if any), in the staff log for the team.
+- It reads messages in the channels it can see to answer commands, count XP and Stardust, and catch spam and scams (floods, copy-paste spam, mass mentions, account-stealing links, and words or links the community blocks). When it removes a message, it posts a short excerpt of it in the community's staff log channel (if it picked one) so the team can check. It also notes joins and leaves there.
+- **Reports:** `!report` is removed from the chat and posted, with what you wrote (and the message you replied to, if any), in the staff log for the team, and kept as a conversation in the team's inbox.
+- **Notifications:** Blitz may send you a Root notification when the team warns, mutes, kicks or bans you (with the reason), when the team answers you in the inbox, when you win a giveaway, or for your reminders.
 - **Message log:** if the community picked a message log channel, Blitz remembers recent messages in memory (never on disk, for at most two days, and never from private channels) so that when one is edited or deleted, it can post what it said before in that channel for the team.
 - In Blitz's own channel, everyone gets their own Blitz, which lives in their own window: nobody else sees what you do with it, and none of it is saved. What you type to it there goes to Blitz's server only to be answered (with Claude, if the community added a key), and the answer comes back just to you.
 - Root and the computer Blitz runs on may keep technical logs (like which command ran, or an error) for fixing problems.
@@ -29,6 +36,7 @@ Blitz saves a few things in the private storage Root gives each App for each com
 
 If a community's admins add an Anthropic API key, Blitz uses Claude, made by Anthropic, to understand messages and write its replies. When someone talks to Blitz, it sends Anthropic's API that message plus the last 12 messages in the same channel, with the display names of who said them, and a little about the community (its name, channels and commands, and anything its admins wrote about it). Your messages can be included this way when someone else talks to Blitz in the same channel.
 
+- If the admins also tick "Let Blitz's brain help moderate", Blitz sends Anthropic: a reported message with the report and up to 25 messages around it (to sum it up for the team); a message auto-mod caught for a blocked word, with the 6 messages before it (to check it in context); the last messages of a channel when someone uses `!tldr` there; and, when the team uses Ask Blitz, whatever it looks up to answer them (activity counts, members' moderation records, the inbox, or a channel's recent messages).
 - Channels the community marked private are never sent.
 - Blitz remembers recent conversation only in memory while it runs, and forgets it when it restarts.
 - Anthropic handles what it receives under its own terms and [privacy policy](https://www.anthropic.com/legal/privacy).

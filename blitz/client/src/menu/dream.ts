@@ -32,6 +32,44 @@ const BLITZ_ROOM = 92;
 /** Below this width the cards sit in a grid instead of a ring. */
 const NARROW = 760;
 
+/**
+ * Spots for `n` cards around an ellipse, spaced so that none overlap: along
+ * the top and bottom a card needs its width, down the sides only its height,
+ * so the spacing follows the direction of travel. Returns the spots and how
+ * much the cards must shrink (1 when they fit as they are).
+ */
+function ringPoints(c: { x: number; y: number }, rx: number, ry: number, n: number, offset: number, cardH = CARD_H): { points: Array<{ x: number; y: number }>; scale: number } {
+  const STEPS = 720;
+  const GAP = 14;
+  const at = (k: number) => {
+    const a = -Math.PI / 2 + (k / STEPS) * Math.PI * 2;
+    return { x: c.x + Math.cos(a) * rx, y: c.y + Math.sin(a) * ry };
+  };
+  // How many cards' worth of room each little step of the ring is.
+  const room: number[] = [];
+  let total = 0;
+  for (let k = 0; k < STEPS; k++) {
+    const p = at(k);
+    const q = at(k + 1);
+    const dx = Math.abs(q.x - p.x);
+    const dy = Math.abs(q.y - p.y);
+    const ds = Math.hypot(dx, dy) || 1e-6;
+    const r = ds / ((dx / ds) * (CARD_W + GAP) + (dy / ds) * (cardH + GAP));
+    room.push(r);
+    total += r;
+  }
+  const scale = Math.min(1, total / n);
+  const points: Array<{ x: number; y: number }> = [];
+  let acc = 0;
+  let k = 0;
+  for (let i = 0; i < n; i++) {
+    const want = ((i + offset) / n) * total;
+    while (k < STEPS - 1 && acc + room[k] < want) acc += room[k++];
+    points.push(at(k + (want - acc) / (room[k] || 1)));
+  }
+  return { points, scale };
+}
+
 export class DreamMenu {
   /** Whether the menu is out. */
   get isOpen(): boolean {
@@ -116,6 +154,10 @@ export class DreamMenu {
     const points: Array<{ x: number; y: number }> = [];
     const narrow = box.w < NARROW;
     let scale = 1;
+    /** Per card, when the rings differ. */
+    let scales: number[] | undefined;
+    /** The inner ring's cards are slim (no blurb). */
+    let slim = false;
     let size = "";
     if (narrow) {
       // A grid below Blitz, as many across as fit; small cards drop their blurbs.
@@ -140,22 +182,37 @@ export class DreamMenu {
       this.cardsSpot = { x: box.w / 2, y: Math.max(box.top + 26, top - 40) };
       this.host.hold(this.cardsSpot);
     } else {
-      const rx = Math.min(box.w / 2 - CARD_W / 2 - 24, 480);
-      const ry = Math.min((box.bottom - box.top) / 2 - CARD_H / 2 - 8, 290);
-      // Shrink the cards if the ring is too small to hold them all.
-      const around = 2 * Math.PI * Math.sqrt((rx * rx + ry * ry) / 2);
-      scale = Math.min(1, around / (n * (CARD_W + 18)));
-      sections.forEach((_, i) => {
-        const a = -Math.PI / 2 + (i / n) * Math.PI * 2;
-        points.push({ x: centre.x + Math.cos(a) * rx, y: centre.y + Math.sin(a) * ry });
-      });
+      const rx = Math.min(box.w / 2 - CARD_W / 2 - 24, 520);
+      const ry = Math.min((box.bottom - box.top) / 2 - CARD_H / 2 - 8, 300);
+      const team = sections.filter((x) => x.team).length;
+      if (n > 13 && team > 0 && team < n) {
+        // Two orbits: everyone's sections close around Blitz, the team's tools on the outer ring.
+        let inner = ringPoints(centre, rx * 0.58, ry * 0.58, n - team, 0);
+        // A crowded inner ring keeps its cards readable by going slim (icon and title, like on phones).
+        if (inner.scale < 0.8) {
+          inner = ringPoints(centre, rx * 0.58, ry * 0.58, n - team, 0, COMPACT_H);
+          slim = true;
+        }
+        const outer = ringPoints(centre, rx, ry, team, 0.5);
+        scales = [];
+        let i = 0;
+        let o = 0;
+        for (const x of sections) {
+          points.push(x.team ? outer.points[o++] : inner.points[i++]);
+          scales.push(x.team ? outer.scale : inner.scale);
+        }
+      } else {
+        const ring = ringPoints(centre, rx, ry, n, 0);
+        points.push(...ring.points);
+        scale = ring.scale;
+      }
       this.cardsSpot = centre;
     }
     sections.forEach((section, i) => {
       const p = points[i];
       const card = h(
-        "button.dream-card",
-        { type: "button", style: `left:${p.x}px;top:${p.y}px;--s:${scale.toFixed(3)}${size}`, "aria-label": `${section.title}: ${section.blurb}` },
+        `button.dream-card${slim && !section.team ? ".slim" : ""}`,
+        { type: "button", style: `left:${p.x}px;top:${p.y}px;--s:${(scales?.[i] ?? scale).toFixed(3)}${slim && !section.team ? `;--h:${COMPACT_H}px` : size}`, "aria-label": `${section.title}: ${section.blurb}` },
         h(
           "span.dream-card-inner",
           { style: `animation-delay:${(-i * 0.73).toFixed(2)}s` },
@@ -163,6 +220,7 @@ export class DreamMenu {
           h("span.dream-card-title", { text: section.title }),
           h("span.dream-card-blurb", { text: section.blurb }),
           section.team ? h("span.dream-card-team", { text: "team" }) : undefined,
+          this.menu.data && section.badge?.(this.menu.data) ? h("span.dream-card-badge", { text: String(section.badge(this.menu.data)) }) : undefined,
         ),
       );
       card.addEventListener("click", () => this.openPage(section));

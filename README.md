@@ -1,6 +1,6 @@
 # ✨ Blitz
 
-**Blitz** is a Root App for any community: a glowing little spirit that hangs out in your chat and does the useful work too. It moderates (warnings, mutes, kicks, bans, auto-mod, reports and logs), answers your community's FAQs with its own commands, sets reminders, hands out roles, collects suggestions, keeps levels, a quote wall and birthdays, and has a domain of its own where everyone can drag it around, fling it into the walls and burst its bubble into space.
+**Blitz** is a Root App for any community: a glowing little spirit that hangs out in your chat and does all the useful work too, free, with nothing behind a paywall. It guards the community (a scam shield, a raid shield, auto-mod, lockdowns, a warning ladder), moderates with numbered cases and members told why, runs a private inbox with the team (questions, reports and appeals), keeps levels with reward roles, a quote wall and birthdays, hosts giveaways, pays out Stardust for being around (spent on looks for your own Blitz), shows the team how the community is doing, and, with Claude as its brain, sums up reports, double-checks its filters in context, catches people up and answers the team's questions. Everything is in a menu beside its domain, where everyone can drag Blitz around, fling it into the walls and burst its bubble into space.
 
 It doesn't come with a server template and never creates channels or roles. It fits whatever your community already has: you point it at your channels and roles on its settings page in Root, and anything you leave empty is simply off.
 
@@ -8,16 +8,25 @@ It doesn't come with a server template and never creates channels or roles. It f
 
 | | |
 | --- | --- |
-| 🔮 **Its domain** | Blitz's own channel: a round, glowing bubble where it floats, zooms around and does tricks. Drag it, fling it, slam it, poke it, or pin it to the wall until the bubble shatters and opens into an endless universe full of drifting space rocks to fling it into. Everyone who opens the domain gets their own Blitz, just for them. |
-| 🧭 **Its menu** | Everything Blitz can do, without typing a single command: next to the domain sits a menu where anyone can check their level and the leaderboard, pick roles, set reminders and their birthday, suggest ideas, report someone or browse every command, and the team gets moderation (find a member, see their history, warn, mute, kick, ban, lift bans), posting and setup. In open space Blitz summons the menu itself. |
+| 🔮 **Its domain** | Blitz's own channel: a round, glowing bubble where it floats, zooms around and does tricks. Drag it, fling it, slam it, poke it, or pin it to the wall until the bubble shatters and opens into an endless universe full of drifting space rocks to fling it into. Everyone who opens the domain gets their own Blitz, just for them, wearing what they bought with Stardust. |
+| 🧭 **Its menu** | Everything Blitz can do, without typing a single command, in a menu beside the domain: for everyone, their level and the constellation of top members, Stardust and the shop, roles, giveaways, reminders, birthdays, ideas, the inbox, toys and every command; for the team, Guardian, moderation, Pulse, Ask Blitz, posting, the community's own commands and setup. In open space Blitz summons the menu itself, as glowing cards in two orbits around it. |
 | 💬 **Talk to it** | Say "blitz" in any chat (or @mention it, or reply to it) and Blitz answers: with Claude as its brain it reads the conversation, replies in its own voice, reacts with an emoji, and acts out how it feels in the domain while everyone watches. |
-| ✨ **Levels** | XP for chatting (once a minute, so spam doesn't count), `!rank` and `!top`. Level-ups are announced where they happen, or in a channel you pick. |
+| 🎣 **Scam shield** | Removes account-stealing links on sight: fake Nitro and Steam gifts, lookalike sites (dlscord, steamcommunlty, disc0rd-gift), links dressed up as another site, "free gift" bait. The sender is muted for an hour and told to change their password, since their account was most likely hacked. Even a mod's hacked account is caught. |
+| 🚨 **Raid shield** | When lots of people join at once (8 in a minute unless you say), newcomers can't post links or mentions and can only post every few seconds for 15 minutes, and the team is alerted. `!raid on` raises it by hand. New members also wait 10 minutes before they can post links, which keeps spam bots out. |
+| 🔒 **Lockdown and slowmode** | `!lockdown #general 30m` (or `all`) lets only the team post; `!slowmode 30s` makes people wait between messages. Blitz keeps them itself, so they need no extra permissions, and they end on their own. |
+| 🔨 **Moderation** | `!warn`, `!mute 30m`, `!kick`, `!ban 7d`, each saved as a numbered case, so `!history @someone` shows everything that's happened. Members get a notification saying what happened, why, and how to appeal. Mutes need no special role: Blitz removes a muted member's messages itself. Staff can only act on people ranked below them. `!unwarn` takes any case back. |
+| 🪜 **Warning ladder** | Standing warnings turn into action on their own: a mute at 3 (an hour, growing with each one after), and a kick or a ban at the steps you choose. |
+| 🛡️ **Auto-mod** | Removes floods, copy-paste spam, mass mentions, glitchy stacked-up text, your community's blocked words and (if you like) invite links; with stricter filters on, shouting in capitals, emoji floods and walls of text too. Three removals in ten minutes earns a 10-minute cool-off. |
+| 📬 **Inbox** | Private conversations with the team, kept by Blitz (no ticket channels): members write from the menu or with `!ticket`, report someone with `!report`, or appeal a case with `!appeal 12`. The team answers from the menu (or `!reply`), closes with a note, and accepts or turns down appeals (an accepted one takes the case back). Both sides get notifications; the staff log keeps a transcript. |
+| 🧠 **Blitz's brain, for the team** | With an API key and "Let Blitz's brain help moderate" ticked: every report is summed up with a severity and a suggestion (the team decides), blocked-word hits are double-checked in context so innocent messages stay ("that boss killed me" isn't a threat), `!tldr` catches anyone up on a channel, and **Ask Blitz** answers the team's questions ("who's been warned most this month?", "what happened in #general today?") by looking through Blitz's records. It never acts on its own. |
+| 📈 **Pulse** | The community's vital signs for the team: a health score, messages and active people with the change from last week, joins and leaves, the busiest hours and channels, and what the team and the shields did, day by day for four weeks. |
+| ✨ **Levels** | XP for chatting (once a minute, so spam doesn't count), `!rank` and `!top`, and the top ten as a constellation in the menu. **Reward roles** at any level, as many as you like, for free: `!levelrole 10 @Regular`. |
+| 💫 **Stardust** | A little currency for being around: a few for chatting, a daily gift that grows with your streak (`!daily`), level-ups and giveaways. Spend it in the shop on hats, trails and glows for your own Blitz, try them on first, or `!gift` some to a friend. |
+| 🎉 **Giveaways** | `!giveaway 1d 2 winners Nitro`: members react 🎉 (or enter from the menu), winners are drawn when time's up, announced and notified. A prize like "500 stardust" pays out by itself. `!reroll` draws again. |
 | 🗣️ **Quote wall** | Pick a quote wall channel, and anything that gets 🗣️ reactions (2 by default, not counting whoever said it) is saved there with a live count. `!quote` pulls a random one back up. |
 | 🎂 **Birthdays** | `!birthday July 14`, then a shout-out in the birthday channel you pick and, if you pick one, a birthday role for the day. No birth year is ever asked for. |
 | 👋 **Welcomes** | A welcome in the channel you pick (Blitz's own, or yours with `{user}` and `{community}`), and a role for every newcomer if you pick one. |
-| 🔨 **Moderation** | `!warn`, `!mute 30m`, `!kick`, `!ban 7d`, each saved as a numbered case, so `!history @someone` shows everything that's happened. Mutes need no special role: Blitz removes a muted member's messages itself. Staff can only act on people ranked below them. |
-| 🛡️ **Auto-mod** | Removes floods, copy-paste spam, mass mentions, your community's blocked words and (if you like) invite links, and notes it in the staff log. |
-| 🚩 **Reports and logs** | `!report` lets anyone quietly flag a problem to the team. The staff log collects reports, moderation, joins and leaves; the message log shows edited and deleted messages with what they said. |
+| 🚩 **Logs** | The staff log collects reports, moderation, shield catches, joins and leaves; the message log shows edited and deleted messages with what they said. |
 | 📌 **Your own commands** | `!addcmd rules Be kind, no spam…` and anyone can type `!rules`. Great for rules, FAQs, links and how-tos. Blitz's brain knows them too. |
 | ⏰ **Reminders** | `!remind 2h take the pizza out`: Blitz pings you back in the same channel. |
 | 🎭 **Pick-a-role** | List roles people can give themselves (pronouns, games, ping roles); `!role gamer` toggles one. |
@@ -25,6 +34,8 @@ It doesn't come with a server template and never creates channels or roles. It f
 | 📊 **Polls** | `!poll 1h Movie night? \| Shrek \| Shrek 2`: reaction votes, auto-close and a results card. |
 | 🎲 **Toys** | `!8ball`, `!roll`, `!flip`, `!choose`. |
 | 📣 **For staff** | `!announce`, `!event`, `!say`, `!clear`, `!setxp`, `!userinfo`, and `!settings` to see how Blitz is set up. |
+
+How Blitz compares with the best-known Discord bots, and what it took from them, is in [docs/WHY-BLITZ.md](docs/WHY-BLITZ.md).
 
 ## Setting Blitz up in a community
 
@@ -37,7 +48,7 @@ Install Blitz, then open its **App settings** in Root. Everything is optional:
 | Quote wall | Where 🗣️-ed messages are saved. Empty: no quote wall. |
 | Birthday channel | Where Blitz wishes happy birthday. Empty: no birthdays. |
 | Suggestions channel | Where `!suggest` posts ideas. Empty: no suggestions. |
-| Staff log | Reports, moderation, auto-mod removals, joins and leaves. Empty: no log (and no `!report`). |
+| Staff log | Reports, moderation, shield catches, auto-mod removals, inbox transcripts, joins and leaves. Empty: no log. |
 | Message log | Edited and deleted messages, with what they said. Empty: no message log. |
 | Private channels | Channels Blitz stays out of: no XP, no quotes, never shown in its domain or sent to its brain. Good for vent or staff channels. |
 | Role for new members | Given to everyone who joins. |
@@ -45,9 +56,11 @@ Install Blitz, then open its **App settings** in Root. Everything is optional:
 | Roles people can pick | Roles members can give themselves with `!role`. |
 | Staff | Who can use staff commands. The owner, and roles that can manage the community, kick or ban, always can. |
 | Welcome message | Your own welcome: `{user}`, `{name}`, `{community}` and `{members}` are filled in. Empty: Blitz's greetings. |
-| Turn off levels, Turn off auto-mod | Tick them if you'd rather not have levels or auto-mod. |
+| Turn off levels, Stardust, the inbox, auto-mod, cool-offs | Tick them if you'd rather not have one. |
 | Turn off domain links | Blitz adds a 🔮 link to its domain under its replies to commands (and spins in the domain); tick this to stop it. |
-| Block invite links, Blocked words | What else auto-mod removes. Words are separated by commas; `scam*` catches any ending. |
+| Block invite links, Blocked words, Stricter filters | What else auto-mod removes. Words are separated by commas; `scam*` catches any ending. Stricter filters add shouting, emoji floods and walls of text. |
+| Guardian | Turn off the scam or raid shield, how many joins in a minute mean a raid (8), how long newcomers wait to post links (10 minutes), the warning ladder (warnings before a mute, kick or ban: 3, off, off), and whether members are told about moderation. |
+| Let Blitz's brain help moderate | With an API key: report summaries, context checks for blocked words, `!tldr` and Ask Blitz. |
 | Reactions for the quote wall | How many 🗣️ a message needs. |
 | Anthropic API key, About this community | Blitz's brain (see below), and a sentence or two that tells it what your community is like. |
 
@@ -67,6 +80,8 @@ Type `!blitz` anywhere and Blitz replies with a link into its domain. Inside:
 - **Space rocks** drift and tumble everywhere out there, lit by Blitz's glow as it passes, a few glittering with crystal. Fling Blitz into one and it bonks off with a puff of dust and chips ("BONK").
 - **The menu** sits beside the domain (below it on narrow screens): pick a section on the left, and Blitz answers whatever you do there with a little speech bubble in the domain. People only see what they're allowed to use; the team's tools have their own group.
 - **Summon the menu** out in space with the ✦ button up top (or just type "menu"): Blitz lights up, rings out light, and the sections bloom out of it as glowing cards that hang in the dark around it, drifting like something half-remembered from a dream. Pick one and it unfolds into a floating page with Blitz hovering beside it, watching; send it away and it dissolves back into Blitz in a stream of light.
+- **Your own Blitz's looks**: what you buy in the shop (a crown, a wizard hat, a halo; a rainbow, ember or frost trail; a golden, rose or void glow), your Blitz wears in your domain window. Try things on in the shop first.
+- **Standing guard**: while a raid shield is up, or every channel is locked, two arcs of warm light circle Blitz.
 - **Seal the bubble** (up top out in space) folds the universe back in and the window gathers around it; it also re-forms on its own after two quiet minutes.
 - Leave it alone and it does tricks on its own: loop-de-loops, spins, hops, zooming laps, the odd heart drawn in the air. After a while it dozes off. Any touch wakes it.
 
@@ -147,15 +162,15 @@ blitz/
 ├── server/                     the App's server: everything that happens in chat, plus Blitz's brain
 │   ├── src/
 │   │   ├── config.ts           ⭐ defaults for every community
-│   │   ├── domain/             Blitz's brain (Claude), its memory, chat answers, domain thoughts, !blitz and the menu's service
+│   │   ├── domain/             Blitz's brain (Claude): chat answers, report triage and context checks, !tldr and Ask Blitz; domain thoughts, !blitz and the menu's service
 │   │   ├── content/            Blitz's welcome, level-up and birthday lines, 8-ball answers
 │   │   ├── core/               rate-limited API calls, commands, storage, jobs, each community's settings
-│   │   ├── features/           welcome, quote wall, levels, birthdays, polls, auto-mod, staff, fun, !help and !settings
-│   │   ├── logic/              pure helpers (parsing, XP math, automod checks, polls, dates)
+│   │   ├── features/           guardian (scam and raid shields, locks), moderation, inbox, auto-mod, levels, Stardust, giveaways, pulse, welcome, quote wall, birthdays, polls, staff, fun, !help and !settings
+│   │   ├── logic/              pure helpers (scam links, raids and the warning ladder, parsing, XP and Stardust math, automod checks, polls, pulse, dates)
 │   │   └── main.ts             wiring
 │   └── test/                   unit tests (node:test)
 └── client/                     the domain window, shown in Blitz's channel: faces, effects, cracks, the shatter, the universe and its rocks
-    └── src/menu/               the menu: the panel beside the domain and the dream menu Blitz summons in space
+    └── src/menu/               the menu: the panel beside the domain, the dream menu Blitz summons in space, Pulse's charts and the shop's portrait
 docs/                           setup guide, commands, customizing
 ```
 

@@ -2,6 +2,7 @@
 // looks right now (a `Look`); this only paints it.
 
 import { RGB, rgba, stampAt } from "./fx";
+import { drawHat } from "./hats";
 
 export type Eyes =
   | "open"
@@ -48,6 +49,8 @@ export interface Look {
   /** Where the eyes look, -1..1. */
   gaze: { x: number; y: number };
   blink: boolean;
+  /** A hat bought with Stardust (see hats.ts), if it's wearing one. */
+  hat?: string;
 }
 
 const INK = "#13223F";
@@ -162,6 +165,7 @@ export function drawBlitz(ctx: CanvasRenderingContext2D, look: Look, t: number):
   ctx.fill();
 
   drawFace(ctx, look, t);
+  drawHat(ctx, look.hat, r, t);
   ctx.restore();
 }
 

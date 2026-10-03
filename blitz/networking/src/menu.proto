@@ -35,6 +35,203 @@ message MenuOverview {
   repeated ChannelInfo channels = 17;
   // The person's name in the community.
   string name = 18;
+  // Their Stardust, streak and their Blitz's outfit.
+  StardustInfo stardust = 19;
+  // Their conversations with the team (and for the team, everyone's open ones).
+  InboxInfo inbox = 20;
+  repeated GiveawayInfo giveaways = 21;
+  // The team only: the shields, and the community's vital signs.
+  GuardianInfo guardian = 22;
+  PulseInfo pulse = 23;
+  // Their own cases (to appeal), and the roles levels unlock.
+  repeated CaseInfo my_cases = 24;
+  repeated RewardInfo level_rewards = 25;
+  // Whether Blitz's brain helps here (Ask Blitz and catch-ups work).
+  bool brain = 26;
+  // Whether a shield is up right now (a raid, or a lockdown everywhere), for everyone to see.
+  bool shield_up = 27;
+}
+
+message StardustInfo {
+  bool on = 1;
+  int32 balance = 2;
+  int32 earned = 3;
+  int32 streak = 4;
+  bool daily_ready = 5;
+  // When the next daily gift is ready, in milliseconds since 1970.
+  double next_daily = 6;
+  repeated string owned = 7;
+  // What their Blitz wears: cosmetic ids, empty for none.
+  string hat = 8;
+  string trail = 9;
+  string glow = 10;
+  repeated StardustLine top = 11;
+}
+
+message StardustLine {
+  string user_id = 1;
+  string name = 2;
+  int32 earned = 3;
+}
+
+message InboxInfo {
+  bool on = 1;
+  repeated TicketInfo mine = 2;
+  // The team only: open conversations, and recently closed ones.
+  repeated TicketInfo team = 3;
+}
+
+message TicketInfo {
+  int32 id = 1;
+  // question, report or appeal.
+  string kind = 2;
+  string subject = 3;
+  // open or closed.
+  string status = 4;
+  string user_id = 5;
+  string name = 6;
+  string claimed_by = 7;
+  double updated_at = 8;
+  // "member" or "team": who hasn't read the latest message yet.
+  string unread = 9;
+  string resolution = 10;
+  int32 case_id = 11;
+  int32 messages = 12;
+  // What Blitz's brain made of a report (the team only).
+  string triage_severity = 13;
+  string triage_summary = 14;
+  string triage_suggestion = 15;
+}
+
+message TicketMessageInfo {
+  // member, team or blitz.
+  string from = 1;
+  string name = 2;
+  string text = 3;
+  double at = 4;
+}
+
+message TicketRequest {
+  int32 id = 1;
+}
+
+message TicketThread {
+  TicketInfo ticket = 1;
+  repeated TicketMessageInfo messages = 2;
+  // What the case being appealed was (appeals only).
+  string about = 3;
+}
+
+message TicketReplyRequest {
+  int32 id = 1;
+  string text = 2;
+}
+
+message GiveawayInfo {
+  int32 id = 1;
+  string prize = 2;
+  int32 winners = 3;
+  double ends_at = 4;
+  int32 entrants = 5;
+  bool entered = 6;
+  string channel = 7;
+  bool ended = 8;
+  repeated string winner_names = 9;
+}
+
+message GuardianInfo {
+  bool scam_on = 1;
+  bool raid_on = 2;
+  bool raid_active = 3;
+  double raid_until = 4;
+  bool raid_manual = 5;
+  int32 raid_held = 6;
+  int32 newcomer_minutes = 7;
+  repeated LockInfo locks = 8;
+  repeated SlowInfo slows = 9;
+  repeated CatchInfo catches = 10;
+  string ladder = 11;
+  bool strict = 12;
+  bool cool_off = 13;
+  bool automod_on = 14;
+  int32 raid_joins = 15;
+}
+
+message LockInfo {
+  // A channel ID, or "all".
+  string channel_id = 1;
+  string name = 2;
+  double until = 3;
+  string reason = 4;
+}
+
+message SlowInfo {
+  string channel_id = 1;
+  string name = 2;
+  int32 seconds = 3;
+}
+
+message CatchInfo {
+  string kind = 1;
+  string user_id = 2;
+  string name = 3;
+  string channel = 4;
+  double at = 5;
+  string detail = 6;
+}
+
+message PulseInfo {
+  repeated PulseDayInfo days = 1;
+  int32 week_messages = 2;
+  int32 week_people = 3;
+  int32 week_joins = 4;
+  int32 week_leaves = 5;
+  int32 week_mod = 6;
+  int32 week_caught = 7;
+  bool has_change = 8;
+  double change_messages = 9;
+  double change_people = 10;
+  repeated ChannelCount top_channels = 11;
+  // Messages per UTC hour.
+  repeated int32 hours = 12;
+  int32 health = 13;
+  repeated KindCount mod_kinds = 14;
+  repeated KindCount caught_kinds = 15;
+}
+
+message PulseDayInfo {
+  string date = 1;
+  int32 messages = 2;
+  int32 people = 3;
+  int32 joins = 4;
+  int32 leaves = 5;
+  int32 mod = 6;
+  int32 caught = 7;
+}
+
+message ChannelCount {
+  string name = 1;
+  int32 messages = 2;
+}
+
+message KindCount {
+  string kind = 1;
+  int32 count = 2;
+}
+
+message RewardInfo {
+  int32 level = 1;
+  string role_name = 2;
+  string role_id = 3;
+}
+
+message AskRequest {
+  string question = 1;
+}
+
+message AskResponse {
+  bool ok = 1;
+  string answer = 2;
 }
 
 message LevelsInfo {
@@ -196,4 +393,10 @@ service BlitzMenuService {
   rpc Run(RunRequest) returns (RunResponse);
   rpc SearchMembers(MemberSearchRequest) returns (MemberSearchResponse);
   rpc Member(MemberCardRequest) returns (MemberCard);
+  // One conversation with the team, in full (its member or the team only).
+  rpc Ticket(TicketRequest) returns (TicketThread);
+  // Writes in a conversation: its member, or anyone on the team.
+  rpc TicketReply(TicketReplyRequest) returns (TicketThread);
+  // Ask Blitz (the team only): a question about the community, answered by Blitz's brain.
+  rpc Ask(AskRequest) returns (AskResponse);
 }
