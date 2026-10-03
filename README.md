@@ -45,6 +45,7 @@ Install Blitz, then open its **App settings** in Root. Everything is optional:
 | Staff | Who can use staff commands. The owner, and roles that can manage the community, kick or ban, always can. |
 | Welcome message | Your own welcome: `{user}`, `{name}`, `{community}` and `{members}` are filled in. Empty: Blitz's greetings. |
 | Turn off levels, Turn off auto-mod | Tick them if you'd rather not have levels or auto-mod. |
+| Turn off domain links | Blitz adds a 🔮 link to its domain under its replies to commands (and spins in the domain); tick this to stop it. |
 | Block invite links, Blocked words | What else auto-mod removes. Words are separated by commas; `scam*` catches any ending. |
 | Reactions for the quote wall | How many 🗣️ a message needs. |
 | Anthropic API key, About this community | Blitz's brain (see below), and a sentence or two that tells it what your community is like. |

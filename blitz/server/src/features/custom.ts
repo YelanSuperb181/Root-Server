@@ -6,7 +6,6 @@
 import { config } from "../config";
 import { Command, UsageError, isCommandName, setFallback } from "../core/commands";
 import { nickname } from "../core/members";
-import { send } from "../core/messaging";
 import { kv } from "../core/store";
 import { customNameProblem } from "../logic/moderation";
 import { fillTemplate, plural, truncate, userMention } from "../logic/text";
@@ -42,7 +41,7 @@ export async function initCustom(onChange: () => void): Promise<void> {
       user: userMention(await nickname(ctx.userId), ctx.userId),
       args: ctx.rest,
     });
-    await send(ctx.channelId, text, ctx.messageId);
+    await ctx.reply(text);
     custom.uses++;
     await kv.set(key(name), custom);
     return true;

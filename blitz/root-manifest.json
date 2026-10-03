@@ -175,6 +175,16 @@
               "step": 1,
               "defaultValue": 2
             }
+          },
+          {
+            "key": "domainLinksOff",
+            "title": "Turn off domain links",
+            "description": "Tick to stop Blitz adding a link to its domain under its replies to commands (and spinning in the domain when someone uses one). On while this is unticked.",
+            "required": false,
+            "confirmation": "Save",
+            "checkbox": {
+              "defaultValue": false
+            }
           }
         ]
       },

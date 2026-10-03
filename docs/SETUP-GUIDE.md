@@ -81,6 +81,7 @@ After uploading, the Developer Portal shows the version as ready to publish. Roo
    | Staff | Who can use staff commands, besides the owner and roles that can manage the community, kick or ban |
    | Welcome message | Your own welcome; `{user}`, `{name}`, `{community}` and `{members}` are filled in |
    | Turn off levels, Turn off auto-mod | Both are on until you tick these |
+   | Turn off domain links | Stops the 🔮 link to Blitz's domain under its replies to commands |
    | Block invite links, Blocked words | What else auto-mod removes (words separated by commas; `scam*` catches any ending) |
    | Reactions for the quote wall | How many 🗣️ a message needs (2 by default) |
 

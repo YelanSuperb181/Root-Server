@@ -111,6 +111,7 @@ export const infoCommands: Command[] = [
         `Birthday role: ${(await named(settings.role("birthdayRole"))) ?? "none"}`,
         `Roles people can pick: ${(await Promise.all(settings.selfRoles().map(named))).filter(Boolean).join(", ") || "none"}`,
         `Welcome message: ${settings.text("welcomeMessage") ? "your own" : "Blitz's"}`,
+        `Domain links on commands: ${settings.on("domainLinks") ? "on" : "off"}`,
         `Levels: ${settings.on("levels") ? "on" : "off"} · Quote wall needs ${settings.number("quoteThreshold", 2, 1, 20)} 🗣️`,
         `Auto-mod: ${settings.on("automod") ? "on" : "off"} · Blocked words: ${parseWordList(settings.text("blockedWords")).length} · Invite links: ${settings.ticked("blockInvites") ? "blocked" : "allowed"}`,
         "",

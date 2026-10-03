@@ -20,7 +20,7 @@ import {
 import { CommunityFacts } from "@blitz/shared";
 import { config } from "./config";
 import { errDetail, read } from "./core/api";
-import { allCommands, handleCommand, register } from "./core/commands";
+import { allCommands, handleCommand, register, setReplyFooter } from "./core/commands";
 import { listChannels } from "./core/community";
 import { ensureDailyJob, initJobs } from "./core/jobs";
 import { errMessage, log } from "./core/log";
@@ -46,7 +46,7 @@ import { staffCommands } from "./features/staff";
 import { initWelcome } from "./features/welcome";
 import { initBrain, refreshFacts } from "./domain/brain";
 import { hearChat } from "./domain/chat";
-import { domainCommands } from "./domain/commands";
+import { domainCommands, domainFooter } from "./domain/commands";
 import { domainService, initDomain } from "./domain/domain";
 
 /** The command a message starts with ("!help"), if it starts with the prefix. */
@@ -175,6 +175,7 @@ async function onStarting(state: RootAppStartState): Promise<void> {
     ...customCommandsAdmin,
     ...domainCommands,
   );
+  setReplyFooter(domainFooter);
   // After the built-in commands, so a community command can never shadow one.
   await initCustom(scheduleFacts);
 

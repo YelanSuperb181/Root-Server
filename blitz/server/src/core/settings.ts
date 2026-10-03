@@ -74,8 +74,8 @@ export const settings = {
    * (whatever its default says), so these are "Turn off …" boxes: the
    * feature stays on until an admin ticks one.
    */
-  on(key: "levels" | "automod"): boolean {
-    return raw(key === "levels" ? "features" : "automod", `${key}Off`) !== true;
+  on(key: "levels" | "automod" | "domainLinks"): boolean {
+    return raw(key === "automod" ? "automod" : "features", `${key}Off`) !== true;
   },
 
   /** An opt-in checkbox: true only once an admin ticks it. */

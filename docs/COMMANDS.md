@@ -2,6 +2,8 @@
 
 Commands start with `!` (change it with `prefix` in [`config.ts`](../blitz/server/src/config.ts)). `!help` shows the commands *you* can use; `!help poll` explains one.
 
+When someone uses one of the commands for everyone (the community's own included), Blitz's reply ends with a 🔮 link into its domain, and Blitz spins there for everyone watching (at most every 15 seconds). Not in private channels or the staff logs, not for `!report`, `!warnings` or reminders, and not when the community ticks **Turn off domain links** in Blitz's settings.
+
 ## For everyone
 
 | Command | What it does |
