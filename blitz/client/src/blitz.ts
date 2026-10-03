@@ -94,7 +94,7 @@ function haloStamp(tint: RGB, R: number): HTMLCanvasElement | undefined {
     g.fillStyle = halo;
     g.fillRect(0, 0, r * 2, r * 2);
     // Colors pass through quickly as moods change; keep only the recent ones.
-    if (halos.size >= 24) halos.delete(halos.keys().next().value as string);
+    if (halos.size >= 12) halos.delete(halos.keys().next().value as string);
   }
   halos.set(key, stamp);
   return stamp;

@@ -111,11 +111,14 @@ const FAINT_STARS: [number, number, number, number, number] = [650, 0.3, 0.8, 9,
 
 /**
  * Browsers put off actually painting a canvas until it's first shown; copying
- * it onto a 1-pixel scratch canvas makes them do it now, while there's time.
+ * it onto a pixel of a scratch canvas makes them do it now, while there's
+ * time. The scratch is big enough that browsers drawing with the graphics
+ * card keep it there too: copying onto a tiny canvas could make them read the
+ * whole picture back from the card first, which stalls.
  */
 let scratch: CanvasRenderingContext2D | undefined;
 export function finishPainting(c: HTMLCanvasElement): void {
-  scratch ??= canvas(1)[1];
+  scratch ??= canvas(256)[1];
   scratch.drawImage(c, 0, 0, 1, 1);
 }
 
