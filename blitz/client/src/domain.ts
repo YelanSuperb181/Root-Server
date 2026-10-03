@@ -1459,9 +1459,10 @@ export class DomainView {
         c.height = Math.round(H * k);
         const g = c.getContext("2d")!;
         g.setTransform(k, 0, 0, k, 0, 0);
-        this.universe.drawStill(g, W, H, cam, t);
+        const complete = this.universe.drawStill(g, W, H, cam, t);
         still.canvas = c;
-        still.key = key;
+        // Painted before every deep-sky tile was ready: paint it again next frame.
+        still.key = complete ? key : "";
       }
       const smooth = ctx.imageSmoothingEnabled;
       ctx.imageSmoothingEnabled = false;
@@ -1528,8 +1529,9 @@ export class DomainView {
       const left = Math.floor((cx - r) * k) - 1;
       const top = Math.floor((cy - r) * k) - 1;
       g.setTransform(k, 0, 0, k, -left, -top);
-      this.paintBubbleStill(g, cx, cy, r);
-      still = this.bubbleStill = { canvas: c, key, left, top };
+      // Painted before every deep-sky tile was ready: paint it again next frame.
+      const complete = this.paintBubbleStill(g, cx, cy, r);
+      still = this.bubbleStill = { canvas: c, key: complete ? key : "", left, top };
     }
     ctx.save();
     ctx.globalAlpha = alpha;
@@ -1555,12 +1557,12 @@ export class DomainView {
   }
 
   /** The drifting layers seen through the bubble's tinted glass, clipped to the bubble. */
-  private paintBubbleStill(g: CanvasRenderingContext2D, cx: number, cy: number, r: number, alpha = 1): void {
+  private paintBubbleStill(g: CanvasRenderingContext2D, cx: number, cy: number, r: number, alpha = 1): boolean {
     g.save();
     g.beginPath();
     g.arc(cx, cy, r, 0, Math.PI * 2);
     g.clip();
-    this.universe.drawStill(g, this.W, this.H, this.cam, this.t, alpha);
+    const complete = this.universe.drawStill(g, this.W, this.H, this.cam, this.t, alpha);
     g.globalAlpha = alpha;
     const glass = g.createRadialGradient(cx, cy - r * 0.2, r * 0.05, cx, cy, r);
     glass.addColorStop(0, `rgba(27, 40, 80, ${GLASS[0]})`);
@@ -1569,6 +1571,7 @@ export class DomainView {
     g.fillStyle = glass;
     g.fillRect(cx - r, cy - r, r * 2, r * 2);
     g.restore();
+    return complete;
   }
 
   /** The twinkling stars and dust, dimmed by the glass (which darkens toward the rim). Call with the bubble clipped. */

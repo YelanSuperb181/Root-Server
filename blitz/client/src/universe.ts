@@ -394,8 +394,12 @@ export class Universe {
     return [W, H, k, at(DEEP_P), ...this.layers.map((l) => at(l.p)), at(PLANET_P), at(FAR_ROCK_P), Math.floor(this.driftT * 2)].join("|");
   }
 
-  /** The layers that only drift: deep sky, star fields, the planet and the distant rocks. */
-  drawStill(ctx: CanvasRenderingContext2D, W: number, H: number, cam: Cam, t: number, alpha = 1): void {
+  /**
+   * The layers that only drift: deep sky, star fields, the planet and the
+   * distant rocks. False when some deep-sky tiles weren't painted yet (they
+   * come a few per frame), so a copy of this would need painting again.
+   */
+  drawStill(ctx: CanvasRenderingContext2D, W: number, H: number, cam: Cam, t: number, alpha = 1): boolean {
     const zoom = this.zoomFor(W, H);
     ctx.save();
     ctx.globalAlpha = alpha;
@@ -404,7 +408,7 @@ export class Universe {
     const k = m.a;
     const smooth = ctx.imageSmoothingEnabled;
     ctx.imageSmoothingEnabled = false;
-    this.drawDeep(ctx, W, H, cam, zoom, m, k);
+    const complete = this.drawDeep(ctx, W, H, cam, zoom, m, k);
 
     // Star fields, near layers sliding faster than far ones. Each tile is drawn
     // whole and on exact device pixels: far cheaper than a shifted pattern fill.
@@ -445,6 +449,7 @@ export class Universe {
       drawRockArt(ctx, art, x, y, size, turn, FAR_LIGHT, t);
     });
     ctx.restore();
+    return complete;
   }
 
   /** The layers that change every frame: twinkling bright stars, shooting stars, passing dust, and the vignette. */
@@ -569,8 +574,8 @@ export class Universe {
     band(x + w, y, cw - x - w, h); // right
   }
 
-  /** The deep sky: the painted tiles on screen, painting any that are missing (a few per frame). */
-  private drawDeep(ctx: CanvasRenderingContext2D, W: number, H: number, cam: Cam, zoom: number, m: DOMMatrix, k: number): void {
+  /** The deep sky: the painted tiles on screen, painting any that are missing (a few per frame). False if some are still missing. */
+  private drawDeep(ctx: CanvasRenderingContext2D, W: number, H: number, cam: Cam, zoom: number, m: DOMMatrix, k: number): boolean {
     const key = `${k}|${zoom}`;
     if (key !== this.deepFor) {
       this.deep.clear();
@@ -595,6 +600,7 @@ export class Universe {
     }
     missing.sort((a, b) => a[2] - b[2]);
     let budget = DEEP_PER_FRAME;
+    const complete = missing.length <= budget;
     for (const [tx, ty] of missing) {
       if (budget-- <= 0) break;
       this.deep.set(`${tx},${ty}`, this.paintDeepTile(tx, ty, px, k, zoom));
@@ -629,6 +635,7 @@ export class Universe {
       this.deepSpare.push(this.deep.get(oldest)!);
       this.deep.delete(oldest);
     }
+    return complete;
   }
 
   /** One deep-sky tile, `px` device pixels square, covering layer pixels from (tx, ty) * its size. */
