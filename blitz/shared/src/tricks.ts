@@ -1,7 +1,7 @@
 // Blitz's tricks: little flights it does on its own, or when someone talks to
 // it. Each trick is a path in time; Blitz chases a point moving along it. The
 // path depends only on the trick (kind, start time, where Blitz was, which way
-// round), so every screen flies the exact same trick.
+// round), so it flies the same however fast the screen draws.
 
 import { Point, arenaScale, clampToArena } from "./arena";
 

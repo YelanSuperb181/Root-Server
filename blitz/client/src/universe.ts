@@ -484,7 +484,7 @@ export class Universe {
     const k = m.a;
     const smooth = ctx.imageSmoothingEnabled;
     ctx.imageSmoothingEnabled = false;
-    const complete = this.drawDeep(ctx, W, H, cam, zoom, m, k);
+    const complete = this.drawDeep(ctx, W, H, cam, zoom, m);
 
     // Star fields, near layers sliding faster than far ones. Each tile is drawn
     // whole and on exact device pixels: far cheaper than a shifted pattern fill.
@@ -656,7 +656,7 @@ export class Universe {
   }
 
   /** The deep sky: the painted tiles on screen, painting any that are missing (a few per frame). False if some are still missing. */
-  private drawDeep(ctx: CanvasRenderingContext2D, W: number, H: number, cam: Cam, zoom: number, m: DOMMatrix, _k: number): boolean {
+  private drawDeep(ctx: CanvasRenderingContext2D, W: number, H: number, cam: Cam, zoom: number, m: DOMMatrix): boolean {
     // Tiles are painted for open space's pixel density; drawn anywhere else (the bubble), they're scaled smoothly.
     const k = this.screen.k;
     const scaled = Math.abs(m.a - k) > 1e-3;

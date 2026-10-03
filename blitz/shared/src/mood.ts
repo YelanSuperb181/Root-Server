@@ -1,7 +1,7 @@
 // How Blitz feels about what someone just said to it. Plain word and emoji
 // spotting, nothing clever: it only has to be right often enough to be fun.
-// The server uses it for messages from chat; a solo domain uses it for what
-// you type into the domain.
+// The server uses it for chat messages when there's no Claude; the domain uses
+// it for what you type when there's no answer from Claude.
 
 import { TrickKind } from "./tricks";
 

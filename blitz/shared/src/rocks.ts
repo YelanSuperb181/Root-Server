@@ -1,8 +1,7 @@
 // Space rocks: an endless field of them out in open space, slowly drifting
-// and tumbling, for Blitz to crash into. The field is the same on every
-// screen without anyone sending it: each patch of space (a grid cell) gets
-// its rocks from a hash of where it is, and where a rock is at any moment
-// is a function of the shared clock.
+// and tumbling, for Blitz to crash into. Nothing is stored: each patch of
+// space (a grid cell) gets its rocks from a hash of where it is, and where a
+// rock is at any moment is a function of the clock.
 
 import { Point } from "./arena";
 

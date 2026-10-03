@@ -1,6 +1,6 @@
-// Blitz's physics. The server runs it as the source of truth and every open
-// domain runs the same code to predict motion between updates, so a fling
-// lands in the same place on every screen.
+// Blitz's physics: how it drifts, follows a hand, bounces, cracks its bubble
+// and bursts out. Each domain window runs its own Blitz with it, in fixed
+// steps, so motion doesn't depend on the frame rate.
 //
 // Units: the bubble is a circle of radius 1 centered on (0, 0) (see arena.ts).
 // Speeds are in radii per second, time in seconds. Rendering scales
@@ -44,7 +44,7 @@ export interface Body {
 }
 
 export interface Forces {
-  /** Shared clock (seconds). The drift and tricks are functions of it, so all screens agree. */
+  /** The clock (seconds). The drift and tricks are functions of it, so they're smooth whatever the frame rate. */
   t: number;
   /** Where the holder's pointer is, when someone is holding Blitz. */
   target?: Point;

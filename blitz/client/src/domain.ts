@@ -936,9 +936,11 @@ export class DomainView {
    * time, one piece per spare frame, so bursting the bubble doesn't stall.
    */
   private prewarmed = false;
+  private prewarmTurn = 0;
   private workAvg = 16;
   private prewarm(): void {
-    if (this.prewarmed || this.layoutOpen || this.trans || this.t < 3 || this.workAvg > 6) return;
+    // Only with time to spare: frames keeping up with the screen and quick to make. One piece every third frame.
+    if (this.prewarmed || this.layoutOpen || this.trans || this.t < 3 || this.workAvg > 6 || this.frameAvg > 18 || this.prewarmTurn++ % 3 !== 0) return;
     const inset = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--top-inset")) || 0;
     const W = window.innerWidth;
     const H = Math.max(1, window.innerHeight - inset);
