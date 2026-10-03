@@ -132,6 +132,7 @@ npm run configure   # paste the App ID and DEV_TOKEN from Root's Developer Porta
 npm run check       # builds everything and runs the tests
 npm run server      # runs Blitz in your test community
 npm run client      # in a second window: the domain in your browser
+npm run demo        # or, with no Root account at all: the domain and its menu with a made-up community
 npm run upload      # puts Blitz in Root's cloud (asks for your publishing token once)
 ```
 

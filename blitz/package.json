@@ -26,6 +26,7 @@
     "upload": "node upload.js",
     "server": "npm run server -w server",
     "client": "npm run client -w client",
+    "demo": "npm run demo -w client",
     "package": "npm run build && node stage.js && rootsdk build package -p deploy -o ../blitz.rootpkg",
     "clean": "node clean.js"
   },

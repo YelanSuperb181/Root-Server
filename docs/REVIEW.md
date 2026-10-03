@@ -16,7 +16,7 @@ No Root account needed:
 cd blitz
 npm install
 npm run build      # generates the client/server calls and builds everything
-npm run client     # opens the domain in a browser, with a made-up community ("Stardust Café") in the menu
+npm run demo       # opens the domain in a browser, with a made-up community ("Stardust Café") in the menu
 ```
 
 Everything in the menu works against the made-up data: try the shop, raise the raid shield in Guardian, open an appeal, ask Ask Blitz a question, press Ctrl K. Burst the bubble (hold Blitz against the wall) and press **✦ Summon menu** for the dream menu.
