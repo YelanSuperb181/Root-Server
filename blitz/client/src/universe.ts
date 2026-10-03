@@ -330,6 +330,12 @@ export class Universe {
   private deepFor = "";
   /** Canvases of tiles that scrolled away, to paint new tiles on. */
   private deepSpare: HTMLCanvasElement[] = [];
+  /**
+   * The tiles from before the sharpness last changed, shown (slightly
+   * stretched) wherever a new tile isn't painted yet, so the sky never
+   * flashes empty squares while it catches up.
+   */
+  private deepPrev: Map<string, HTMLCanvasElement> | undefined;
   private faint: { k: number; pattern: CanvasPattern } | undefined;
   private vignette: Vignette | undefined;
   private nebulae: HTMLCanvasElement[] = [];
@@ -662,7 +668,10 @@ export class Universe {
     const scaled = Math.abs(m.a - k) > 1e-3;
     const key = `${k}|${zoom}`;
     if (key !== this.deepFor) {
-      this.deep.clear();
+      // Only the sharpness changed (the same sky, more or fewer pixels): keep the old tiles to fill in with.
+      const sameSky = this.deepFor.endsWith(`|${zoom}`);
+      this.deepPrev = sameSky && this.deep.size > 0 ? this.deep : undefined;
+      this.deep = new Map();
       this.deepSpare = [];
       this.deepFor = key;
     }
@@ -706,10 +715,18 @@ export class Universe {
           this.deep.delete(id);
           this.deep.set(id, tile);
           ctx.drawImage(tile, x, y, w, h);
-        } else ctx.fillRect(x, y, w, h);
+        } else {
+          const old = this.deepPrev?.get(id);
+          if (old) {
+            ctx.imageSmoothingEnabled = true;
+            ctx.drawImage(old, x, y, w, h);
+            ctx.imageSmoothingEnabled = scaled;
+          } else ctx.fillRect(x, y, w, h);
+        }
       }
     }
     ctx.imageSmoothingEnabled = smooth;
+    if (complete) this.deepPrev = undefined;
     // Spare time: paint the ring just off screen, so travelling finds it ready.
     for (let tx = x0 - 1; tx <= x1 + 1 && budget > 0; tx++) {
       for (let ty = y0 - 1; ty <= y1 + 1 && budget > 0; ty++) {

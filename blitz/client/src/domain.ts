@@ -823,8 +823,8 @@ export class DomainView {
   /**
    * Render sharpness, adjusted to the computer: 1 draws at the screen's full
    * resolution (up to a cap); when frames come too slowly it steps down, and
-   * after a long smooth stretch it tries a step back up (but not to a level
-   * that was already too slow, until the layout changes).
+   * after a long smooth stretch it tries a step back up, but only until the
+   * first time it's too slow (per layout), so it doesn't keep flip-flopping.
    */
   private quality = 1;
   private tooSlowAt = Infinity;
@@ -842,7 +842,9 @@ export class DomainView {
     if (this.slowMs > 1000 && this.quality > MIN_QUALITY) {
       this.tooSlowAt = this.quality;
       this.setQuality(Math.max(MIN_QUALITY, this.quality * 0.8));
-    } else if (this.smoothMs > 8000 && this.quality < 1 && this.quality * 1.15 < this.tooSlowAt) {
+    } else if (this.smoothMs > 8000 && this.quality < 1 && this.tooSlowAt === Infinity) {
+      // Sharpening back up only until the first time it's too slow in this layout: going back
+      // and forth would mean repainting everything over and over.
       this.setQuality(Math.min(1, this.quality * 1.15));
     }
   }
