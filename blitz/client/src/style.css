@@ -21,10 +21,7 @@
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
 body {
-  background:
-    radial-gradient(1200px 700px at 50% 30%, #101935 0%, rgba(16, 25, 53, 0) 70%),
-    radial-gradient(900px 600px at 80% 110%, #1a1033 0%, rgba(26, 16, 51, 0) 70%),
-    var(--night);
+  background: var(--night);
   color: var(--ink);
   font-family: var(--body);
   font-size: 15px;
@@ -32,6 +29,13 @@ body {
   padding-top: env(safe-area-inset-top, 0px);
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
+
+/* The night's glow, on its own layer: the browser paints it once, instead of again every time the
+   window changes shape (bursting into the whole frame and back), which stalled those moments. */
+body::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; will-change: transform;
+  background:
+    radial-gradient(1200px 700px at 50% 30%, #101935 0%, rgba(16, 25, 53, 0) 70%),
+    radial-gradient(900px 600px at 80% 110%, #1a1033 0%, rgba(26, 16, 51, 0) 70%); }
 
 .stage { min-height: 100%; display: grid; place-items: center; padding-inline: 16px; padding-block: 16px; }
 
@@ -67,7 +71,7 @@ body {
 .domain { position: relative; width: 100%; aspect-ratio: 1 / 1; touch-action: none; }
 canvas { display: block; width: 100%; height: 100%; }
 /* Open space's darkened edges, over the canvas: the browser keeps this drawn, so the canvas doesn't have to. */
-.vignette { position: absolute; inset: 0; pointer-events: none; opacity: 0; display: none;
+.vignette { position: absolute; inset: 0; pointer-events: none; opacity: 0; display: none; will-change: opacity;
   background: radial-gradient(circle farthest-corner at 50% 50%, rgba(2, 3, 10, 0) 64%, rgba(2, 3, 10, 0.75) 124%); }
 body.open .vignette { display: block; }
 

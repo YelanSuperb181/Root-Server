@@ -81,7 +81,7 @@ export function glowStamp(c: RGB, R: number): HTMLCanvasElement {
     stamp = document.createElement("canvas");
     stamp.width = stamp.height = r * 2;
     stamp.getContext("2d")!.drawImage(glowSprite(c), 0, 0, r * 2, r * 2);
-    if (stamps.size >= 600) stamps.delete(stamps.keys().next().value as string);
+    if (stamps.size >= 1200) stamps.delete(stamps.keys().next().value as string);
     stamps.set(key, stamp);
   }
   return stamp;
