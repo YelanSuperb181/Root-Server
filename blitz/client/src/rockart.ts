@@ -107,21 +107,22 @@ export function drawRockArt(ctx: CanvasRenderingContext2D, art: RockArt, x: numb
   const n = verts.length;
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
-  // The outline's corner points, turned with the rock.
-  const pts: Array<[number, number]> = [];
+  // The outline's corner points, turned with the rock: x, y, x, y, ...
+  const pts = cornerPoints(n);
   for (let i = 0; i < n; i++) {
     const a = (i / n) * Math.PI * 2;
     const px = Math.cos(a) * R * verts[i] * art.long;
     const py = Math.sin(a) * R * verts[i];
-    pts.push([x + px * cos - py * sin, y + px * sin + py * cos]);
+    pts[i * 2] = x + px * cos - py * sin;
+    pts[i * 2 + 1] = y + px * sin + py * cos;
   }
   const body = new Path2D();
-  outline(body, pts, 0, 0);
+  outline(body, pts, n, 0, 0);
   // Everything outside the outline shifted by (dx, dy): a crescent once clipped to the rock.
   const crescent = (dx: number, dy: number) => {
     const p = new Path2D();
     p.rect(x - R * 3, y - R * 3, R * 6, R * 6);
-    outline(p, pts, dx, dy);
+    outline(p, pts, n, dx, dy);
     return p;
   };
 
@@ -197,19 +198,22 @@ export function drawRockArt(ctx: CanvasRenderingContext2D, art: RockArt, x: numb
   ctx.restore();
 }
 
-/** A rounded closed curve through the midpoints of `pts`, shifted by (dx, dy). */
-function outline(path: Path2D, pts: Array<[number, number]>, dx: number, dy: number): void {
-  const n = pts.length;
-  const mid = (i: number): [number, number] => {
-    const [ax, ay] = pts[i % n];
-    const [bx, by] = pts[(i + 1) % n];
-    return [(ax + bx) / 2 + dx, (ay + by) / 2 + dy];
-  };
-  const [sx, sy] = mid(n - 1);
-  path.moveTo(sx, sy);
+/** One buffer for the corner points, reused (rocks are drawn many times a second). */
+let corners = new Float64Array(32);
+function cornerPoints(n: number): Float64Array {
+  if (corners.length < n * 2) corners = new Float64Array(n * 2);
+  return corners;
+}
+
+/** A rounded closed curve through the midpoints of the `n` corner points in `pts` (x, y, x, y, ...), shifted by (dx, dy). */
+function outline(path: Path2D, pts: Float64Array, n: number, dx: number, dy: number): void {
+  const last = (n - 1) * 2;
+  path.moveTo((pts[last] + pts[0]) / 2 + dx, (pts[last + 1] + pts[1]) / 2 + dy);
   for (let i = 0; i < n; i++) {
-    const [mx, my] = mid(i);
-    path.quadraticCurveTo(pts[i][0] + dx, pts[i][1] + dy, mx, my);
+    const j = ((i + 1) % n) * 2;
+    const cx = pts[i * 2];
+    const cy = pts[i * 2 + 1];
+    path.quadraticCurveTo(cx + dx, cy + dy, (cx + pts[j]) / 2 + dx, (cy + pts[j + 1]) / 2 + dy);
   }
   path.closePath();
 }

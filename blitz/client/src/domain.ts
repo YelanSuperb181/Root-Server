@@ -1815,29 +1815,40 @@ export class DomainView {
     ctx.restore();
   }
 
+  /** The ring of ticks for the rim's current size, built once and turned as it spins. */
+  private tickPaths: { r: number; short: Path2D; long: Path2D } | undefined;
+
   /** The slow ring of ticks just outside the rim: every fifth one long and violet. One path for each kind. */
   private drawTicks(cx: number, cy: number, r: number, alpha: number, strain: number): void {
     const { ctx, t } = this;
     if (alpha <= 0) return;
+    if (this.tickPaths?.r !== r) {
+      const ticks = 60;
+      const short = new Path2D();
+      const long = new Path2D();
+      for (let i = 0; i < ticks; i++) {
+        const isLong = i % 5 === 0;
+        const a = (i / ticks) * Math.PI * 2;
+        const r2 = r + (isLong ? 12 : 9);
+        const path = isLong ? long : short;
+        path.moveTo(Math.cos(a) * (r + 6), Math.sin(a) * (r + 6));
+        path.lineTo(Math.cos(a) * r2, Math.sin(a) * r2);
+      }
+      this.tickPaths = { r, short, long };
+    }
     ctx.save();
     ctx.globalAlpha = alpha;
-    const ticks = 60;
-    const spin = reduced ? 0 : -t * (0.02 + strain * 0.4);
-    for (const long of [false, true]) {
-      ctx.beginPath();
-      for (let i = long ? 0 : 1; i < ticks; i += long ? 5 : 1) {
-        if (!long && i % 5 === 0) continue;
-        const a = spin + (i / ticks) * Math.PI * 2;
-        const r2 = r + (long ? 12 : 9);
-        ctx.moveTo(cx + Math.cos(a) * (r + 6), cy + Math.sin(a) * (r + 6));
-        ctx.lineTo(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2);
-      }
-      ctx.strokeStyle = long ? "rgba(200, 168, 255, 0.55)" : "rgba(160, 200, 255, 0.22)";
-      ctx.lineWidth = long ? 1.4 : 1;
-      ctx.stroke();
-    }
+    ctx.translate(cx, cy);
+    ctx.rotate(reduced ? 0 : -t * (0.02 + strain * 0.4));
+    ctx.strokeStyle = "rgba(160, 200, 255, 0.22)";
+    ctx.lineWidth = 1;
+    ctx.stroke(this.tickPaths.short);
+    ctx.strokeStyle = "rgba(200, 168, 255, 0.55)";
+    ctx.lineWidth = 1.4;
+    ctx.stroke(this.tickPaths.long);
     ctx.restore();
   }
+
 
   /** Where Blitz is close, its light pools on the wall instead of passing through it. */
   private drawWallGlow(cx: number, cy: number, r: number, look: Look, strain: number): void {

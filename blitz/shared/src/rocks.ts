@@ -45,12 +45,31 @@ export function hash32(a: number, b: number, c: number): number {
 /** A number in [0, 1) from a hash. */
 export const unit = (h: number) => h / 4294967296;
 
-/** The rocks in one patch of space at time `t`. */
-export function cellRocks(ix: number, iy: number, t: number): Rock[] {
+/** What never changes about a rock: where its drift is centred, how it drifts and tumbles. */
+interface RockPlan {
+  id: number;
+  bx: number;
+  by: number;
+  r: number;
+  amp: number;
+  w: number;
+  phase: number;
+  spin: number;
+  spinRate: number;
+  crystal: boolean;
+}
+
+/** Recently used patches' plans (asked for many times a second, by the physics and the drawing). */
+const plans = new Map<number, RockPlan[]>();
+
+/** The rocks a patch of space holds, worked out from a hash of where it is. */
+function cellPlans(ix: number, iy: number): RockPlan[] {
+  const key = ix * 1_000_003 + iy;
+  let cell = plans.get(key);
+  if (cell) return cell;
+  cell = [];
   const roll = unit(hash32(ix, iy, 0));
   const count = roll < 0.25 ? 0 : roll < 0.8 ? 1 : 2;
-  const rocks: Rock[] = [];
-  const homes: Array<{ x: number; y: number; reach: number }> = [];
   for (let k = 0; k < count; k++) {
     const u = (n: number) => unit(hash32(ix, iy, 1 + k * 16 + n));
     const bx = (ix + INSET + (1 - 2 * INSET) * u(0)) * ROCK_CELL;
@@ -60,24 +79,43 @@ export function cellRocks(ix: number, iy: number, t: number): Rock[] {
     const amp = 0.08 + (DRIFT_MAX - 0.08) * u(3);
     if (Math.hypot(bx, by) < ROCK_CLEAR + r + amp) continue;
     // Two rocks in one patch keep their distance, wherever they drift.
-    if (homes.some((h) => Math.hypot(h.x - bx, h.y - by) < h.reach + r + amp + 0.12)) continue;
-    homes.push({ x: bx, y: by, reach: r + amp });
-    const w = (u(4) < 0.5 ? -1 : 1) * (0.05 + 0.12 * u(5));
-    const phase = u(6) * Math.PI * 2;
-    const a = w * t + phase;
-    const spinRate = (u(7) < 0.5 ? -1 : 1) * (0.08 + 0.4 * u(8)) / (0.5 + r * 2);
-    rocks.push({
+    if (cell.some((h) => Math.hypot(h.bx - bx, h.by - by) < h.r + h.amp + r + amp + 0.12)) continue;
+    cell.push({
       id: hash32(ix, iy, 1000 + k),
-      x: bx + amp * Math.cos(a),
-      y: by + amp * 0.6 * Math.sin(a),
-      vx: -amp * w * Math.sin(a),
-      vy: amp * 0.6 * w * Math.cos(a),
+      bx,
+      by,
       r,
-      spin: u(9) * Math.PI * 2 + spinRate * t,
+      amp,
+      w: (u(4) < 0.5 ? -1 : 1) * (0.05 + 0.12 * u(5)),
+      phase: u(6) * Math.PI * 2,
+      spinRate: ((u(7) < 0.5 ? -1 : 1) * (0.08 + 0.4 * u(8))) / (0.5 + r * 2),
+      spin: u(9) * Math.PI * 2,
       crystal: u(10) < 0.18,
     });
   }
-  return rocks;
+  if (plans.size >= 1024) plans.clear();
+  plans.set(key, cell);
+  return cell;
+}
+
+/** Where a planned rock is at time `t`. */
+function rockAt(p: RockPlan, t: number): Rock {
+  const a = p.w * t + p.phase;
+  return {
+    id: p.id,
+    x: p.bx + p.amp * Math.cos(a),
+    y: p.by + p.amp * 0.6 * Math.sin(a),
+    vx: -p.amp * p.w * Math.sin(a),
+    vy: p.amp * 0.6 * p.w * Math.cos(a),
+    r: p.r,
+    spin: p.spin + p.spinRate * t,
+    crystal: p.crystal,
+  };
+}
+
+/** The rocks in one patch of space at time `t`. */
+export function cellRocks(ix: number, iy: number, t: number): Rock[] {
+  return cellPlans(ix, iy).map((p) => rockAt(p, t));
 }
 
 /** Every rock that could be within `reach` of (x, y) at time `t`. */
@@ -90,7 +128,10 @@ export function rocksNear(x: number, y: number, reach: number, t: number): Rock[
   const out: Rock[] = [];
   for (let ix = x0; ix <= x1; ix++) {
     for (let iy = y0; iy <= y1; iy++) {
-      for (const rock of cellRocks(ix, iy, t)) {
+      for (const p of cellPlans(ix, iy)) {
+        // Far enough that even its widest drift can't bring it in reach: no need to work out where it is.
+        if (Math.hypot(p.bx - x, p.by - y) > reach + p.r + p.amp) continue;
+        const rock = rockAt(p, t);
         if (Math.hypot(rock.x - x, rock.y - y) <= reach + rock.r) out.push(rock);
       }
     }

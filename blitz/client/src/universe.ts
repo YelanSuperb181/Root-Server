@@ -26,11 +26,24 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-/** The same cell always gets the same contents, wherever and whenever it's drawn. */
-function cellRandom(ix: number, iy: number, layer: number): () => number {
+/**
+ * The same cell always gets the same contents, wherever and whenever it's
+ * drawn: seedCell starts cellRnd's numbers for a cell (one shared generator,
+ * rather than a new one for every cell of every layer, every frame).
+ */
+let cellState = 0;
+function seedCell(ix: number, iy: number, layer: number): void {
   let h = Math.imul(ix, 374761393) ^ Math.imul(iy, 668265263) ^ Math.imul(layer, 2246822519);
   h = Math.imul(h ^ (h >>> 13), 1274126177);
-  return mulberry32(h ^ (h >>> 16));
+  cellState = (h ^ (h >>> 16)) >>> 0;
+}
+/** The next number in [0, 1) for the cell last seeded (the same numbers mulberry32 gives). */
+function cellRnd(): number {
+  cellState = (cellState + 0x6d2b79f5) >>> 0;
+  let t = cellState;
+  t = Math.imul(t ^ (t >>> 15), t | 1);
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 }
 
 /** A canvas to paint on. An opaque one (for things that fill every pixel) is quicker to copy from. */
@@ -547,7 +560,8 @@ export class Universe {
     const smooth = ctx.imageSmoothingEnabled;
     ctx.imageSmoothingEnabled = false;
     this.cells(cam, FAR_ROCK_P, W, H, 360, 40, (ix, iy, cx, cy) => {
-      const rnd = cellRandom(ix, iy, 5);
+      seedCell(ix, iy, 5);
+      const rnd = cellRnd;
       if (rnd() > 0.2) return;
       const x = cx + rnd() * 360;
       const y = cy + rnd() * 360;
@@ -611,7 +625,8 @@ export class Universe {
     const vx = this.camVel.x * REF * 0.32 * 0.07;
     const vy = this.camVel.y * REF * 0.32 * 0.07;
     this.cells(cam, 0.32, W, H, 190, 20, (ix, iy, cx, cy) => {
-      const rnd = cellRandom(ix, iy, 3);
+      seedCell(ix, iy, 3);
+      const rnd = cellRnd;
       if (rnd() > 0.24) return;
       const x = cx + rnd() * 190;
       const y = cy + rnd() * 190;
@@ -684,7 +699,8 @@ export class Universe {
     // Dust drifting close past the camera, faster than everything else.
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     this.cells(cam, 1.5, W, H, 280, 20, (ix, iy, cx, cy) => {
-      const rnd = cellRandom(ix, iy, 4);
+      seedCell(ix, iy, 4);
+      const rnd = cellRnd;
       if (rnd() > 0.22) return;
       const size = (3 + rnd() * 6) * zoom;
       ctx.globalAlpha = view.alpha * (0.1 + rnd() * 0.15);
@@ -831,7 +847,8 @@ export class Universe {
     }
     // Nebulae. The cells around the middle always have some, so there's color the moment the bubble bursts.
     this.layerCells(left, top, size, 1500, 1100, (ix, iy) => {
-      const rnd = cellRandom(ix, iy, 2);
+      seedCell(ix, iy, 2);
+      const rnd = cellRnd;
       const home = ix === 0 && iy === 0;
       const neighbour = ix === -1 && iy === 0;
       if (!home && !neighbour && rnd() > 0.55) return;
@@ -866,7 +883,8 @@ export class Universe {
     // Faraway galaxies (one is always up and to the right of where the bubble was).
     g.globalCompositeOperation = "lighter";
     this.layerCells(left, top, size, 900, 300, (ix, iy) => {
-      const rnd = cellRandom(ix, iy, 1);
+      seedCell(ix, iy, 1);
+      const rnd = cellRnd;
       if (!(ix === 0 && iy === -1) && rnd() > 0.32) return;
       const sprite = this.galaxies[Math.floor(rnd() * this.galaxies.length)];
       const sz = (120 + rnd() * 140) * zoom;

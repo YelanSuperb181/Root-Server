@@ -65,7 +65,11 @@ export function glowSprite(c: RGB): HTMLCanvasElement {
   return sprite;
 }
 
-const stamps = new Map<string, HTMLCanvasElement>();
+/** Painted glows by color, then by radius. */
+const stamps = new Map<string, HTMLCanvasElement[]>();
+/** Each color's key in `stamps`, remembered per color array (asked for by every particle, every frame). */
+const colorKeys = new WeakMap<RGB, string>();
+let stampCount = 0;
 
 /**
  * The glow for `c`, painted `R` device pixels in radius (to the nearest pixel,
@@ -75,14 +79,29 @@ const stamps = new Map<string, HTMLCanvasElement>();
  */
 export function glowStamp(c: RGB, R: number): HTMLCanvasElement {
   const r = R < 12 ? Math.max(1, Math.round(R)) : Math.round(R / 2) * 2;
-  const key = `${rounded(c)[1]}|${r}`;
-  let stamp = stamps.get(key);
+  let key = colorKeys.get(c);
+  if (key === undefined) {
+    key = rounded(c)[1];
+    colorKeys.set(c, key);
+  }
+  let sizes = stamps.get(key);
+  if (!sizes) {
+    sizes = [];
+    stamps.set(key, sizes);
+  }
+  let stamp = sizes[r];
   if (!stamp) {
     stamp = document.createElement("canvas");
     stamp.width = stamp.height = r * 2;
     stamp.getContext("2d")!.drawImage(glowSprite(c), 0, 0, r * 2, r * 2);
-    if (stamps.size >= 1200) stamps.delete(stamps.keys().next().value as string);
-    stamps.set(key, stamp);
+    // Plenty for every color and size in use; past that, start afresh.
+    if (++stampCount > 1500) {
+      stamps.clear();
+      stampCount = 1;
+      sizes = [];
+      stamps.set(key, sizes);
+    }
+    sizes[r] = stamp;
   }
   return stamp;
 }
