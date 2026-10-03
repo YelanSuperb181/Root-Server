@@ -28,6 +28,23 @@ function memberGroup(group: string, key: string): ReadOnlyMemberGroup | undefine
   return value && typeof value === "object" ? value : undefined;
 }
 
+/** Features with a "Turn off …" box, and the settings group each box is in. */
+type Feature = "levels" | "automod" | "domainLinks" | "coolOff" | "scamShield" | "raidShield" | "notifyMembers" | "inbox" | "stardust";
+const FEATURE_GROUP: Record<Feature, string> = {
+  levels: "features",
+  domainLinks: "features",
+  stardust: "features",
+  inbox: "features",
+  automod: "automod",
+  coolOff: "automod",
+  scamShield: "guardian",
+  raidShield: "guardian",
+  notifyMembers: "guardian",
+};
+
+/** Number settings outside "features" live in the Guardian group. */
+type NumberSetting = "quoteThreshold" | "raidJoins" | "newcomerMinutes" | "muteAfter" | "kickAfter" | "banAfter";
+
 const names = new Map<string, { name: string; at: number }>();
 const NAME_TTL_MS = 10 * 60_000;
 
@@ -74,13 +91,13 @@ export const settings = {
    * (whatever its default says), so these are "Turn off …" boxes: the
    * feature stays on until an admin ticks one.
    */
-  on(key: "levels" | "automod" | "domainLinks"): boolean {
-    return raw(key === "automod" ? "automod" : "features", `${key}Off`) !== true;
+  on(key: Feature): boolean {
+    return raw(FEATURE_GROUP[key], `${key}Off`) !== true;
   },
 
   /** An opt-in checkbox: true only once an admin ticks it. */
-  ticked(key: "blockInvites"): boolean {
-    return raw("automod", key) === true;
+  ticked(key: "blockInvites" | "strictFilters" | "brainModeration"): boolean {
+    return raw(key === "brainModeration" ? "brain" : "automod", key) === true;
   },
 
   /** Roles members can give themselves with !role. */
@@ -89,8 +106,8 @@ export const settings = {
   },
 
   /** A whole number setting, kept within bounds. (While testing it arrives as text; see dev-manifest.js.) */
-  number(key: "quoteThreshold", fallback: number, min: number, max: number): number {
-    const value = raw("features", key);
+  number(key: NumberSetting, fallback: number, min: number, max: number): number {
+    const value = raw(key === "quoteThreshold" ? "features" : "guardian", key);
     const n = typeof value === "string" && value.trim() !== "" ? Number(value) : value;
     return typeof n === "number" && Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n))) : fallback;
   },

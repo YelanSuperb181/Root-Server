@@ -19,7 +19,7 @@ import {
 } from "@blitz/gen-shared";
 import { read } from "../core/api";
 import { allCommands, runFromMenu } from "../core/commands";
-import { listChannels } from "../core/community";
+import { allMembers as memberList, textChannels } from "../core/community";
 import { errMessage, log } from "../core/log";
 import { accessLevel, atLeast, communityRoles, isPerson, knownPeople, nickname } from "../core/members";
 import { settings } from "../core/settings";
@@ -28,34 +28,10 @@ import { rankByName } from "../logic/text";
 import { birthdaysFor } from "../features/birthdays";
 import { customCommands } from "../features/custom";
 import { levelRules, levelsFor, xpOf } from "../features/levels";
-import { casesOf, mutedUntil } from "../features/moderation";
+import { actorName, casesOf, mutedUntil } from "../features/moderation";
 import { remindersOf } from "../features/reminders";
 import { roleChoices } from "../features/selfroles";
 import { recentSuggestions } from "../features/suggestions";
-
-/** How long the member list and channel list are reused for (they're asked for often, and change rarely). */
-const LIST_TTL_MS = 60_000;
-
-let members: { at: number; list: Array<{ userId: string; name: string }> } | undefined;
-let channels: { at: number; list: ChannelInfo[] } | undefined;
-
-/** Everyone in the community, with their nicknames. */
-async function memberList(): Promise<Array<{ userId: string; name: string }>> {
-  if (!members || Date.now() - members.at > LIST_TTL_MS) {
-    const all = await read("communityMembers.listAll", () => rootServer.community.communityMembers.listAll());
-    members = { at: Date.now(), list: all.filter((m) => isPerson(m.userId)).map((m) => ({ userId: m.userId, name: m.nickname || "someone" })) };
-  }
-  return members.list;
-}
-
-/** The community's text channels, for the team to post in. */
-async function textChannels(): Promise<ChannelInfo[]> {
-  if (!channels || Date.now() - channels.at > LIST_TTL_MS) {
-    const list = (await listChannels()).filter((c) => c.type === "text").map((c) => ({ id: c.id, name: c.name, group: c.group }));
-    channels = { at: Date.now(), list };
-  }
-  return channels.list;
-}
 
 /** Runs `get`; if it fails, logs it and gives `fallback`, so one missing piece doesn't empty the whole menu. */
 async function piece<T>(what: string, get: () => Promise<T>, fallback: T): Promise<T> {
@@ -174,7 +150,7 @@ class BlitzMenuService extends BlitzMenuServiceBase {
           id: c.id,
           kind: c.kind,
           reason: c.reason ?? "",
-          by: await nickname(c.modId),
+          by: await actorName(c.modId),
           at: c.at,
           durationMs: c.durationMs ?? 0,
           revoked: c.revoked ?? false,

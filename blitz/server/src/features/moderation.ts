@@ -12,12 +12,16 @@ import { cancelJobs, onJob, scheduleOnce } from "../core/jobs";
 import { serialize } from "../core/lock";
 import { errMessage, log } from "../core/log";
 import { accessLevel, communityRoles, isPerson, nickname } from "../core/members";
-import { modLog, remove, sendEphemeral } from "../core/messaging";
+import { modLog, notify, remove, sendEphemeral } from "../core/messaging";
+import { communityName } from "../core/community";
+import { settings } from "../core/settings";
 import { kv } from "../core/store";
+import { Ladder, describeLadder, ladderStep } from "../logic/guardian";
 import { CaseKind, ModCase, activeWarnings, caseLine, outranks, parseLeadingDuration, parseTarget } from "../logic/moderation";
 import { formatDuration } from "../logic/parse";
 import { plural, truncate, userMention } from "../logic/text";
 import { xpOf } from "./levels";
+import { countMod } from "./pulse";
 
 const caseKey = (id: number) => `case:${id}`;
 const userCasesKey = (userId: string) => `cases:${userId}`;
@@ -50,7 +54,26 @@ async function addCase(kind: CaseKind, userId: string, modId: string, reason?: s
   const record: ModCase = { id, kind, userId, modId, reason: reason || undefined, at: Date.now(), durationMs };
   await kv.set(caseKey(id), record);
   await kv.update<number[]>(userCasesKey(userId), (ids) => [...ids, id], []);
+  countMod(kind);
   return record;
+}
+
+/** Who did it: a staff member's name, or Blitz itself for automatic actions (the warning ladder, cool-offs, the scam shield). */
+export const AUTO = "auto";
+export async function actorName(modId: string): Promise<string> {
+  return modId === AUTO ? `${config.botName} (automatic)` : nickname(modId);
+}
+
+export async function getCase(id: number): Promise<ModCase | undefined> {
+  return kv.get<ModCase>(caseKey(id));
+}
+
+/** The most recent cases across the community, newest first (for the Guardian and Pulse views). */
+export async function recentCases(limit: number): Promise<ModCase[]> {
+  const count = (await kv.get<number>("casestate:count")) ?? 0;
+  const ids = Array.from({ length: Math.min(limit, count) }, (_, i) => count - i);
+  const cases = await Promise.all(ids.map((id) => kv.get<ModCase>(caseKey(id))));
+  return cases.filter((c): c is ModCase => c !== undefined);
 }
 
 export async function casesOf(userId: string): Promise<ModCase[]> {
@@ -71,7 +94,7 @@ async function endMute(userId: string, how: "ended" | "lifted", by?: string): Pr
     await kv.delete(muteKey(userId));
     await cancelJobs(`mute-${userId}`).catch(() => undefined);
     const who = userMention(await nickname(userId), userId);
-    await modLog(how === "ended" ? `🔊 ${who}'s mute ended.` : `🔊 ${who} was unmuted by **${await nickname(by ?? "")}**.`);
+    await modLog(how === "ended" ? `🔊 ${who}'s mute ended.` : `🔊 ${who} was unmuted by **${await actorName(by ?? "")}**.`);
     return true;
   });
 }
@@ -102,6 +125,147 @@ export async function holdIfMuted(evt: ChannelMessageCreatedEvent): Promise<bool
   return true;
 }
 
+const who = async (userId: string) => userMention(await nickname(userId), userId);
+const because = (reason?: string) => (reason ? `: ${truncate(reason, 300)}` : "");
+
+// ---- The actions themselves, shared by commands, the menu, the warning ladder, auto-mod and the scam shield ----
+
+/** The community's warning ladder, from Blitz's settings (mute after 3 standing warnings unless they say otherwise). */
+export function ladder(): Ladder {
+  return {
+    muteAt: settings.number("muteAfter", 3, 0, 50),
+    kickAt: settings.number("kickAfter", 0, 0, 50),
+    banAt: settings.number("banAfter", 0, 0, 50),
+  };
+}
+
+export function ladderText(): string {
+  return describeLadder(ladder());
+}
+
+/** Tells the member what happened and why (unless the community turned that off). Best effort. */
+async function tellMember(userId: string, title: string, body: string): Promise<void> {
+  if (!settings.on("notifyMembers")) return;
+  await notify([userId], title, body);
+}
+
+const appealHint = () => (settings.on("inbox") ? " You can appeal from Blitz's menu." : "");
+
+export interface ActionResult {
+  case: ModCase;
+  /** Lines describing what followed automatically (the warning ladder). */
+  followUps: string[];
+}
+
+/** Warns someone, tells them, and climbs the warning ladder if they've reached a step. */
+export async function warnMember(userId: string, modId: string, reason: string | undefined): Promise<ActionResult & { count: number }> {
+  const c = await addCase("warn", userId, modId, reason);
+  const count = activeWarnings(await casesOf(userId));
+  const place = await communityName();
+  await tellMember(userId, `⚠️ A warning in ${place}`, `${reason ? truncate(reason, 90) : "From the team."} (warning ${count})${appealHint()}`);
+  await modLog(`⚠️ **${await actorName(modId)}** warned ${await who(userId)}${because(reason)} _(warning ${count}, case #${c.id})_`);
+  const followUps: string[] = [];
+  const step = ladderStep(count, ladder());
+  const why = `automatic: ${plural(count, "standing warning")}`;
+  try {
+    if (step?.action === "mute") {
+      await muteMember(userId, step.ms, AUTO, why);
+      followUps.push(`🔇 That's ${count} warnings, so ${config.botName} muted them for ${formatDuration(step.ms)}.`);
+    } else if (step?.action === "kick") {
+      await kickMember(userId, AUTO, why);
+      followUps.push(`👢 That's ${count} warnings, so ${config.botName} kicked them.`);
+    } else if (step?.action === "ban") {
+      await banMember(userId, AUTO, why);
+      followUps.push(`🔨 That's ${count} warnings, so ${config.botName} banned them.`);
+    }
+  } catch (err) {
+    log("warn", "the warning ladder couldn't act", { error: errMessage(err) });
+    followUps.push(`⚠️ They've reached the ${step?.action} step of the warning ladder, but ${config.botName} couldn't do it (check its role and permissions).`);
+  }
+  return { case: c, count, followUps };
+}
+
+/** Mutes someone: while it lasts, Blitz removes what they post. */
+export async function muteMember(userId: string, ms: number, modId: string, reason: string | undefined): Promise<ModCase> {
+  const c = await addCase("mute", userId, modId, reason, ms);
+  const mute: Mute = { userId, until: Date.now() + ms, caseId: c.id };
+  await serialize(muteKey(userId), async () => {
+    mutes.set(userId, mute);
+    await kv.set(muteKey(userId), mute);
+    await cancelJobs(`mute-${userId}`).catch(() => undefined);
+    await scheduleOnce(MUTE_JOB, `mute-${userId}`, new Date(mute.until));
+  });
+  await tellMember(userId, `🔇 Muted in ${await communityName()}`, `For ${formatDuration(ms)}${reason ? `: ${truncate(reason, 80)}` : "."}${appealHint()}`);
+  await modLog(`🔇 **${await actorName(modId)}** muted ${await who(userId)} for ${formatDuration(ms)}${because(reason)} _(case #${c.id})_`);
+  return c;
+}
+
+export async function unmuteMember(userId: string, modId: string): Promise<boolean> {
+  if (!(await endMute(userId, "lifted", modId))) return false;
+  await addCase("unmute", userId, modId);
+  await tellMember(userId, `🔊 Unmuted in ${await communityName()}`, "You can talk again.");
+  return true;
+}
+
+export async function kickMember(userId: string, modId: string, reason: string | undefined): Promise<ModCase> {
+  const name = await nickname(userId);
+  // Told first: once they're out, a notification may not reach them.
+  await tellMember(userId, `👢 Removed from ${await communityName()}`, `${reason ? truncate(reason, 100) : "By the team."} You can rejoin.`);
+  await write("communityMemberBans.kick", () => rootServer.community.communityMemberBans.kick({ userId: userId as UserGuid }));
+  const c = await addCase("kick", userId, modId, reason);
+  await modLog(`👢 **${await actorName(modId)}** kicked **${name}** (${userMention(name, userId)})${because(reason)} _(case #${c.id})_`);
+  return c;
+}
+
+export async function banMember(userId: string, modId: string, reason: string | undefined, ms?: number): Promise<ModCase> {
+  const name = await nickname(userId);
+  const length = ms ? ` for ${formatDuration(ms)}` : "";
+  await tellMember(userId, `🔨 Banned from ${await communityName()}`, `${ms ? `For ${formatDuration(ms)}. ` : ""}${reason ? truncate(reason, 100) : ""}`);
+  await write("communityMemberBans.create", () =>
+    rootServer.community.communityMemberBans.create({
+      userId: userId as UserGuid,
+      reason: reason ? truncate(reason, 200) : undefined,
+      expiresAt: ms ? new Date(Date.now() + ms) : undefined,
+    }),
+  );
+  const c = await addCase("ban", userId, modId, reason, ms);
+  await modLog(`🔨 **${await actorName(modId)}** banned **${name}** (${userMention(name, userId)})${length}${because(reason)} _(case #${c.id})_`);
+  return c;
+}
+
+/**
+ * Takes a case back (an accepted appeal, or a mod changing their mind): a
+ * warning is struck from the record, a mute ends, a ban is lifted. Returns
+ * what happened, or undefined if there was nothing to take back.
+ */
+export async function takeBack(caseId: number, modId: string, why?: string): Promise<string | undefined> {
+  const c = await kv.get<ModCase>(caseKey(caseId));
+  if (!c || c.revoked) return undefined;
+  if (c.kind === "warn" || c.kind === "note") {
+    await kv.set(caseKey(caseId), { ...c, revoked: true });
+    await modLog(`↩️ **${await actorName(modId)}** took back ${c.kind === "warn" ? "warning" : "note"} #${caseId} for ${await who(c.userId)}${because(why)}`);
+    return c.kind === "warn" ? "The warning is off your record." : "The note was removed.";
+  }
+  if (c.kind === "mute") {
+    await kv.set(caseKey(caseId), { ...c, revoked: true });
+    const ended = mutes.get(c.userId)?.caseId === caseId ? await unmuteMember(c.userId, modId) : false;
+    await modLog(`↩️ **${await actorName(modId)}** took back mute #${caseId} for ${await who(c.userId)}${because(why)}`);
+    return ended ? "Your mute is lifted." : "The mute is struck from your record.";
+  }
+  if (c.kind === "ban") {
+    await kv.set(caseKey(caseId), { ...c, revoked: true });
+    await write("communityMemberBans.delete", () => rootServer.community.communityMemberBans.delete({ userId: c.userId as UserGuid })).catch(() => undefined);
+    await addCase("unban", c.userId, modId, why);
+    await modLog(`🕊️ **${await actorName(modId)}** took back ban #${caseId} for ${await who(c.userId)}${because(why)}`);
+    return "The ban is lifted.";
+  }
+  if (c.kind === "kick") {
+    await kv.set(caseKey(caseId), { ...c, revoked: true });
+    return "The kick is struck from your record.";
+  }
+  return undefined;
+}
+
 /** Who the command is about: an @mention or user ID first, or the author of the message it replies to. */
 function targetOf(ctx: CommandContext, example: string): { userId: string; rest: string } {
   const named = parseTarget(ctx.rest);
@@ -128,8 +292,6 @@ async function mayActOn(ctx: CommandContext, userId: string): Promise<boolean> {
   return true;
 }
 
-const who = async (userId: string) => userMention(await nickname(userId), userId);
-const because = (reason?: string) => (reason ? `: ${truncate(reason, 300)}` : "");
 
 export const moderationCommands: Command[] = [
   {
@@ -141,10 +303,8 @@ export const moderationCommands: Command[] = [
     async run(ctx) {
       const { userId, rest } = targetOf(ctx, "warn @someone please keep it friendly");
       if (!(await mayActOn(ctx, userId))) return;
-      const c = await addCase("warn", userId, ctx.userId, rest);
-      const count = activeWarnings(await casesOf(userId));
-      await ctx.reply(`⚠️ ${await who(userId)} has been warned${because(rest)} _(warning ${count}, case #${c.id})_`);
-      await modLog(`⚠️ **${await nickname(ctx.userId)}** warned ${await who(userId)}${because(rest)} _(warning ${count}, case #${c.id})_`);
+      const { case: c, count, followUps } = await warnMember(userId, ctx.userId, rest);
+      await ctx.reply([`⚠️ ${await who(userId)} has been warned${because(rest)} _(warning ${count}, case #${c.id})_`, ...followUps].join("\n"));
     },
   },
   {
@@ -166,28 +326,30 @@ export const moderationCommands: Command[] = [
         return;
       }
       const now = Date.now();
-      const lines = await Promise.all(warnings.slice(-10).map(async (c) => caseLine(c, await nickname(c.modId), now)));
+      const lines = await Promise.all(warnings.slice(-10).map(async (c) => caseLine(c, await actorName(c.modId), now)));
       await ctx.reply([`⚠️ **${name}** · ${plural(warnings.length, "warning")}`, ...lines].join("\n"));
     },
   },
   {
     name: "unwarn",
-    usage: "<case number>",
-    summary: "Take back a warning.",
+    aliases: ["takeback", "revoke"],
+    usage: "<case number> [why]",
+    summary: "Take back a case: a warning comes off their record, a mute ends, a ban is lifted.",
     level: "mod",
     category: "Moderation",
     async run(ctx) {
       const id = Number(ctx.args[0]?.replace(/^#/, ""));
-      if (!Number.isInteger(id)) throw new UsageError(`Usage: \`${config.prefix}unwarn 12\` (the case number is in \`${config.prefix}warnings @someone\`).`);
+      if (!Number.isInteger(id)) throw new UsageError(`Usage: \`${config.prefix}unwarn 12\` (the case number is in \`${config.prefix}history @someone\`).`);
       const c = await kv.get<ModCase>(caseKey(id));
-      if (!c || c.kind !== "warn") throw new UsageError(`Case #${id} isn't a warning.`);
+      if (!c) throw new UsageError(`There's no case #${id}.`);
       if (c.revoked) {
         await ctx.reply(`Case #${id} was already taken back.`);
         return;
       }
-      await kv.set(caseKey(id), { ...c, revoked: true });
-      await ctx.reply(`↩️ Took back warning #${id} for ${await who(c.userId)}.`);
-      await modLog(`↩️ **${await nickname(ctx.userId)}** took back warning #${id} for ${await who(c.userId)}.`);
+      const why = ctx.args.slice(1).join(" ") || undefined;
+      const done = await takeBack(id, ctx.userId, why);
+      if (!done) throw new UsageError(`Case #${id} (${c.kind}) can't be taken back.`);
+      await ctx.reply(`↩️ Took back case #${id} for ${await who(c.userId)}.`);
     },
   },
   {
@@ -221,7 +383,7 @@ export const moderationCommands: Command[] = [
         return;
       }
       const now = Date.now();
-      const lines = await Promise.all(cases.slice(-15).map(async (c) => caseLine(c, await nickname(c.modId), now)));
+      const lines = await Promise.all(cases.slice(-15).map(async (c) => caseLine(c, await actorName(c.modId), now)));
       const older = cases.length > 15 ? `\n_…and ${cases.length - 15} older._` : "";
       await ctx.reply([`📋 **${name}** · ${plural(cases.length, "case")}`, ...lines].join("\n") + older);
     },
@@ -240,16 +402,8 @@ export const moderationCommands: Command[] = [
       const ms = timed?.ms ?? DEFAULT_MUTE_MS;
       if (ms < 60_000 || ms > MAX_MUTE_MS) throw new UsageError("A mute lasts between 1 minute and 28 days.");
       const reason = timed ? timed.rest : rest;
-      const c = await addCase("mute", userId, ctx.userId, reason, ms);
-      const mute: Mute = { userId, until: Date.now() + ms, caseId: c.id };
-      await serialize(muteKey(userId), async () => {
-        mutes.set(userId, mute);
-        await kv.set(muteKey(userId), mute);
-        await cancelJobs(`mute-${userId}`).catch(() => undefined);
-        await scheduleOnce(MUTE_JOB, `mute-${userId}`, new Date(mute.until));
-      });
+      const c = await muteMember(userId, ms, ctx.userId, reason);
       await ctx.reply(`🔇 ${await who(userId)} is muted for ${formatDuration(ms)}${because(reason)} _(case #${c.id})_`);
-      await modLog(`🔇 **${await nickname(ctx.userId)}** muted ${await who(userId)} for ${formatDuration(ms)}${because(reason)} _(case #${c.id})_`);
     },
   },
   {
@@ -260,11 +414,10 @@ export const moderationCommands: Command[] = [
     category: "Moderation",
     async run(ctx) {
       const { userId } = targetOf(ctx, "unmute @someone");
-      if (!(await endMute(userId, "lifted", ctx.userId))) {
+      if (!(await unmuteMember(userId, ctx.userId))) {
         await ctx.reply(`${await who(userId)} isn't muted.`);
         return;
       }
-      await addCase("unmute", userId, ctx.userId);
       await ctx.reply(`🔊 ${await who(userId)} can talk again.`);
     },
   },
@@ -278,10 +431,8 @@ export const moderationCommands: Command[] = [
       const { userId, rest } = targetOf(ctx, "kick @someone spamming");
       if (!(await mayActOn(ctx, userId))) return;
       const name = await nickname(userId);
-      await write("communityMemberBans.kick", () => rootServer.community.communityMemberBans.kick({ userId: userId as UserGuid }));
-      const c = await addCase("kick", userId, ctx.userId, rest);
+      const c = await kickMember(userId, ctx.userId, rest);
       await ctx.reply(`👢 **${name}** was kicked${because(rest)} _(case #${c.id})_`);
-      await modLog(`👢 **${await nickname(ctx.userId)}** kicked **${name}** (${userMention(name, userId)})${because(rest)} _(case #${c.id})_`);
     },
   },
   {
@@ -296,17 +447,9 @@ export const moderationCommands: Command[] = [
       const timed = parseLeadingDuration(rest);
       const reason = timed ? timed.rest : rest;
       const name = await nickname(userId);
-      await write("communityMemberBans.create", () =>
-        rootServer.community.communityMemberBans.create({
-          userId: userId as UserGuid,
-          reason: reason ? truncate(reason, 200) : undefined,
-          expiresAt: timed ? new Date(Date.now() + timed.ms) : undefined,
-        }),
-      );
-      const c = await addCase("ban", userId, ctx.userId, reason, timed?.ms);
+      const c = await banMember(userId, ctx.userId, reason, timed?.ms);
       const length = timed ? ` for ${formatDuration(timed.ms)}` : "";
       await ctx.reply(`🔨 **${name}** was banned${length}${because(reason)} _(case #${c.id})_`);
-      await modLog(`🔨 **${await nickname(ctx.userId)}** banned **${name}** (${userMention(name, userId)})${length}${because(reason)} _(case #${c.id})_`);
     },
   },
   {

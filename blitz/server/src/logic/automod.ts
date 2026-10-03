@@ -9,11 +9,13 @@ export interface AutomodRules {
   duplicates: { count: number; seconds: number };
   blockInviteLinks: boolean;
   blockedWords: readonly string[];
+  /** The stricter filters a community can opt into: shouting in capitals, emoji floods and walls of text. */
+  strict?: boolean;
 }
 
 export interface Verdict {
   /** Short code for logs and strike counting. */
-  kind: "mentions" | "invite" | "word" | "spam" | "duplicate";
+  kind: "mentions" | "invite" | "word" | "spam" | "duplicate" | "zalgo" | "caps" | "emoji" | "wall";
   /** Friendly sentence shown to the member. */
   reason: string;
 }
@@ -71,7 +73,50 @@ export function checkContent(text: string, rules: AutomodRules): Verdict | undef
   if (findBlockedWord(text, rules.blockedWords) !== undefined) {
     return { kind: "word", reason: "that message contains a blocked word" };
   }
+  if (isZalgo(text)) {
+    return { kind: "zalgo", reason: "glitchy stacked-up letters make chat hard to read" };
+  }
+  if (rules.strict) {
+    const plain = stripLinksAndMentions(text);
+    if (isShouting(plain)) return { kind: "caps", reason: "that was a lot of capital letters" };
+    if (emojiCount(text) > 14) return { kind: "emoji", reason: "that was a lot of emoji at once" };
+    if (isWall(text)) return { kind: "wall", reason: "that message was a huge wall of text" };
+  }
   return undefined;
+}
+
+/** Text without links and mentions (their addresses and IDs aren't what anyone typed). */
+function stripLinksAndMentions(text: string): string {
+  return text.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/https?:\/\/\S+/g, " ");
+}
+
+/** Letters piled with combining marks ("Z̴̡̛͓a̵̛l̷g̸o̴"): several marks on one letter, or marks outnumbering the letters. */
+export function isZalgo(text: string): boolean {
+  const marks = text.match(/\p{M}/gu)?.length ?? 0;
+  if (marks < 8) return false;
+  if (/\p{L}\p{M}{4,}/u.test(text)) return true;
+  const letters = text.match(/\p{L}/gu)?.length ?? 0;
+  return marks > letters;
+}
+
+/** A message that's mostly capitals, long enough to be shouting rather than "OK" or "LOL". */
+export function isShouting(text: string): boolean {
+  const letters = text.match(/\p{L}/gu) ?? [];
+  if (letters.length < 16) return false;
+  const upper = letters.filter((ch) => ch !== ch.toLowerCase() && ch === ch.toUpperCase()).length;
+  return upper / letters.length >= 0.8;
+}
+
+/** Emoji in a message: pictographs plus :custom: emoji codes. */
+export function emojiCount(text: string): number {
+  const pictographs = text.match(/\p{Extended_Pictographic}/gu)?.length ?? 0;
+  const codes = text.match(/:[a-z0-9_+-]{2,32}:/gi)?.length ?? 0;
+  return pictographs + codes;
+}
+
+/** A wall: dozens of lines, or thousands of characters. */
+export function isWall(text: string): boolean {
+  return text.split("\n").length > 30 || text.length > 2500;
 }
 
 /**

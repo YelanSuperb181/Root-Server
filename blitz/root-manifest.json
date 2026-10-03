@@ -164,6 +164,26 @@
             }
           },
           {
+            "key": "stardustOff",
+            "title": "Turn off Stardust",
+            "description": "Tick to stop Blitz handing out Stardust (earned by chatting and daily visits, spent on looks for your own Blitz in its domain). On while this is unticked.",
+            "required": false,
+            "confirmation": "Save",
+            "checkbox": {
+              "defaultValue": false
+            }
+          },
+          {
+            "key": "inboxOff",
+            "title": "Turn off the inbox",
+            "description": "Tick to stop members opening private conversations with the team (questions, reports and appeals) through Blitz. On while this is unticked.",
+            "required": false,
+            "confirmation": "Save",
+            "checkbox": {
+              "defaultValue": false
+            }
+          },
+          {
             "key": "quoteThreshold",
             "title": "Reactions for the quote wall",
             "description": "How many 🗣️ reactions (not counting the author's) save a message to the quote wall.",
@@ -203,6 +223,16 @@
             }
           },
           {
+            "key": "coolOffOff",
+            "title": "Turn off cool-offs",
+            "description": "Tick to stop Blitz muting someone for 10 minutes after auto-mod removes 3 of their messages in 10 minutes (it'll just alert the staff log instead). On while this is unticked.",
+            "required": false,
+            "confirmation": "Save",
+            "checkbox": {
+              "defaultValue": false
+            }
+          },
+          {
             "key": "blockInvites",
             "title": "Block invite links",
             "description": "Tick to remove invite links to Discord servers and Telegram or WhatsApp groups.",
@@ -219,6 +249,117 @@
             "required": false,
             "confirmation": "Save",
             "text": {}
+          },
+          {
+            "key": "strictFilters",
+            "title": "Stricter filters",
+            "description": "Tick to also remove shouting in capitals, floods of emoji and huge walls of text. Glitchy stacked-up letters are always removed.",
+            "required": false,
+            "confirmation": "Save",
+            "checkbox": {
+              "defaultValue": false
+            }
+          }
+        ]
+      },
+      {
+        "key": "guardian",
+        "title": "Guardian",
+        "items": [
+          {
+            "key": "scamShieldOff",
+            "title": "Turn off the scam shield",
+            "description": "Tick to stop Blitz removing account-stealing links: fake Nitro and Steam gifts, lookalike sites (dlscord, steamcommunlty) and links dressed up as another site. The sender is muted for an hour in case their account was hacked. On while this is unticked.",
+            "required": false,
+            "confirmation": "Save",
+            "checkbox": {
+              "defaultValue": false
+            }
+          },
+          {
+            "key": "raidShieldOff",
+            "title": "Turn off the raid shield",
+            "description": "Tick to stop Blitz watching for raids. When lots of people join at once, newcomers can't post links or mentions and post slowly for 15 minutes, and the team is alerted. On while this is unticked.",
+            "required": false,
+            "confirmation": "Save",
+            "checkbox": {
+              "defaultValue": false
+            }
+          },
+          {
+            "key": "raidJoins",
+            "title": "Joins that mean a raid",
+            "description": "How many people joining within one minute raises the raid shield.",
+            "required": false,
+            "confirmation": "Save",
+            "number": {
+              "minValue": 3,
+              "maxValue": 100,
+              "step": 1,
+              "defaultValue": 8
+            }
+          },
+          {
+            "key": "newcomerMinutes",
+            "title": "Newcomer link wait (minutes)",
+            "description": "New members can post links after this many minutes (keeps spam bots out). 0 lets them post links right away.",
+            "required": false,
+            "confirmation": "Save",
+            "number": {
+              "minValue": 0,
+              "maxValue": 1440,
+              "step": 1,
+              "defaultValue": 10
+            }
+          },
+          {
+            "key": "muteAfter",
+            "title": "Warnings before a mute",
+            "description": "Standing warnings that mute someone automatically (1 hour, growing with each warning after). 0 turns it off.",
+            "required": false,
+            "confirmation": "Save",
+            "number": {
+              "minValue": 0,
+              "maxValue": 50,
+              "step": 1,
+              "defaultValue": 3
+            }
+          },
+          {
+            "key": "kickAfter",
+            "title": "Warnings before a kick",
+            "description": "Standing warnings that kick someone automatically. 0 turns it off.",
+            "required": false,
+            "confirmation": "Save",
+            "number": {
+              "minValue": 0,
+              "maxValue": 50,
+              "step": 1,
+              "defaultValue": 0
+            }
+          },
+          {
+            "key": "banAfter",
+            "title": "Warnings before a ban",
+            "description": "Standing warnings that ban someone automatically. 0 turns it off.",
+            "required": false,
+            "confirmation": "Save",
+            "number": {
+              "minValue": 0,
+              "maxValue": 50,
+              "step": 1,
+              "defaultValue": 0
+            }
+          },
+          {
+            "key": "notifyMembersOff",
+            "title": "Don't notify members about moderation",
+            "description": "Tick to stop Blitz sending members a notification when they're warned, muted, kicked or banned (with the reason, and how to appeal). On while this is unticked.",
+            "required": false,
+            "confirmation": "Save",
+            "checkbox": {
+              "defaultValue": false
+            }
           }
         ]
       },
@@ -241,6 +382,16 @@
             "required": false,
             "confirmation": "Save",
             "text": {}
+          },
+          {
+            "key": "brainModeration",
+            "title": "Let Blitz's brain help moderate",
+            "description": "Tick to have Claude double-check blocked-word hits in context before removing them (fewer false alarms), sum up reports for the team, catch people up with !tldr, and answer the team's questions in Ask Blitz. Needs the API key. Only messages involved are sent, never from private channels.",
+            "required": false,
+            "confirmation": "Save",
+            "checkbox": {
+              "defaultValue": false
+            }
           }
         ]
       }

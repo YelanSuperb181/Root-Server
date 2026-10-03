@@ -32,6 +32,12 @@ import { initAutomod, screenMessage } from "./features/automod";
 import { customCommands, customCommandsAdmin, initCustom } from "./features/custom";
 import { initMessageLog, rememberMessage } from "./features/messagelog";
 import { holdIfMuted, initModeration, moderationCommands } from "./features/moderation";
+import { guardianCommands, initGuardian, screenGuardian } from "./features/guardian";
+import { countMessage, initPulse } from "./features/pulse";
+import { inboxCommands } from "./features/inbox";
+import { oracleCommands } from "./domain/oracle";
+import { earnStardust, stardustCommands } from "./features/stardust";
+import { giveawayCommands, initGiveaways, onGiveawayReaction } from "./features/giveaways";
 import { initReminders, reminderCommands } from "./features/reminders";
 import { reportCommands } from "./features/reports";
 import { selfRoleCommands } from "./features/selfroles";
@@ -72,9 +78,14 @@ async function onMessage(evt: ChannelMessageCreatedEvent): Promise<void> {
   }
   if (word) log("info", `heard ${word}`);
   rememberMessage(evt);
+  countMessage(evt);
   try {
     if (await holdIfMuted(evt)) {
       if (word) log("info", `${word} came from a muted member`);
+      return;
+    }
+    if (await screenGuardian(evt)) {
+      if (word) log("info", `a shield held back ${word}`);
       return;
     }
     if (await screenMessage(evt)) {
@@ -86,15 +97,17 @@ async function onMessage(evt: ChannelMessageCreatedEvent): Promise<void> {
     // Runs alongside: Blitz may take a few seconds to think, and XP shouldn't wait for it.
     void hearChat(evt);
     await awardXp(evt);
+    await earnStardust(evt);
   } catch (err) {
     log("error", "message handling failed", { error: errDetail(err) });
   }
 }
 
-async function onReaction(evt: ChannelMessageReactionCreatedEvent | ChannelMessageReactionDeletedEvent): Promise<void> {
+async function onReaction(evt: ChannelMessageReactionCreatedEvent | ChannelMessageReactionDeletedEvent, added: boolean): Promise<void> {
   if (!isPerson(evt.userId)) return;
   try {
     await onStarReaction(evt);
+    await onGiveawayReaction(evt, added);
   } catch (err) {
     log("error", "reaction handling failed", { error: errMessage(err) });
   }
@@ -159,6 +172,9 @@ async function onStarting(state: RootAppStartState): Promise<void> {
   initReminders();
   initMessageLog();
   await initModeration();
+  await initGuardian();
+  await initPulse();
+  await initGiveaways();
 
   register(
     ...infoCommands,
@@ -172,6 +188,11 @@ async function onStarting(state: RootAppStartState): Promise<void> {
     ...reportCommands,
     ...funCommands,
     ...moderationCommands,
+    ...guardianCommands,
+    ...inboxCommands,
+    ...oracleCommands,
+    ...stardustCommands,
+    ...giveawayCommands,
     ...staffCommands,
     ...customCommandsAdmin,
     ...domainCommands,
@@ -182,8 +203,8 @@ async function onStarting(state: RootAppStartState): Promise<void> {
 
   const messages = rootServer.community.channelMessages;
   messages.on(ChannelMessageEvent.ChannelMessageCreated, (evt: ChannelMessageCreatedEvent) => void onMessage(evt));
-  messages.on(ChannelMessageEvent.ChannelMessageReactionCreated, (evt: ChannelMessageReactionCreatedEvent) => void onReaction(evt));
-  messages.on(ChannelMessageEvent.ChannelMessageReactionDeleted, (evt: ChannelMessageReactionDeletedEvent) => void onReaction(evt));
+  messages.on(ChannelMessageEvent.ChannelMessageReactionCreated, (evt: ChannelMessageReactionCreatedEvent) => void onReaction(evt, true));
+  messages.on(ChannelMessageEvent.ChannelMessageReactionDeleted, (evt: ChannelMessageReactionDeletedEvent) => void onReaction(evt, false));
 
   await ensureDailyJob(config.daily.hourUtc, () => celebrateBirthdays().catch((err) => log("error", "birthdays failed", { error: errMessage(err) })));
 

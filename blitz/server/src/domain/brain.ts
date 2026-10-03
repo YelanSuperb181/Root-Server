@@ -82,6 +82,27 @@ function withinBudget(): boolean {
   return true;
 }
 
+/**
+ * Claude for Blitz's other jobs (moderation help, catch-ups, Ask Blitz),
+ * sharing the same hourly budget. Undefined without a key or over budget.
+ */
+export function claudeFor(job: string): Anthropic | undefined {
+  const claude = api();
+  if (!claude) return undefined;
+  if (!withinBudget()) {
+    log("warn", `Blitz's brain hit its hourly limit; skipped ${job}`, { maxPerHour: config.brain.maxPerHour });
+    return undefined;
+  }
+  return claude;
+}
+
+/** What Claude said, as text (refusals and empty answers come back as undefined). */
+export function textOf(response: { content: Array<{ type: string; text?: string }>; stop_reason: string | null }): string | undefined {
+  if (response.stop_reason === "refusal") return undefined;
+  const text = response.content.flatMap((b) => (b.type === "text" && b.text ? [b.text] : [])).join("").trim();
+  return text || undefined;
+}
+
 /** How Blitz reacts to this message, according to Claude. Undefined: use keywords. */
 export async function think(situation: Situation): Promise<Reaction | undefined> {
   const claude = api();

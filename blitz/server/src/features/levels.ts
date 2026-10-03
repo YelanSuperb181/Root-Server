@@ -9,12 +9,14 @@ import { config } from "../config";
 import { read } from "../core/api";
 import { Command, UsageError } from "../core/commands";
 import { errMessage, log } from "../core/log";
-import { knownPeople, nickname } from "../core/members";
-import { send } from "../core/messaging";
+import { communityRoles, hasRole, knownPeople, nickname } from "../core/members";
+import { addRole, send } from "../core/messaging";
+import { matchRole } from "../logic/moderation";
+import { levelUpBonus } from "./stardust";
 import { settings } from "../core/settings";
 import { kv } from "../core/store";
 import { EMPTY_XP, XpRecord, applyMessage, levelFromXp, rankEntries, totalXpForLevel } from "../logic/levels";
-import { fillTemplate, formatNumber, mentionedUserIds, pick, placeLabel, progressBar, userMention } from "../logic/text";
+import { fillTemplate, formatNumber, mentionedRoleIds, mentionedUserIds, pick, placeLabel, progressBar, userMention } from "../logic/text";
 
 const RULES = {
   minXp: config.levels.minXp,
@@ -51,8 +53,14 @@ export async function awardXp(evt: ChannelMessageCreatedEvent): Promise<void> {
 async function onLevelUp(userId: string, channelId: string, level: number): Promise<void> {
   try {
     const name = await nickname(userId);
+    const earned = await grantRewards(userId, level);
+    const bonus = await levelUpBonus(userId, level);
+    const extras = [
+      ...earned.map((r) => `🎁 Unlocked the **${r}** role!`),
+      bonus > 0 ? `✨ +${formatNumber(bonus)} Stardust` : "",
+    ].filter(Boolean);
     const text = fillTemplate(pick(levelUpLines), { user: userMention(name, userId), level: String(level) });
-    await send(settings.channel("levelUps") ?? channelId, text);
+    await send(settings.channel("levelUps") ?? channelId, [text, ...extras].join("\n"));
   } catch (err) {
     log("warn", "level-up announcement failed", { error: errMessage(err) });
   }
@@ -109,7 +117,103 @@ async function nicknames(userIds: string[]): Promise<Map<string, string>> {
   return names;
 }
 
+// ---- Reward roles: reach a level, get a role (free, unlike some apps) ----
+
+export interface LevelReward {
+  level: number;
+  roleId: string;
+}
+
+const REWARDS_KEY = "levelrewards:list";
+
+export async function levelRewards(): Promise<LevelReward[]> {
+  return ((await kv.get<LevelReward[]>(REWARDS_KEY)) ?? []).sort((a, b) => a.level - b.level);
+}
+
+/** Gives every reward role up to `level` that they don't have yet; returns the names of the new ones. */
+async function grantRewards(userId: string, level: number): Promise<string[]> {
+  const due = (await levelRewards()).filter((r) => r.level <= level && !hasRole(userId, r.roleId));
+  if (due.length === 0) return [];
+  const roles = await communityRoles().catch(() => []);
+  const given: string[] = [];
+  for (const r of due) {
+    try {
+      await addRole(userId, r.roleId);
+      given.push(roles.find((x) => x.id === r.roleId)?.name ?? "reward");
+    } catch (err) {
+      log("warn", "couldn't give a level reward role (is Blitz's role above it?)", { error: errMessage(err) });
+    }
+  }
+  return given;
+}
+
+/** Turns "@Regular" or "Regular" into a role, or explains what went wrong. */
+async function roleFrom(text: string): Promise<{ id: string; name: string }> {
+  const roles = (await communityRoles()).map((r) => ({ id: r.id as string, name: r.name }));
+  const mentioned = mentionedRoleIds(text)[0];
+  if (mentioned) {
+    const r = roles.find((x) => x.id === mentioned);
+    if (r) return r;
+  }
+  const match = matchRole(text.replace(/\[@([^\]]*)\]\([^)]*\)/g, "$1"), roles);
+  if (!match) throw new UsageError(`I couldn't find a role called "${text.trim()}".`);
+  if (Array.isArray(match)) throw new UsageError(`That could be ${match.slice(0, 5).map((r) => `**${r.name}**`).join(", ")}. Which one?`);
+  return match;
+}
+
 export const levelCommands: Command[] = [
+  {
+    name: "levelroles",
+    aliases: ["rewards"],
+    summary: "The roles you unlock by levelling up.",
+    level: "everyone",
+    category: "Levels",
+    async run(ctx) {
+      const list = await levelRewards();
+      if (list.length === 0) {
+        await ctx.reply(`🎁 No level rewards yet.${ctx.level !== "everyone" ? ` Add one: \`${config.prefix}levelrole 10 @Regular\`` : ""}`);
+        return;
+      }
+      const roles = await communityRoles().catch(() => []);
+      await ctx.reply(["🎁 **Level rewards**", ...list.map((r) => `Level **${r.level}** → ${roles.find((x) => x.id === r.roleId)?.name ?? "a role that's gone"}`)].join("\n"));
+    },
+  },
+  {
+    name: "levelrole",
+    aliases: ["addreward"],
+    usage: "<level> @role | remove <level>",
+    summary: "Give a role to everyone who reaches a level (members already past it get it on their next level-up, or right away with `sync`).",
+    level: "mod",
+    category: "Levels",
+    async run(ctx) {
+      if (/^(remove|delete|off)$/i.test(ctx.args[0] ?? "")) {
+        const level = Number(ctx.args[1]);
+        const list = await levelRewards();
+        if (!list.some((r) => r.level === level)) throw new UsageError(`There's no reward at level ${ctx.args[1] ?? "?"}.`);
+        await kv.set(REWARDS_KEY, list.filter((r) => r.level !== level));
+        await ctx.reply(`🗑️ Removed the level ${level} reward. (Anyone who has the role keeps it.)`);
+        return;
+      }
+      if (/^sync$/i.test(ctx.args[0] ?? "")) {
+        const list = await levelRewards();
+        if (list.length === 0) throw new UsageError("There are no level rewards to hand out yet.");
+        let given = 0;
+        for (const { key, value } of await kv.entries<XpRecord>("xp:")) {
+          const userId = key.slice(3);
+          if (!knownPeople().includes(userId)) continue;
+          given += (await grantRewards(userId, levelFromXp(value.xp).level)).length;
+        }
+        await ctx.reply(`🎁 Handed out ${given} reward role${given === 1 ? "" : "s"} to members who'd already earned them.`);
+        return;
+      }
+      const level = Number(ctx.args[0]);
+      if (!Number.isInteger(level) || level < 1 || level > 500) throw new UsageError(`Usage: \`${config.prefix}levelrole 10 @Regular\`, \`${config.prefix}levelrole remove 10\` or \`${config.prefix}levelrole sync\`.`);
+      const role = await roleFrom(ctx.args.slice(1).join(" "));
+      const list = (await levelRewards()).filter((r) => r.level !== level);
+      await kv.set(REWARDS_KEY, [...list, { level, roleId: role.id }]);
+      await ctx.reply(`🎁 Reaching level **${level}** now unlocks **${role.name}**. (\`${config.prefix}levelrole sync\` gives it to everyone already past it.)`);
+    },
+  },
   {
     name: "rank",
     aliases: ["level", "xp"],
@@ -192,7 +296,8 @@ export const levelCommands: Command[] = [
       const xp = levelMode ? totalXpForLevel(amount) : amount;
       await kv.update<XpRecord>(xpKey(target), (r) => ({ ...r, xp }), EMPTY_XP);
       const level = levelFromXp(xp).level;
-      await ctx.reply(`✅ **${await nickname(target)}** now has ${formatNumber(xp)} XP (level ${level}).`);
+      const earned = await grantRewards(target, level);
+      await ctx.reply(`✅ **${await nickname(target)}** now has ${formatNumber(xp)} XP (level ${level}).${earned.length ? ` 🎁 ${earned.join(", ")}` : ""}`);
     },
   },
 ];

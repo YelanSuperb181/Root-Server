@@ -9,21 +9,30 @@ import { errMessage, log } from "../core/log";
 import { accessLevel, nickname } from "../core/members";
 import { modLog, remove, sendEphemeral } from "../core/messaging";
 import { channelLink, settings, staffPing } from "../core/settings";
-import { AutomodRules, History, addStrike, checkContent, checkRate, emptyHistory } from "../logic/automod";
+import { AutomodRules, History, addStrike, checkContent, checkRate, emptyHistory, findBlockedWord } from "../logic/automod";
+import { brainModeration, confirmRemoval } from "../domain/sentinel";
 import { parseWordList } from "../logic/moderation";
 import { parseCommand } from "../logic/parse";
 import { defuseMentions, truncate, userMention } from "../logic/text";
+import { noteCatch } from "./guardian";
+import { AUTO, muteMember } from "./moderation";
+
+/** Repeat offenders cool off this long. */
+const COOL_OFF_MS = 10 * 60_000;
 
 /** The rules, with the community's own blocked words and invite setting from Blitz's settings. */
-let cached: { words: string | undefined; invites: boolean; rules: AutomodRules } | undefined;
+let cached: { words: string | undefined; invites: boolean; strict: boolean; rules: AutomodRules } | undefined;
 function rules(): AutomodRules {
   const words = settings.text("blockedWords");
   const invites = settings.ticked("blockInvites");
-  if (!cached || cached.words !== words || cached.invites !== invites) {
+  const strict = settings.ticked("strictFilters");
+  if (!cached || cached.words !== words || cached.invites !== invites || cached.strict !== strict) {
     cached = {
       words,
       invites,
+      strict,
       rules: {
+        strict,
         maxMentions: config.automod.maxMentions,
         spam: config.automod.spam,
         duplicates: config.automod.duplicates,
@@ -66,6 +75,15 @@ export async function screenMessage(evt: ChannelMessageCreatedEvent): Promise<bo
   const verdict = (isReport ? undefined : checkContent(text, rules())) ?? checkRate(history, text, now, rules());
   if (!verdict) return false;
 
+  // A blocked word can be innocent in context; Blitz's brain takes a look first, if the community lets it.
+  if (verdict.kind === "word" && brainModeration()) {
+    const check = await confirmRemoval(text, evt.channelId, findBlockedWord(text, rules().blockedWords));
+    if (!check.remove) {
+      await modLog(`🧠 Let a message from **${await nickname(evt.userId)}** in ${await channelLink(evt.channelId)} through: it has a blocked word, but in context ${truncate(check.why ?? "it seemed fine", 200)}.`);
+      return false;
+    }
+  }
+
   try {
     await remove(evt.channelId, evt.id);
   } catch (err) {
@@ -79,15 +97,23 @@ export async function screenMessage(evt: ChannelMessageCreatedEvent): Promise<bo
 
   const where = await channelLink(evt.channelId);
   const excerpt = truncate(defuseMentions(text).replace(/\s+/g, " "), 200);
+  noteCatch(verdict.kind, evt.userId, evt.channelId, verdict.reason);
   await modLog(`🛡️ Removed a message from **${name}** in ${where} (${verdict.kind})${excerpt ? `: "${excerpt}"` : ""}`);
 
   const list = addStrike(strikes.get(evt.userId) ?? [], now, STRIKE_WINDOW_MS);
   strikes.set(evt.userId, list);
   if (list.length >= config.automod.strikesToAlert) {
     strikes.delete(evt.userId);
-    await modLog(
-      `🚨 ${who} has had ${list.length} messages removed in ${config.automod.strikeWindowMinutes} minutes. ${(await staffPing()) || "Staff"}, can someone take a look?`,
-    );
+    const minutes = config.automod.strikeWindowMinutes;
+    if (settings.on("coolOff")) {
+      // A short cool-off settles most floods without anyone on the team having to step in.
+      await muteMember(evt.userId, COOL_OFF_MS, AUTO, `automatic cool-off: ${list.length} messages removed in ${minutes} minutes`).catch((err) =>
+        log("warn", "auto-mod couldn't cool someone off", { error: errMessage(err) }),
+      );
+      sendEphemeral(evt.channelId, `🧊 ${who}, take ten: you're muted for 10 minutes after ${list.length} removed messages.`);
+    } else {
+      await modLog(`🚨 ${who} has had ${list.length} messages removed in ${minutes} minutes. ${(await staffPing()) || "Staff"}, can someone take a look?`);
+    }
   }
   return true;
 }
