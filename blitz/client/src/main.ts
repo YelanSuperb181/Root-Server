@@ -13,6 +13,7 @@ function main(): void {
     byId<HTMLCanvasElement>("canvas"),
     {
       status: byId("status"),
+      vignette: byId("vignette"),
       card: byId("card"),
       cardName: byId("card-name"),
       cardWhere: byId("card-where"),

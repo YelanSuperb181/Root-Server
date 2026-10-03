@@ -66,6 +66,10 @@ body {
 
 .domain { position: relative; width: 100%; aspect-ratio: 1 / 1; touch-action: none; }
 canvas { display: block; width: 100%; height: 100%; }
+/* Open space's darkened edges, over the canvas: the browser keeps this drawn, so the canvas doesn't have to. */
+.vignette { position: absolute; inset: 0; pointer-events: none; opacity: 0; display: none;
+  background: radial-gradient(circle farthest-corner at 50% 50%, rgba(2, 3, 10, 0) 64%, rgba(2, 3, 10, 0.75) 124%); }
+body.open .vignette { display: block; }
 
 .say { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--glass-line); }
 .say input { flex: 1; min-width: 0; font: inherit; font-size: 14px; color: var(--ink); background: rgba(6, 9, 20, 0.55); border: 1px solid var(--glass-line); border-radius: 10px; padding: 7px 12px; }

@@ -33,11 +33,12 @@ function cellRandom(ix: number, iy: number, layer: number): () => number {
   return mulberry32(h ^ (h >>> 16));
 }
 
-function canvas(w: number, h = w): [HTMLCanvasElement, CanvasRenderingContext2D] {
+/** A canvas to paint on. An opaque one (for things that fill every pixel) is quicker to copy from. */
+function canvas(w: number, h = w, opaque = false): [HTMLCanvasElement, CanvasRenderingContext2D] {
   const c = document.createElement("canvas");
   c.width = w;
   c.height = h;
-  return [c, c.getContext("2d")!];
+  return [c, c.getContext("2d", { alpha: !opaque })!];
 }
 
 function blob(g: CanvasRenderingContext2D, x: number, y: number, r: number, c: RGB, a: number): void {
@@ -97,7 +98,7 @@ const FAINT_STARS: [number, number, number, number, number] = [650, 0.3, 0.8, 9,
  * it onto a 1-pixel scratch canvas makes them do it now, while there's time.
  */
 let scratch: CanvasRenderingContext2D | undefined;
-function finishPainting(c: HTMLCanvasElement): void {
+export function finishPainting(c: HTMLCanvasElement): void {
   scratch ??= canvas(1)[1];
   scratch.drawImage(c, 0, 0, 1, 1);
 }
@@ -108,36 +109,6 @@ function snapX(m: DOMMatrix, x: number): number {
 }
 function snapY(m: DOMMatrix, y: number): number {
   return (Math.round(m.d * y + m.f) - m.f) / m.d;
-}
-
-/** Darkened edges for full-screen views, painted once per size, at full resolution. */
-interface Vignette {
-  canvas: HTMLCanvasElement;
-  W: number;
-  H: number;
-  k: number;
-  /** The middle, which the vignette leaves untouched (canvas pixels). */
-  clear: { x: number; y: number; w: number; h: number };
-}
-
-const VIGNETTE_FROM = 0.32;
-
-function paintVignette(W: number, H: number, k: number): Vignette {
-  const [c, g] = canvas(Math.max(1, Math.round(W * k)), Math.max(1, Math.round(H * k)));
-  g.scale(k, k);
-  const d = Math.hypot(W, H);
-  const v = g.createRadialGradient(W / 2, H / 2, d * VIGNETTE_FROM, W / 2, H / 2, d * 0.62);
-  v.addColorStop(0, "rgba(2, 3, 10, 0)");
-  v.addColorStop(1, "rgba(2, 3, 10, 0.75)");
-  g.fillStyle = v;
-  g.fillRect(0, 0, W, H);
-  // Inside the gradient's inner circle nothing is darkened; the largest
-  // screen-shaped box in there can be skipped when drawing.
-  const hw = Math.floor(W * VIGNETTE_FROM * k) - 1;
-  const hh = Math.floor(H * VIGNETTE_FROM * k) - 1;
-  const cx = Math.round((W * k) / 2);
-  const cy = Math.round((H * k) / 2);
-  return { canvas: c, W, H, k, clear: { x: cx - hw, y: cy - hh, w: hw * 2, h: hh * 2 } };
 }
 
 /** A 512-px tile of stars, painted at `pixels` device pixels square so it can be drawn 1:1, sharp and cheap. */
@@ -308,16 +279,18 @@ interface Shooting {
 export interface UniverseView {
   /** Fade the whole universe in and out. */
   alpha: number;
-  /** Darken the edges (full-screen views). */
-  vignette: boolean;
   /** Occasional shooting stars. */
   shooting: boolean;
+  /** The distant rocks, when drawStill left them out (they drift by too quickly to keep in a painted copy). */
+  farRocks?: boolean;
   /** How much of the lively layer shows at a screen point (seen through the bubble's tinted glass); 1 when unset. */
   dim?: (x: number, y: number) => number;
 }
 
 /** Layers that only drift: everything except the twinkling stars, dust and shooting stars. */
 const FAR_ROCK_P = 0.5;
+/** drawStill's layers, back to front: deep sky, the two star fields, the planet, the distant rocks. */
+export const STILL_PARTS = 5;
 /** Bright stars start to streak above this camera speed (screen px/s at their depth) and are fully streaks above STREAK_FULL. */
 const STREAK_FROM = 35;
 const STREAK_FULL = 160;
@@ -340,11 +313,14 @@ export class Universe {
    */
   private deepPrev: Map<string, HTMLCanvasElement> | undefined;
   private faint: { k: number; pattern: CanvasPattern } | undefined;
-  private vignette: Vignette | undefined;
   private nebulae: HTMLCanvasElement[] = [];
   private galaxies: HTMLCanvasElement[] = [];
   private planet: HTMLCanvasElement | undefined;
+  /** The planet painted at the size and pixel density it's drawn at, so it's copied pixel for pixel. */
+  private planetSized: { k: number; zoom: number; canvas: HTMLCanvasElement } | undefined;
   private farRocks = new Map<string, RockArt>();
+  /** Each distant rock, painted once at the size it's drawn: per pixel density, by cell. */
+  private farSprites = new Map<string, Map<string, { canvas: HTMLCanvasElement; half: number }>>();
   private shooting: Shooting[] = [];
   private nextShooting = 2.5;
   private lastFocus: { x: number; y: number } | undefined;
@@ -391,13 +367,6 @@ export class Universe {
     for (let ix = x0; ix <= x1; ix++) for (let iy = y0; iy <= y1; iy++) each(ix, iy, o.x + ix * size, o.y + iy * size);
   }
 
-  /** Everything: the still layers, then the lively ones. */
-  draw(ctx: CanvasRenderingContext2D, W: number, H: number, cam: Cam, t: number, dt: number, view: UniverseView): void {
-    if (view.alpha <= 0) return;
-    this.drawStill(ctx, W, H, cam, t, view.alpha);
-    this.drawLively(ctx, W, H, cam, t, dt, view);
-  }
-
   /**
    * The window's size and open space's pixel density, from the domain. Space
    * is scaled to the window (not to the bubble), and the deep-sky tiles are
@@ -416,7 +385,7 @@ export class Universe {
 
   /**
    * Paints one more thing open space will need when the bubble bursts (its
-   * star tiles, vignette and deep-sky tiles), so the burst doesn't have to.
+   * star tiles, planet and deep-sky tiles), so the burst doesn't have to.
    * Call when there's time to spare; false once there's nothing left to do.
    */
   prewarm(W: number, H: number, cam: Cam): boolean {
@@ -430,13 +399,11 @@ export class Universe {
         return true;
       }
     }
-    const v = this.vignette;
-    if (!v || v.W !== W || v.H !== H || v.k !== k) {
-      this.vignette = paintVignette(W, H, k);
-      finishPainting(this.vignette.canvas);
+    const zoom = this.zoom();
+    if (this.planetSized?.k !== k || this.planetSized.zoom !== zoom) {
+      finishPainting(this.sizedPlanet(k, zoom));
       return true;
     }
-    const zoom = this.zoom();
     if (this.deepFor !== `${k}|${zoom}`) return false; // the bubble hasn't drawn any sky yet
     const px = Math.round(DEEP_TILE * k);
     const size = px / k;
@@ -469,37 +436,49 @@ export class Universe {
   }
 
   /**
+   * Where the camera has the still layers, to a device pixel, leaving out the
+   * slow drift: when this is unchanged but stillKey has changed, only the
+   * drift has moved them (by a pixel or so).
+   */
+  camKey(W: number, H: number, cam: Cam, k: number): string {
+    return `${W}|${H}|${k}|${Math.round(cam.x * k)}|${Math.round(cam.y * k)}|${Math.round(cam.fx * REF * k)}|${Math.round(cam.fy * REF * k)}`;
+  }
+
+  /**
    * Changes whenever drawStill would draw something different (a layer has
    * drifted a whole device pixel, or the far rocks have turned a little), so a
    * painted copy of the still layers can be reused until then.
    */
-  stillKey(W: number, H: number, cam: Cam, k: number): string {
+  stillKey(W: number, H: number, cam: Cam, k: number, farRocks = true): string {
     const at = (p: number) => {
       const o = this.offset(cam, p);
       return `${Math.round(o.x * k)},${Math.round(o.y * k)}`;
     };
-    return [W, H, k, at(DEEP_P), ...this.layers.map((l) => at(l.p)), at(PLANET_P), at(FAR_ROCK_P), Math.floor(this.driftT * 2)].join("|");
+    return `${W}|${H}|${k}|${at(DEEP_P)}|${at(this.layers[0].p)}|${at(this.layers[1].p)}|${at(PLANET_P)}${farRocks ? `|${at(FAR_ROCK_P)}` : ""}`;
   }
 
   /**
    * The layers that only drift: deep sky, star fields, the planet and the
-   * distant rocks. False when some deep-sky tiles weren't painted yet (they
-   * come a few per frame), so a copy of this would need painting again.
+   * distant rocks (parts `from` up to `to` of them, see STILL_PARTS, so a copy
+   * can be painted a few layers per frame). False when some deep-sky tiles
+   * weren't painted yet (they come a few per frame), so a copy of this would
+   * need painting again.
    */
-  drawStill(ctx: CanvasRenderingContext2D, W: number, H: number, cam: Cam, t: number, alpha = 1): boolean {
+  drawStill(ctx: CanvasRenderingContext2D, W: number, H: number, cam: Cam, alpha = 1, from = 0, to = STILL_PARTS): boolean {
     const zoom = this.zoom();
     ctx.save();
     ctx.globalAlpha = alpha;
     const m = ctx.getTransform();
     // The exact scale: tiles painted for it land on whole device pixels.
     const k = m.a;
-    const smooth = ctx.imageSmoothingEnabled;
     ctx.imageSmoothingEnabled = false;
-    const complete = this.drawDeep(ctx, W, H, cam, zoom, m);
+    let complete = true;
+    if (from <= 0 && to > 0) complete = this.drawDeep(ctx, W, H, cam, zoom, m);
 
     // Star fields, near layers sliding faster than far ones. Each tile is drawn
     // whole and on exact device pixels: far cheaper than a shifted pattern fill.
-    for (const layer of this.layers) {
+    for (let i = Math.max(0, from - 1); i < Math.min(this.layers.length, to - 1); i++) {
+      const layer = this.layers[i];
       let tile = layer.tiles.get(k);
       if (!tile) {
         if (layer.tiles.size >= 3) layer.tiles.clear();
@@ -514,37 +493,86 @@ export class Universe {
         for (let y = y0; y < H; y += size) ctx.drawImage(tile, x, y, size, size);
       }
     }
-    ctx.imageSmoothingEnabled = smooth;
 
     // A ringed planet hanging off to one side of where the bubble was.
-    if (this.planet) {
+    if (from <= 3 && to > 3 && this.planet) {
       const o = this.offset(cam, PLANET_P);
       const size = 420 * zoom;
-      ctx.drawImage(this.planet, o.x - 560 * zoom - size / 2, o.y + 280 * zoom - size / 2, size, size);
+      const x = o.x - 560 * zoom - size / 2;
+      const y = o.y + 280 * zoom - size / 2;
+      if (x < W && y < H && x + size > 0 && y + size > 0) {
+        const art = this.sizedPlanet(k, zoom);
+        ctx.drawImage(art, snapX(m, x), snapY(m, y), art.width / k, art.height / k);
+      }
     }
 
     // Distant rocks, dim and small, drifting by slower than the ones Blitz can reach.
+    if (from <= 4 && to > 4) this.drawFarRocks(ctx, W, H, cam, m);
+    ctx.restore();
+    return complete;
+  }
+
+  /** The planet, painted at `zoom` for pixel density `k`. */
+  private sizedPlanet(k: number, zoom: number): HTMLCanvasElement {
+    if (this.planetSized?.k !== k || this.planetSized.zoom !== zoom) {
+      const px = Math.max(1, Math.round(420 * zoom * k));
+      const [c, g] = canvas(px);
+      g.drawImage(this.planet!, 0, 0, px, px);
+      this.planetSized = { k, zoom, canvas: c };
+    }
+    return this.planetSized.canvas;
+  }
+
+  /** The distant rocks, each a small painting copied onto whole device pixels. */
+  private drawFarRocks(ctx: CanvasRenderingContext2D, W: number, H: number, cam: Cam, m: DOMMatrix, dim?: (x: number, y: number) => number): void {
+    const zoom = this.zoom();
+    const k = m.a;
+    const id = `${k}|${zoom}`;
+    let sprites = this.farSprites.get(id);
+    if (!sprites) {
+      // Two at most: the bubble's pixel density and open space's.
+      if (this.farSprites.size >= 2) this.farSprites.delete(this.farSprites.keys().next().value as string);
+      sprites = new Map();
+      this.farSprites.set(id, sprites);
+    }
+    const alpha = ctx.globalAlpha;
+    const smooth = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = false;
     this.cells(cam, FAR_ROCK_P, W, H, 360, 40, (ix, iy, cx, cy) => {
       const rnd = cellRandom(ix, iy, 5);
       if (rnd() > 0.2) return;
       const x = cx + rnd() * 360;
       const y = cy + rnd() * 360;
-      const size = (5 + rnd() * 13) * zoom;
-      const turn = rnd() * 6.28 + this.driftT * (rnd() - 0.5) * 0.5;
       const key = `${ix},${iy}`;
-      let art = this.farRocks.get(key);
-      if (!art) {
-        art = makeRockArt((n) => unit(hash32(ix, iy, 5000 + n)), false, FAR_PALETTE);
-        if (this.farRocks.size > 200) this.farRocks.clear();
-        this.farRocks.set(key, art);
+      let sprite = sprites!.get(key);
+      if (!sprite) {
+        const size = (5 + rnd() * 13) * zoom;
+        const turn = rnd() * 6.28;
+        let art = this.farRocks.get(key);
+        if (!art) {
+          art = makeRockArt((n) => unit(hash32(ix, iy, 5000 + n)), false, FAR_PALETTE);
+          if (this.farRocks.size > 200) this.farRocks.clear();
+          this.farRocks.set(key, art);
+        }
+        // Room for the lumpy outline (up to about 1.4 radii out) and its edge.
+        const half = Math.ceil(size * 1.5 * k) + 1;
+        const [c, g] = canvas(half * 2);
+        g.setTransform(k, 0, 0, k, half, half);
+        drawRockArt(g, art, 0, 0, size, turn, FAR_LIGHT, 0);
+        if (sprites!.size > 120) sprites!.clear();
+        sprite = { canvas: c, half };
+        sprites!.set(key, sprite);
       }
-      drawRockArt(ctx, art, x, y, size, turn, FAR_LIGHT, t);
+      if (dim) ctx.globalAlpha = alpha * dim(x, y);
+      const left = snapX(m, x - sprite.half / k);
+      const top = snapY(m, y - sprite.half / k);
+      ctx.drawImage(sprite.canvas, left, top, sprite.canvas.width / k, sprite.canvas.height / k);
     });
-    ctx.restore();
-    return complete;
+    ctx.globalAlpha = alpha;
+    ctx.imageSmoothingEnabled = smooth;
   }
 
-  /** The layers that change every frame: twinkling bright stars, shooting stars, passing dust, and the vignette. */
+  /** The layers that change every frame: twinkling bright stars, shooting stars and passing dust (and the distant rocks, when asked). */
   drawLively(ctx: CanvasRenderingContext2D, W: number, H: number, cam: Cam, t: number, dt: number, view: UniverseView): void {
     // How fast the camera is sweeping across space, for star streaks.
     if (this.lastFocus && dt > 0) {
@@ -554,10 +582,10 @@ export class Universe {
     }
     this.lastFocus = { x: cam.fx, y: cam.fy };
     const zoom = this.zoom();
-    const k = ctx.getTransform().a;
     const dim = view.dim ?? (() => 1);
     ctx.save();
     ctx.globalAlpha = view.alpha;
+    if (view.farRocks) this.drawFarRocks(ctx, W, H, cam, ctx.getTransform(), view.dim);
 
     // Bright stars: twinkling, with soft spikes, and streaking when the camera rushes along.
     ctx.globalCompositeOperation = "lighter";
@@ -652,27 +680,7 @@ export class Universe {
       ctx.globalAlpha *= dim(x, y);
       ctx.drawImage(glowSprite([200, 225, 255]), x - size, y - size, size * 2, size * 2);
     });
-    ctx.globalAlpha = view.alpha;
-    ctx.globalCompositeOperation = "source-over";
-
-    if (view.vignette) this.drawVignette(ctx, W, H, k);
     ctx.restore();
-  }
-
-  /** The darkened edges: four bands around the untouched middle, copied pixel for pixel. */
-  private drawVignette(ctx: CanvasRenderingContext2D, W: number, H: number, k: number): void {
-    let v = this.vignette;
-    if (!v || v.W !== W || v.H !== H || v.k !== k) v = this.vignette = paintVignette(W, H, k);
-    const cw = v.canvas.width;
-    const ch = v.canvas.height;
-    const { x, y, w, h } = v.clear;
-    const band = (sx: number, sy: number, sw: number, sh: number) => {
-      if (sw > 0 && sh > 0) ctx.drawImage(v!.canvas, sx, sy, sw, sh, sx / k, sy / k, sw / k, sh / k);
-    };
-    band(0, 0, cw, y); // top
-    band(0, y + h, cw, ch - y - h); // bottom
-    band(0, y, x, h); // left
-    band(x + w, y, cw - x - w, h); // right
   }
 
   /** The deep sky: the painted tiles on screen, painting any that are missing (a few per frame). False if some are still missing. */
@@ -762,7 +770,8 @@ export class Universe {
   /** One deep-sky tile, `px` device pixels square, covering layer pixels from (tx, ty) * its size. */
   private paintDeepTile(tx: number, ty: number, px: number, k: number, zoom: number): HTMLCanvasElement {
     const spare = this.deepSpare.pop();
-    const [c, g] = spare ? [spare, spare.getContext("2d")!] : canvas(px);
+    // Opaque: every pixel is painted, and opaque tiles are quicker to copy.
+    const [c, g] = spare ? [spare, spare.getContext("2d")!] : canvas(px, px, true);
     // A reused canvas still has the last tile's settings.
     g.globalAlpha = 1;
     g.globalCompositeOperation = "source-over";

@@ -68,7 +68,7 @@ import {
   toScreen,
   toWorld,
 } from "./fx";
-import { Universe, UniverseView } from "./universe";
+import { STILL_PARTS, Universe, UniverseView, finishPainting } from "./universe";
 import { RockArt, SUN, drawRockArt, makeRockArt } from "./rockart";
 import { Brows, Eyes, Look, Mouth, drawBlitz, drawHalo } from "./blitz";
 
@@ -201,6 +201,8 @@ const LIGHT_REACH = 3.2;
 
 export interface DomainUi {
   status: HTMLElement;
+  /** The darkened edges of open space, laid over the canvas (the browser draws it, for free). */
+  vignette: HTMLElement;
   card: HTMLElement;
   cardName: HTMLElement;
   cardWhere: HTMLElement;
@@ -209,6 +211,31 @@ export interface DomainUi {
 
 /** A way to ask Claude how Blitz reacts to something typed to it (Blitz's server inside Root; the prototype's viewer outside). */
 export type Brain = (situation: Situation) => Promise<Reaction | undefined>;
+
+/** A painted copy of open space's drifting layers (see drawOpenUniverse). */
+interface StillCopy {
+  canvas: HTMLCanvasElement;
+  /** What it shows (Universe.stillKey) and where the camera was (Universe.camKey). */
+  key: string;
+  cam: string;
+  /** While it's being painted: the next step (see OPEN_STEPS), and whether the deep sky was all there. */
+  step: number;
+  complete: boolean;
+}
+
+/** Open space's copy is painted in these steps of drawStill's layers, a step per frame: deep sky, near stars, far stars and planet. The distant rocks are drawn live. */
+const OPEN_STEPS: ReadonlyArray<[number, number]> = [
+  [0, 1],
+  [1, 2],
+  [2, STILL_PARTS - 1],
+];
+
+/** A canvas that's painted edge to edge: opaque, which makes copying it quicker. */
+function opaqueCanvas(): HTMLCanvasElement {
+  const c = document.createElement("canvas");
+  c.getContext("2d", { alpha: false });
+  return c;
+}
 
 interface Transition {
   kind: "burst" | "reform";
@@ -309,10 +336,11 @@ export class DomainView {
   private lastImpact = -1;
   private emitAt: Record<string, number> = {};
   private rockArts = new Map<number, RockArt>();
-  /** Open space's drifting layers, painted once the camera settles and reused (see drawOpenUniverse). */
-  private openStill: { canvas?: HTMLCanvasElement; key: string; lastKey: string } = { key: "", lastKey: "" };
-  /** The bubble's drifting layers and glass, painted once and reused (see drawBubble). */
-  private bubbleStill: { canvas: HTMLCanvasElement; key: string; left: number; top: number } | undefined;
+  /** Open space's drifting layers: the copy on screen, the next one being painted, and the camera last frame (see drawOpenUniverse). */
+  private openStill: { front?: StillCopy; back?: StillCopy; lastCam: string } = { lastCam: "" };
+  /** The bubble's drifting layers and glass (`plain`), and the same with the rim (`rimmed`), painted once and reused (see drawBubble). */
+  private bubbleStill: { plain: HTMLCanvasElement; rimmed: HTMLCanvasElement; key: string; left: number; top: number } | undefined;
+  private vignetteShown = -1;
   private bubbleShape = "";
   private rockHits = new Map<number, { born: number; power: number; x: number; y: number }>();
   /** A screen point Blitz is watching for a moment (a shooting star). */
@@ -1373,7 +1401,9 @@ export class DomainView {
         const k = (t - tr.start) / GATHER;
         reveal = wallR + (full - wallR) * (1 - easeInOut(k));
       }
-      const view = { alpha: 1, vignette: true, shooting: !tr };
+      const view = { alpha: 1, shooting: !tr, farRocks: true };
+      // The darkened edges come in as the universe opens out, and go as it folds back.
+      this.showVignette(tr?.kind === "burst" ? easeInOut((t - tr.start) / REVEAL) : tr?.kind === "reform" ? 1 - easeInOut((t - tr.start) / GATHER) : 1);
       if (reveal !== undefined) {
         ctx.save();
         ctx.beginPath();
@@ -1385,8 +1415,12 @@ export class DomainView {
       } else {
         this.drawOpenUniverse(dt, view);
       }
-      if (tr?.kind === "reform") this.drawRim(cx, cy, wallR, clamp01((t - tr.start) / GATHER), 0);
+      if (tr?.kind === "reform") {
+        this.drawRim(ctx, cx, cy, wallR, clamp01((t - tr.start) / GATHER), 0);
+        this.drawTicks(cx, cy, wallR, clamp01((t - tr.start) / GATHER), 0);
+      }
     } else {
+      this.showVignette(0);
       this.drawBubble(cx, cy, wallR, tr ? 1 : easeOut(opening), strain, dt);
     }
 
@@ -1473,42 +1507,79 @@ export class DomainView {
     drawRockArt(ctx, this.rockArt(rock), sx, sy, R, rock.spin + wobble, { lx: Math.cos(la), ly: Math.sin(la), glow, tint: this.tint, gx: dx / dist, gy: dy / dist, flash }, t);
   }
 
+  /** Sets how strongly the darkened edges show, touching the page only when it changes. */
+  private showVignette(v: number): void {
+    const shown = Math.round(clamp01(v) * 100) / 100;
+    if (shown === this.vignetteShown) return;
+    this.vignetteShown = shown;
+    this.ui.vignette.style.opacity = `${shown}`;
+  }
+
   /**
-   * Open space. While the camera is on the move the drifting layers are drawn
-   * fresh; once it has settled for a frame they're painted into a copy, which
-   * is reused until they drift a pixel (or the camera moves again).
+   * Open space. Its drifting layers are shown from a painted copy, copied
+   * pixel for pixel. While the camera moves they're drawn fresh instead. Once
+   * it stops (or when only the slow drift has moved a layer by a pixel, and the
+   * old copy is still good enough to show) a new copy is painted on the side,
+   * a step per frame, and swapped in when it's done, so no one frame has to
+   * paint everything.
    */
   private drawOpenUniverse(dt: number, view: UniverseView): void {
-    const { ctx, W, H, cam, t } = this;
+    const { ctx, W, H, cam, t, universe } = this;
     const k = this.dpr;
-    const key = this.universe.stillKey(W, H, cam, k);
-    const still = this.openStill;
-    const settled = key === still.lastKey;
-    still.lastKey = key;
-    // Not while opening or closing (everything moves), nor before the sky's tiles are all painted.
-    const cacheable = !this.trans && (still.key === key || this.universe.skyReady(W, H, cam));
-    if (cacheable && (still.key === key || settled)) {
-      if (still.key !== key) {
-        const c = still.canvas ?? document.createElement("canvas");
-        c.width = Math.round(W * k);
-        c.height = Math.round(H * k);
-        const g = c.getContext("2d")!;
-        g.setTransform(k, 0, 0, k, 0, 0);
-        const complete = this.universe.drawStill(g, W, H, cam, t);
-        still.canvas = c;
-        // Painted before every deep-sky tile was ready: paint it again next frame.
-        still.key = complete ? key : "";
-      }
-      const smooth = ctx.imageSmoothingEnabled;
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(still.canvas!, 0, 0, W, H);
-      ctx.imageSmoothingEnabled = smooth;
-    } else {
-      this.universe.drawStill(ctx, W, H, cam, t);
+    const st = this.openStill;
+    const key = universe.stillKey(W, H, cam, k, false);
+    const camKey = universe.camKey(W, H, cam, k);
+    const steady = camKey === st.lastCam;
+    st.lastCam = camKey;
+    const front = st.front;
+    if (!this.trans && front?.key === key) this.blit(front.canvas);
+    else {
+      const drifted = !this.trans && front?.cam === camKey;
+      if (drifted) this.blit(front!.canvas);
+      else universe.drawStill(ctx, W, H, cam, 1, 0, STILL_PARTS - 1);
+      if (!this.trans && (drifted || steady) && universe.skyReady(W, H, cam)) this.paintOpenStep(key, camKey);
     }
-    this.universe.drawLively(ctx, W, H, cam, t, dt, view);
+    universe.drawLively(ctx, W, H, cam, t, dt, view);
     // The rocks Blitz can bump into, in front of the far-off sky.
     this.drawRocks();
+  }
+
+  /** Copies a canvas the size of the screen onto it pixel for pixel (shaken along with everything else). */
+  private blit(c: HTMLCanvasElement): void {
+    const { ctx } = this;
+    const m = ctx.getTransform();
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, Math.round(m.e), Math.round(m.f));
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(c, 0, 0);
+    ctx.restore();
+  }
+
+  /** Paints the next step of open space's new copy, and swaps it in once it's whole. */
+  private paintOpenStep(key: string, camKey: string): void {
+    const { W, H, cam, universe } = this;
+    const k = this.dpr;
+    const st = this.openStill;
+    let back = st.back;
+    if (!back || back.key !== key) {
+      const canvas = back?.canvas ?? opaqueCanvas();
+      const w = Math.round(W * k);
+      const h = Math.round(H * k);
+      if (canvas.width !== w) canvas.width = w;
+      if (canvas.height !== h) canvas.height = h;
+      back = st.back = { canvas, key, cam: camKey, step: 0, complete: true };
+    }
+    const g = back.canvas.getContext("2d")!;
+    g.setTransform(k, 0, 0, k, 0, 0);
+    const [from, to] = OPEN_STEPS[back.step];
+    if (!universe.drawStill(g, W, H, cam, 1, from, to)) back.complete = false;
+    // Paint it now, not when it's first shown.
+    finishPainting(back.canvas);
+    if (++back.step < OPEN_STEPS.length) return;
+    if (back.complete) {
+      st.back = st.front;
+      st.front = back;
+    } else back.key = ""; // a deep-sky tile was missing: start over
   }
 
   /** The bright edge of the universe as it opens out or folds back in. */
@@ -1536,9 +1607,9 @@ export class DomainView {
 
   /**
    * The bubble: the universe seen through dark glass, with a glowing rim.
-   * Inside the bubble the camera holds still, so the drifting layers and the
-   * glass are painted once into a copy that's reused until they've drifted a
-   * pixel; only the twinkling stars and dust are drawn fresh every frame.
+   * Inside the bubble the camera holds still, so the drifting layers, the
+   * glass and the rim are painted once into a copy that's reused; only the
+   * twinkling stars, dust and the rim's slow ticks are drawn fresh every frame.
    */
   private drawBubble(cx: number, cy: number, wallR: number, alpha: number, strain: number, dt: number): void {
     const { ctx, W, H, cam } = this;
@@ -1549,30 +1620,21 @@ export class DomainView {
     // While the window is being resized the copy would be stale by the next frame, so draw directly.
     const changing = shape !== this.bubbleShape;
     this.bubbleShape = shape;
+    const key = `${shape}|${this.universe.stillKey(W, H, cam, k)}`;
     // Also draw directly until every deep-sky tile in view is painted, so the copy doesn't keep gaps.
-    if (changing || (this.bubbleStill?.key !== `${shape}|${this.universe.stillKey(W, H, cam, k)}` && !this.universe.skyReady(W, H, cam))) {
+    if (changing || (this.bubbleStill?.key !== key && !this.universe.skyReady(W, H, cam))) {
       this.drawBubbleFresh(cx, cy, wallR, alpha, dt);
-      this.drawRim(cx, cy, wallR, alpha, strain);
+      this.drawRim(ctx, cx, cy, wallR, alpha, strain);
+      this.drawTicks(cx, cy, wallR, alpha, strain);
       return;
     }
-    const key = `${shape}|${this.universe.stillKey(W, H, cam, k)}`;
     let still = this.bubbleStill;
-    if (!still || still.key !== key) {
-      const size = Math.ceil(r * 2 * k) + 2;
-      const c = still?.canvas.width === size ? still.canvas : document.createElement("canvas");
-      c.width = c.height = size;
-      const g = c.getContext("2d")!;
-      // Canvas pixel (0, 0) is the device pixel at the bubble's top-left corner.
-      const left = Math.floor((cx - r) * k) - 1;
-      const top = Math.floor((cy - r) * k) - 1;
-      g.setTransform(k, 0, 0, k, -left, -top);
-      // Painted before every deep-sky tile was ready: paint it again next frame.
-      const complete = this.paintBubbleStill(g, cx, cy, r);
-      still = this.bubbleStill = { canvas: c, key: complete ? key : "", left, top };
-    }
+    if (!still || still.key !== key) still = this.paintBubbleCopies(cx, cy, r, key);
+    // The copy with the rim, once the bubble is whole and the rim isn't bulging.
+    const opening = wallR < r - 0.5;
+    const rimmed = !opening && alpha >= 1 && strain < 0.001;
     ctx.save();
     ctx.globalAlpha = alpha;
-    const opening = wallR < r - 0.5;
     if (opening) {
       ctx.beginPath();
       ctx.arc(cx, cy, wallR, 0, Math.PI * 2);
@@ -1580,8 +1642,9 @@ export class DomainView {
     }
     const smooth = ctx.imageSmoothingEnabled;
     ctx.imageSmoothingEnabled = false;
-    // Copied pixel for pixel onto the device pixels it was painted for (unless the screen is shaking).
-    ctx.drawImage(still.canvas, still.left / k, still.top / k, still.canvas.width / k, still.canvas.height / k);
+    // Copied pixel for pixel onto the device pixels it was painted for.
+    const c = rimmed ? still.rimmed : still.plain;
+    ctx.drawImage(c, still.left / k, still.top / k, c.width / k, c.height / k);
     ctx.imageSmoothingEnabled = smooth;
     if (!opening) {
       ctx.beginPath();
@@ -1590,7 +1653,40 @@ export class DomainView {
     }
     this.drawBubbleLively(cx, cy, wallR, alpha, dt);
     ctx.restore();
-    this.drawRim(cx, cy, wallR, alpha, strain);
+    if (!rimmed) this.drawRim(ctx, cx, cy, wallR, alpha, strain);
+    this.drawTicks(cx, cy, wallR, alpha, strain);
+  }
+
+  /** Paints the bubble's copies: the sky through the glass, and the same with the rim on top. */
+  private paintBubbleCopies(cx: number, cy: number, r: number, key: string): { plain: HTMLCanvasElement; rimmed: HTMLCanvasElement; key: string; left: number; top: number } {
+    const k = this.dpr;
+    const old = this.bubbleStill;
+    // Room around the bubble for the rim's glow.
+    const margin = 8;
+    const size = Math.ceil((r + margin) * 2 * k) + 2;
+    const left = Math.floor((cx - r - margin) * k) - 1;
+    const top = Math.floor((cy - r - margin) * k) - 1;
+    const plain = old?.plain ?? document.createElement("canvas");
+    const rimmed = old?.rimmed ?? document.createElement("canvas");
+    for (const c of [plain, rimmed]) {
+      if (c.width !== size) c.width = size;
+      if (c.height !== size) c.height = size;
+    }
+    const g = plain.getContext("2d")!;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, size, size);
+    // Canvas pixel (0, 0) is the device pixel at the copy's top-left corner.
+    g.setTransform(k, 0, 0, k, -left, -top);
+    const complete = this.paintBubbleStill(g, cx, cy, r);
+    const gr = rimmed.getContext("2d")!;
+    gr.setTransform(1, 0, 0, 1, 0, 0);
+    gr.clearRect(0, 0, size, size);
+    gr.drawImage(plain, 0, 0);
+    gr.setTransform(k, 0, 0, k, -left, -top);
+    this.drawRim(gr, cx, cy, r, 1, 0);
+    // Painted before every deep-sky tile was ready: paint it again next frame.
+    this.bubbleStill = { plain, rimmed, key: complete ? key : "", left, top };
+    return this.bubbleStill;
   }
 
   /** The drifting layers seen through the bubble's tinted glass, clipped to the bubble. */
@@ -1599,7 +1695,7 @@ export class DomainView {
     g.beginPath();
     g.arc(cx, cy, r, 0, Math.PI * 2);
     g.clip();
-    const complete = this.universe.drawStill(g, this.W, this.H, this.cam, this.t, alpha);
+    const complete = this.universe.drawStill(g, this.W, this.H, this.cam, alpha);
     g.globalAlpha = alpha;
     const glass = g.createRadialGradient(cx, cy - r * 0.2, r * 0.05, cx, cy, r);
     glass.addColorStop(0, `rgba(27, 40, 80, ${GLASS[0]})`);
@@ -1614,7 +1710,7 @@ export class DomainView {
   /** The twinkling stars and dust, dimmed by the glass (which darkens toward the rim). Call with the bubble clipped. */
   private drawBubbleLively(cx: number, cy: number, r: number, alpha: number, dt: number): void {
     const dim = (x: number, y: number) => 1 - glassAt(Math.hypot(x - cx, y - (cy - r * 0.2)) / r);
-    this.universe.drawLively(this.ctx, this.W, this.H, this.cam, this.t, dt, { alpha, vignette: false, shooting: false, dim });
+    this.universe.drawLively(this.ctx, this.W, this.H, this.cam, this.t, dt, { alpha, shooting: false, dim });
   }
 
   /** The bubble drawn straight onto the screen, for frames where it's changing size. */
@@ -1629,16 +1725,14 @@ export class DomainView {
     ctx.restore();
   }
 
-  /** The rim, pushed outward around where Blitz is straining against it, with its slow ring of ticks. */
-  private drawRim(cx: number, cy: number, r: number, alpha: number, strain: number): void {
-    const { ctx, t } = this;
+  /** The rim, pushed outward around where Blitz is straining against it. */
+  private drawRim(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, alpha: number, strain: number): void {
     if (alpha <= 0) return;
-    const rimPath = () => {
-      ctx.beginPath();
-      if (strain < 0.001) {
-        ctx.arc(cx, cy, r, 0, Math.PI * 2);
-        return;
-      }
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    if (strain < 0.001) ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    else {
       const n = 120;
       for (let i = 0; i <= n; i++) {
         const a = (i / n) * Math.PI * 2;
@@ -1652,11 +1746,8 @@ export class DomainView {
         if (i === 0) ctx.moveTo(px, py);
         else ctx.lineTo(px, py);
       }
-    };
-    ctx.save();
-    ctx.globalAlpha = alpha;
+    }
     // The glow: wide, faint strokes under the line (a blurred shadow this size is slow to draw every frame).
-    rimPath();
     ctx.lineWidth = 6;
     ctx.strokeStyle = "rgba(127, 227, 255, 0.10)";
     ctx.stroke();
@@ -1672,7 +1763,15 @@ export class DomainView {
     ctx.lineWidth = 1.6 + strain * 1.2;
     ctx.strokeStyle = `rgba(${190 + 65 * strain}, ${230 + 25 * strain}, 255, 0.85)`;
     ctx.stroke();
-    // The slow ring of ticks: every fifth one long and violet. One path for each kind.
+    ctx.restore();
+  }
+
+  /** The slow ring of ticks just outside the rim: every fifth one long and violet. One path for each kind. */
+  private drawTicks(cx: number, cy: number, r: number, alpha: number, strain: number): void {
+    const { ctx, t } = this;
+    if (alpha <= 0) return;
+    ctx.save();
+    ctx.globalAlpha = alpha;
     const ticks = 60;
     const spin = reduced ? 0 : -t * (0.02 + strain * 0.4);
     for (const long of [false, true]) {
