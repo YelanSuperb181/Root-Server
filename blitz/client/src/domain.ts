@@ -68,7 +68,7 @@ import {
   toScreen,
   toWorld,
 } from "./fx";
-import { Universe } from "./universe";
+import { Universe, UniverseView } from "./universe";
 import { RockArt, SUN, drawRockArt, makeRockArt } from "./rockart";
 import { Brows, Eyes, Look, Mouth, drawBlitz, drawHalo } from "./blitz";
 
@@ -178,6 +178,15 @@ const GATHER = 0.95;
 const SLOW_FRAME_MS = 22;
 const SMOOTH_FRAME_MS = 18;
 const MIN_QUALITY = 0.45;
+
+/** The bubble glass's darkness at its middle, 70% out, and its rim. */
+const GLASS = [0.35, 0.45, 0.8] as const;
+
+/** How dark the glass is `d` of the way out from its middle (0 to 1). */
+function glassAt(d: number): number {
+  if (d <= 0.7) return GLASS[0] + (GLASS[1] - GLASS[0]) * (d / 0.7);
+  return GLASS[1] + (GLASS[2] - GLASS[1]) * Math.min(1, (d - 0.7) / 0.3);
+}
 
 /** How long a typed message takes to fly over to Blitz, in seconds. */
 const MESSAGE_FLIGHT = 0.7;
@@ -297,6 +306,11 @@ export class DomainView {
   private lastImpact = -1;
   private emitAt: Record<string, number> = {};
   private rockArts = new Map<number, RockArt>();
+  /** Open space's drifting layers, painted once the camera settles and reused (see drawOpenUniverse). */
+  private openStill: { canvas?: HTMLCanvasElement; key: string; lastKey: string } = { key: "", lastKey: "" };
+  /** The bubble's drifting layers and glass, painted once and reused (see drawBubble). */
+  private bubbleStill: { canvas: HTMLCanvasElement; key: string; left: number; top: number } | undefined;
+  private bubbleShape = "";
   private rockHits = new Map<number, { born: number; power: number; x: number; y: number }>();
   /** A screen point Blitz is watching for a moment (a shooting star). */
   private watch: { x: number; y: number; until: number } | undefined;
@@ -1289,9 +1303,11 @@ export class DomainView {
     const ctx = this.ctx;
     const { W, H, t } = this;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    ctx.clearRect(0, 0, W, H);
-    const sx = this.shake > 0.01 ? (Math.random() - 0.5) * 9 * this.shake : 0;
-    const sy = this.shake > 0.01 ? (Math.random() - 0.5) * 9 * this.shake : 0;
+    // Open space paints every pixel anyway (unless it's opening, closing or shaking), so only clear otherwise.
+    if (!this.layoutOpen || this.trans || this.shake > 0.01) ctx.clearRect(0, 0, W, H);
+    // Shakes move in whole device pixels, so the pixel-for-pixel copies stay crisp and cheap.
+    const sx = this.shake > 0.01 ? Math.round((Math.random() - 0.5) * 9 * this.shake * this.dpr) / this.dpr : 0;
+    const sy = this.shake > 0.01 ? Math.round((Math.random() - 0.5) * 9 * this.shake * this.dpr) / this.dpr : 0;
     ctx.save();
     ctx.translate(sx, sy);
 
@@ -1319,13 +1335,11 @@ export class DomainView {
         ctx.beginPath();
         ctx.arc(cx, cy, reveal, 0, Math.PI * 2);
         ctx.clip();
-        this.universe.draw(ctx, W, H, this.cam, t, dt, view);
-        this.drawRocks();
+        this.drawOpenUniverse(dt, view);
         ctx.restore();
         this.drawRevealRing(cx, cy, reveal, tr!.kind === "burst" ? clamp01((t - tr!.start) / REVEAL) : clamp01((t - tr!.start) / GATHER));
       } else {
-        this.universe.draw(ctx, W, H, this.cam, t, dt, view);
-        this.drawRocks();
+        this.drawOpenUniverse(dt, view);
       }
       if (tr?.kind === "reform") this.drawRim(cx, cy, wallR, clamp01((t - tr.start) / GATHER), 0);
     } else {
@@ -1415,6 +1429,41 @@ export class DomainView {
     drawRockArt(ctx, this.rockArt(rock), sx, sy, R, rock.spin + wobble, { lx: Math.cos(la), ly: Math.sin(la), glow, tint: this.tint, gx: dx / dist, gy: dy / dist, flash }, t);
   }
 
+  /**
+   * Open space. While the camera is on the move the drifting layers are drawn
+   * fresh; once it has settled for a frame they're painted into a copy, which
+   * is reused until they drift a pixel (or the camera moves again).
+   */
+  private drawOpenUniverse(dt: number, view: UniverseView): void {
+    const { ctx, W, H, cam, t } = this;
+    const k = this.dpr;
+    const key = this.universe.stillKey(W, H, cam, t, k);
+    const still = this.openStill;
+    const settled = key === still.lastKey;
+    still.lastKey = key;
+    if (still.key === key || settled) {
+      if (still.key !== key) {
+        const c = still.canvas ?? document.createElement("canvas");
+        c.width = Math.round(W * k);
+        c.height = Math.round(H * k);
+        const g = c.getContext("2d")!;
+        g.setTransform(k, 0, 0, k, 0, 0);
+        this.universe.drawStill(g, W, H, cam, t);
+        still.canvas = c;
+        still.key = key;
+      }
+      const smooth = ctx.imageSmoothingEnabled;
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(still.canvas!, 0, 0, W, H);
+      ctx.imageSmoothingEnabled = smooth;
+    } else {
+      this.universe.drawStill(ctx, W, H, cam, t);
+    }
+    this.universe.drawLively(ctx, W, H, cam, t, dt, view);
+    // The rocks Blitz can bump into, in front of the far-off sky.
+    this.drawRocks();
+  }
+
   /** The bright edge of the universe as it opens out or folds back in. */
   private drawRevealRing(cx: number, cy: number, r: number, k: number): void {
     const ctx = this.ctx;
@@ -1437,23 +1486,86 @@ export class DomainView {
     ctx.restore();
   }
 
-  /** The bubble: the universe seen through dark glass, with a glowing rim. */
+  /**
+   * The bubble: the universe seen through dark glass, with a glowing rim.
+   * Inside the bubble the camera holds still, so the drifting layers and the
+   * glass are painted once into a copy that's reused until they've drifted a
+   * pixel; only the twinkling stars and dust are drawn fresh every frame.
+   */
   private drawBubble(cx: number, cy: number, r: number, alpha: number, strain: number, dt: number): void {
-    const { ctx } = this;
+    const { ctx, W, H, cam, t } = this;
+    const k = this.dpr;
+    const shape = `${r}|${cx}|${cy}|${k}`;
+    // While the bubble is still changing size (opening, resizing), a copy would be stale by the next frame.
+    const changing = shape !== this.bubbleShape;
+    this.bubbleShape = shape;
+    if (changing) {
+      this.drawBubbleFresh(cx, cy, r, alpha, dt);
+      this.drawRim(cx, cy, r, alpha, strain);
+      return;
+    }
+    const key = `${shape}|${this.universe.stillKey(W, H, cam, t, k)}`;
+    let still = this.bubbleStill;
+    if (!still || still.key !== key) {
+      const size = Math.ceil(r * 2 * k) + 2;
+      const c = still?.canvas.width === size ? still.canvas : document.createElement("canvas");
+      c.width = c.height = size;
+      const g = c.getContext("2d")!;
+      // Canvas pixel (0, 0) is the device pixel at the bubble's top-left corner.
+      const left = Math.floor((cx - r) * k) - 1;
+      const top = Math.floor((cy - r) * k) - 1;
+      g.setTransform(k, 0, 0, k, -left, -top);
+      this.paintBubbleStill(g, cx, cy, r);
+      still = this.bubbleStill = { canvas: c, key, left, top };
+    }
     ctx.save();
     ctx.globalAlpha = alpha;
+    const smooth = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = false;
+    // Copied pixel for pixel onto the device pixels it was painted for (unless the screen is shaking).
+    ctx.drawImage(still.canvas, still.left / k, still.top / k, still.canvas.width / k, still.canvas.height / k);
+    ctx.imageSmoothingEnabled = smooth;
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.clip();
-    this.universe.draw(ctx, this.W, this.H, this.cam, this.t, dt, { alpha, vignette: false, shooting: false });
-    const glass = ctx.createRadialGradient(cx, cy - r * 0.2, r * 0.05, cx, cy, r);
-    glass.addColorStop(0, "rgba(27, 40, 80, 0.35)");
-    glass.addColorStop(0.7, "rgba(15, 23, 52, 0.45)");
-    glass.addColorStop(1, "rgba(9, 14, 34, 0.8)");
-    ctx.fillStyle = glass;
-    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+    this.drawBubbleLively(cx, cy, r, alpha, dt);
     ctx.restore();
     this.drawRim(cx, cy, r, alpha, strain);
+  }
+
+  /** The drifting layers seen through the bubble's tinted glass, clipped to the bubble. */
+  private paintBubbleStill(g: CanvasRenderingContext2D, cx: number, cy: number, r: number, alpha = 1): void {
+    g.save();
+    g.beginPath();
+    g.arc(cx, cy, r, 0, Math.PI * 2);
+    g.clip();
+    this.universe.drawStill(g, this.W, this.H, this.cam, this.t, alpha);
+    g.globalAlpha = alpha;
+    const glass = g.createRadialGradient(cx, cy - r * 0.2, r * 0.05, cx, cy, r);
+    glass.addColorStop(0, `rgba(27, 40, 80, ${GLASS[0]})`);
+    glass.addColorStop(0.7, `rgba(15, 23, 52, ${GLASS[1]})`);
+    glass.addColorStop(1, `rgba(9, 14, 34, ${GLASS[2]})`);
+    g.fillStyle = glass;
+    g.fillRect(cx - r, cy - r, r * 2, r * 2);
+    g.restore();
+  }
+
+  /** The twinkling stars and dust, dimmed by the glass (which darkens toward the rim). Call with the bubble clipped. */
+  private drawBubbleLively(cx: number, cy: number, r: number, alpha: number, dt: number): void {
+    const dim = (x: number, y: number) => 1 - glassAt(Math.hypot(x - cx, y - (cy - r * 0.2)) / r);
+    this.universe.drawLively(this.ctx, this.W, this.H, this.cam, this.t, dt, { alpha, vignette: false, shooting: false, dim });
+  }
+
+  /** The bubble drawn straight onto the screen, for frames where it's changing size. */
+  private drawBubbleFresh(cx: number, cy: number, r: number, alpha: number, dt: number): void {
+    const { ctx } = this;
+    ctx.save();
+    this.paintBubbleStill(ctx, cx, cy, r, alpha);
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.clip();
+    this.drawBubbleLively(cx, cy, r, alpha, dt);
+    ctx.restore();
   }
 
   /** The rim, pushed outward around where Blitz is straining against it, with its slow ring of ticks. */
@@ -1462,6 +1574,10 @@ export class DomainView {
     if (alpha <= 0) return;
     const rimPath = () => {
       ctx.beginPath();
+      if (strain < 0.001) {
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        return;
+      }
       const n = 120;
       for (let i = 0; i <= n; i++) {
         const a = (i / n) * Math.PI * 2;
@@ -1478,12 +1594,11 @@ export class DomainView {
     };
     ctx.save();
     ctx.globalAlpha = alpha;
-    ctx.lineWidth = 6;
-    ctx.strokeStyle = "rgba(127, 227, 255, 0.10)";
-    rimPath();
-    ctx.stroke();
     // The glow: wide, faint strokes under the line (a blurred shadow this size is slow to draw every frame).
     rimPath();
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = "rgba(127, 227, 255, 0.10)";
+    ctx.stroke();
     for (const [width, alpha] of [
       [11 + strain * 12, 0.035],
       [6 + strain * 6, 0.07],
@@ -1496,18 +1611,20 @@ export class DomainView {
     ctx.lineWidth = 1.6 + strain * 1.2;
     ctx.strokeStyle = `rgba(${190 + 65 * strain}, ${230 + 25 * strain}, 255, 0.85)`;
     ctx.stroke();
+    // The slow ring of ticks: every fifth one long and violet. One path for each kind.
     const ticks = 60;
     const spin = reduced ? 0 : -t * (0.02 + strain * 0.4);
-    for (let i = 0; i < ticks; i++) {
-      const a = spin + (i / ticks) * Math.PI * 2;
-      const long = i % 5 === 0;
-      const r1 = r + 6;
-      const r2 = r + (long ? 12 : 9);
+    for (const long of [false, true]) {
+      ctx.beginPath();
+      for (let i = long ? 0 : 1; i < ticks; i += long ? 5 : 1) {
+        if (!long && i % 5 === 0) continue;
+        const a = spin + (i / ticks) * Math.PI * 2;
+        const r2 = r + (long ? 12 : 9);
+        ctx.moveTo(cx + Math.cos(a) * (r + 6), cy + Math.sin(a) * (r + 6));
+        ctx.lineTo(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2);
+      }
       ctx.strokeStyle = long ? "rgba(200, 168, 255, 0.55)" : "rgba(160, 200, 255, 0.22)";
       ctx.lineWidth = long ? 1.4 : 1;
-      ctx.beginPath();
-      ctx.moveTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
-      ctx.lineTo(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2);
       ctx.stroke();
     }
     ctx.restore();
