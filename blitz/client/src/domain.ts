@@ -1412,11 +1412,24 @@ export class DomainView {
       // The darkened edges come in as the universe opens out, and go as it folds back.
       this.showVignette(tr?.kind === "burst" ? easeInOut((t - tr.start) / REVEAL) : tr?.kind === "reform" ? 1 - easeInOut((t - tr.start) / GATHER) : 1);
       if (reveal !== undefined) {
+        // Clipping to the circle would send every pixel of the universe through a mask. Instead: clip to
+        // the circle's box (on whole device pixels, which is nearly free), then clear the corners outside it.
+        // (The box is worked out on screen, where the shake has moved the circle to.)
+        const k = this.dpr;
+        const x0 = Math.max(0, Math.floor((cx + sx - reveal) * k) / k);
+        const y0 = Math.max(0, Math.floor((cy + sy - reveal) * k) / k);
+        const x1 = Math.min(W, Math.ceil((cx + sx + reveal) * k) / k);
+        const y1 = Math.min(H, Math.ceil((cy + sy + reveal) * k) / k);
         ctx.save();
         ctx.beginPath();
-        ctx.arc(cx, cy, reveal, 0, Math.PI * 2);
+        ctx.rect(x0 - sx, y0 - sy, x1 - x0, y1 - y0);
         ctx.clip();
         this.drawOpenUniverse(dt, view);
+        ctx.globalCompositeOperation = "destination-out";
+        ctx.beginPath();
+        ctx.rect(x0 - sx, y0 - sy, x1 - x0, y1 - y0);
+        ctx.arc(cx, cy, reveal, 0, Math.PI * 2);
+        ctx.fill("evenodd");
         ctx.restore();
         this.drawRevealRing(cx, cy, reveal, tr!.kind === "burst" ? clamp01((t - tr!.start) / REVEAL) : clamp01((t - tr!.start) / GATHER));
       } else {
@@ -1601,10 +1614,10 @@ export class DomainView {
     const fade = Math.sin(Math.PI * Math.min(1, k * 1.2));
     if (fade <= 0.01) return;
     ctx.save();
-    ctx.globalCompositeOperation = "lighter";
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     // Layered strokes for the glow: a blurred shadow on a circle this size would cover the whole screen, every frame.
+    // Blended normally rather than as added light: on dark space it looks the same, and is several times quicker.
     for (const [width, color] of [
       [44, `rgba(127, 227, 255, ${0.05 * fade})`],
       [22, `rgba(127, 227, 255, ${0.1 * fade})`],
@@ -1813,7 +1826,6 @@ export class DomainView {
     const spread = 0.12 + 0.18 * (1 - near) + (look.r / r) * 1.2 + strain * 0.25;
     const { ctx } = this;
     ctx.save();
-    ctx.globalCompositeOperation = "lighter";
     const width = 2 + 3 * near + strain * 4;
     const strength = Math.min(1, 0.75 * near * (this.asleep ? 0.6 : 1) + strain * 0.3);
     ctx.beginPath();

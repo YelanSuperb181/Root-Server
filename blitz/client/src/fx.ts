@@ -175,7 +175,7 @@ export interface Ripple {
 export function drawRipples(ctx: CanvasRenderingContext2D, cam: Cam, ripples: Ripple[], t: number, wallRadius: number): void {
   const [cx, cy] = toScreen(cam, 0, 0);
   ctx.save();
-  ctx.globalCompositeOperation = "lighter";
+  // Blended normally, not as added light: the same look on the dark glass, and much quicker for wide strokes.
   ctx.lineCap = "round";
   for (let i = ripples.length - 1; i >= 0; i--) {
     const rp = ripples[i];
@@ -422,8 +422,8 @@ export class Shatter {
 
   draw(ctx: CanvasRenderingContext2D, W: number, H: number, t: number, dt: number): void {
     const reach = Math.hypot(W, H);
+    // Shockwaves are blended normally, not as added light: rings this big are several times quicker that way.
     ctx.save();
-    ctx.globalCompositeOperation = "lighter";
     for (let i = this.shocks.length - 1; i >= 0; i--) {
       const s = this.shocks[i];
       const age = t - s.born;
@@ -715,6 +715,9 @@ function wrap(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, max
   });
 }
 
+/** The last speech bubble's words, as laid out. */
+let speechLayout: { key: string; lines: string[]; width: number } | undefined;
+
 /** Blitz's words, in a bubble above it (or below, near the top), wrapped and kept on screen. */
 export function drawSpeech(
   ctx: CanvasRenderingContext2D,
@@ -727,13 +730,21 @@ export function drawSpeech(
   font: string,
 ): void {
   if (age < 0 || age > life) return;
-  const size = Math.max(13, Math.min(17, blitz.r * 0.52));
+  // Whole pixels, so Blitz's gentle pulse doesn't change the text's layout every frame.
+  const size = Math.round(Math.max(13, Math.min(17, blitz.r * 0.52)));
   ctx.save();
-  ctx.font = `600 ${Math.round(size)}px ${font}`;
+  ctx.font = `600 ${size}px ${font}`;
   const padX = size * 0.8;
-  const lines = wrap(ctx, text, Math.min(300, W * 0.7) - padX * 2, 4);
+  const maxWidth = Math.min(300, W * 0.7) - padX * 2;
+  // Measuring text is slow; the words only need laying out once per bubble.
+  const key = `${ctx.font}|${maxWidth}|${text}`;
+  if (speechLayout?.key !== key) {
+    const wrapped = wrap(ctx, text, maxWidth, 4);
+    speechLayout = { key, lines: wrapped, width: Math.max(...wrapped.map((l) => ctx.measureText(l).width)) };
+  }
+  const lines = speechLayout.lines;
   const lineH = size * 1.3;
-  const w = Math.min(W - 16, Math.max(...lines.map((l) => ctx.measureText(l).width)) + padX * 2);
+  const w = Math.min(W - 16, speechLayout.width + padX * 2);
   const h = lines.length * lineH + size * 0.75;
   const gap = blitz.r * 1.55;
   const above = blitz.y - gap - h > 8;
