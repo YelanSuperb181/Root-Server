@@ -21,9 +21,9 @@ const shortDate = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateStri
 
 // ---- Stardust ------------------------------------------------------------------------
 
-/** An outfit being tried on in the shop (not bought yet). */
-let tryOn: Outfit | undefined;
 const SLOT_TITLE: Record<CosmeticSlot, string> = { hat: "🎩 Hats", trail: "🌠 Trails", glow: "🔮 Glows" };
+const SLOTS = ["hat", "trail", "glow"] as const;
+const pickOne = <T>(list: readonly T[]): T => list[Math.floor(Math.random() * list.length)];
 
 const stardust: Section = {
   id: "stardust",
@@ -34,10 +34,37 @@ const stardust: Section = {
     const d = data.stardust;
     if (!d?.on) return h("div.msection", {}, empty("💫", "Stardust is switched off in this community."));
     const wearing: Outfit = { hat: d.hat, trail: d.trail, glow: d.glow };
-    const shown = tryOn ?? wearing;
-    const trying = tryOn !== undefined;
+    // What's tried on shows on Blitz in the domain too (menu.tryOn), until it's put back or the shop is left.
+    const tryOn = menu.tryOn;
+    const shown: Outfit = tryOn ? { hat: tryOn.hat ?? "", trail: tryOn.trail ?? "", glow: tryOn.glow ?? "" } : wearing;
+    const trying = tryOn !== undefined && SLOTS.some((slot) => (shown[slot] ?? "") !== (wearing[slot] ?? ""));
+    const canWear = (id: string) => d.wardrobe || d.owned.includes(id);
+    const tryIt = (look: Outfit | undefined) => {
+      menu.setTryOn(look);
+      redraw();
+    };
+    // Everything tried on that they can wear, put on in one go.
+    const changed = SLOTS.filter((slot) => (shown[slot] ?? "") !== (wearing[slot] ?? ""));
+    const wearable = changed.every((slot) => !shown[slot] || canWear(shown[slot]!));
+    const wearLook = async () => {
+      const on = changed.map((slot) => shown[slot]).filter((id): id is string => !!id);
+      const off = changed.filter((slot) => !shown[slot]);
+      for (const slot of off) await menu.run("wear", `none ${slot}`);
+      if (on.length) await menu.run("wear", on.join(", "));
+      menu.setTryOn(undefined);
+    };
+    const surprise = () =>
+      tryIt(
+        Object.fromEntries(
+          SLOTS.map((slot) => {
+            // Now and then a slot left empty, for variety.
+            return [slot, Math.random() < 0.15 ? "" : pickOne(COSMETICS.filter((c) => c.slot === slot)).id];
+          }),
+        ) as Outfit,
+      );
+
     const daily = d.dailyReady
-      ? button("✨ Collect today's gift", (b) => void busy(b, () => menu.run("daily")), "primary")
+      ? button("✨ Collect today's gift", (b) => void busy(b, () => menu.run("daily")), "primary.glowing")
       : h("p.mnote", { text: `🌙 Next gift ${fromNow(d.nextDaily)}` });
     const head = card(
       h(
@@ -47,37 +74,63 @@ const stardust: Section = {
         h(
           "div.mwallet-text",
           {},
-          h("p.mwallet-balance", {}, h("strong", { text: d.balance.toLocaleString() }), " Stardust"),
+          h("p.mwallet-balance", {}, h("strong", { text: d.balance.toLocaleString(), "data-count": String(d.balance), "data-key": "shop-dust" }), " Stardust"),
           h("p.mnote", { text: d.streak > 0 ? `🔥 ${d.streak}-day streak · ${d.earned.toLocaleString()} collected in all` : `${d.earned.toLocaleString()} collected in all` }),
           daily,
-          trying && h("div.mrow", {}, h("span.mtag", { text: "Trying on" }), button("Back to my outfit", () => ((tryOn = undefined), redraw()), "ghost.small")),
+          h(
+            "div.mrow",
+            {},
+            button("🎲 Surprise me", surprise, "ghost.small"),
+            trying && wearable && button(d.wardrobe ? "Wear this look" : "Wear these", (b) => void busy(b, wearLook), "primary.small"),
+            trying && button("Back to my outfit", () => tryIt(undefined), "ghost.small"),
+          ),
+          trying && h("p.mnote.mtrying", { text: "👀 Trying on: your Blitz in the domain is wearing it too." }),
         ),
       ),
     );
+    const wardrobe =
+      d.wardrobe &&
+      h(
+        "div.mcard.mwardrobe",
+        {},
+        h("span.mwardrobe-icon", { "aria-hidden": "true" }, "🎩"),
+        h(
+          "div",
+          {},
+          h("p.mwardrobe-title", { text: "Creator's wardrobe" }),
+          h("p.mnote", { text: "You run this community, so every look is yours to wear, free, to test them out. Members buy them with Stardust." }),
+        ),
+      );
     const shop = h("div.msection");
-    for (const slot of ["hat", "trail", "glow"] as const) {
+    for (const slot of SLOTS) {
       const grid = h("div.mshop");
       for (const c of COSMETICS.filter((x) => x.slot === slot)) {
         const owned = d.owned.includes(c.id);
         const on = wearing[slot] === c.id;
+        const tried = shown[slot] === c.id && !on;
+        const price = owned ? (on ? "Wearing ✓" : "Yours") : d.wardrobe ? `Free for you · ${c.price.toLocaleString()} ✨` : `${c.price.toLocaleString()} ✨`;
         const tile = h(
-          `div.mshop-item${on ? ".on" : ""}${shown[slot] === c.id && !on ? ".trying" : ""}`,
-          {},
-          h("span.mshop-icon", { "aria-hidden": "true", style: c.color ? `--c:${c.color}` : "" }, c.icon),
+          `div.mshop-item${on ? ".on" : ""}${tried ? ".trying" : ""}`,
+          { style: c.color ? `--c:${c.color}` : "" },
+          h("span.mshop-icon", { "aria-hidden": "true" }, c.icon),
           h("p.mshop-name", { text: c.name }),
-          h("p.mnote", { text: owned ? (on ? "Wearing ✓" : "Yours") : `${c.price.toLocaleString()} ✨` }),
+          h("p.mnote", { text: price }),
         );
         const actions = h("div.mshop-actions");
-        if (owned) {
-          actions.append(on ? button("Take off", (b) => void busy(b, () => menu.run("wear", `none ${slot}`)), "ghost.small") : button("Wear", (b) => void busy(b, () => menu.run("wear", c.id)), "small"));
-        } else {
-          actions.append(
-            button("Try on", () => ((tryOn = { ...(tryOn ?? wearing), [slot]: c.id }), redraw()), "ghost.small"),
-            button(d.balance >= c.price ? "Buy" : `Need ${(c.price - d.balance).toLocaleString()}`, (b) => void busy(b, async () => {
-              await menu.run("buy", c.id);
-              tryOn = undefined;
-            }), d.balance >= c.price ? "primary.small" : "ghost.small"),
-          );
+        if (on) actions.append(button("Take off", (b) => void busy(b, () => menu.run("wear", `none ${slot}`)), "ghost.small"));
+        else {
+          actions.append(button(tried ? "Trying ✓" : "Try on", () => tryIt({ ...(tryOn ?? wearing), [slot]: tried ? wearing[slot] ?? "" : c.id }), tried ? "small" : "ghost.small"));
+          if (canWear(c.id)) actions.append(button("Wear", (b) => void busy(b, async () => {
+            await menu.run("wear", c.id);
+            if (menu.tryOn) menu.setTryOn({ ...menu.tryOn, [slot]: c.id });
+          }), "primary.small"));
+          else
+            actions.append(
+              button(d.balance >= c.price ? "Buy" : `Need ${(c.price - d.balance).toLocaleString()}`, (b) => void busy(b, async () => {
+                await menu.run("buy", c.id);
+                menu.setTryOn(undefined);
+              }), d.balance >= c.price ? "primary.small" : "ghost.small"),
+            );
         }
         tile.append(actions);
         grid.append(tile);
@@ -92,6 +145,7 @@ const stardust: Section = {
       "div.msection",
       {},
       head,
+      wardrobe,
       card(cardTitle("How to earn it"), note("A little for chatting (once a minute), your daily gift (more each day in a row, with a bonus every 7th), level-ups, and giveaways. Spend it on looks your Blitz wears in its domain.")),
       shop,
       d.top.length > 0 && card(cardTitle("Top collectors"), top),

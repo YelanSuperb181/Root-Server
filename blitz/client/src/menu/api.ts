@@ -38,7 +38,7 @@ export function serverMenu(): MenuApi {
   const svc = blitzMenuServiceClient;
   return {
     demo: false,
-    overview: () => withTimeout(svc.overview({}), 15_000),
+    overview: () => withTimeout(svc.overview({}), 20_000),
     run: (command, args = "", channelId = "") => withTimeout(svc.run({ command, args, channelId }), 25_000),
     searchMembers: async (query) => (await withTimeout(svc.searchMembers({ query }), 10_000)).members,
     member: (userId) => withTimeout(svc.member({ userId }), 10_000),

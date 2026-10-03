@@ -2,12 +2,15 @@
 // bubble, and the dream pages Blitz summons out in open space): what the
 // server says the menu holds, and Blitz's reply to the last thing picked.
 
+import type { Outfit } from "@blitz/shared";
 import type { MenuApi, MenuOverview, RunResponse } from "./api";
 
 export interface Reply {
   text: string;
   ok: boolean;
   at: number;
+  /** The command it answers ("daily", "buy"…). */
+  command: string;
 }
 
 /** What the domain does when something's picked in the menu: Blitz reacts to the reply. */
@@ -19,12 +22,20 @@ const STALE_MS = 20_000;
 export class Menu {
   data: MenuOverview | undefined;
   error: string | undefined;
+  /** What went wrong, in a few words ("took too long", or the server's error), for the small print. */
+  errorDetail: string | undefined;
+  /** When the next automatic try is (0: none planned). */
+  retryAt = 0;
   loading = false;
   reply: Reply | undefined;
   onReply: ReplyListener | undefined;
+  /** A look being tried on in the shop (cosmetic ids): Blitz in the domain wears it until it's put back. */
+  tryOn: Outfit | undefined;
   private loadedAt = 0;
   private listeners = new Set<() => void>();
   private pending: Promise<void> | undefined;
+  private failures = 0;
+  private retryTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(readonly api: MenuApi) {}
 
@@ -50,9 +61,25 @@ export class Menu {
       try {
         this.data = await this.api.overview();
         this.error = undefined;
+        this.errorDetail = undefined;
         this.loadedAt = Date.now();
-      } catch {
-        this.error = "Blitz's server isn't answering right now.";
+        this.failures = 0;
+        this.retryAt = 0;
+        if (this.retryTimer) clearTimeout(this.retryTimer);
+        this.retryTimer = undefined;
+      } catch (err) {
+        // Keep showing what we had; try again on our own, waiting longer each time (3s, 6s, 12s… up to 30s).
+        this.failures++;
+        this.error = this.data ? "Lost touch with Blitz's server for a moment." : "Blitz's server isn't answering yet.";
+        const why = err instanceof Error ? err.message : String(err);
+        this.errorDetail = /timed out/i.test(why) ? "It took too long to answer." : why ? `It said: ${why.slice(0, 120)}` : undefined;
+        const wait = Math.min(30_000, 3000 * 2 ** (this.failures - 1));
+        this.retryAt = Date.now() + wait;
+        if (this.retryTimer) clearTimeout(this.retryTimer);
+        this.retryTimer = setTimeout(() => {
+          this.retryTimer = undefined;
+          if (this.listeners.size > 0) void this.load();
+        }, wait);
       } finally {
         this.loading = false;
         this.pending = undefined;
@@ -77,11 +104,22 @@ export class Menu {
     }
     const text = res.replies.join("\n\n").trim();
     if (text) {
-      this.reply = { text, ok: res.ok && !/^(💡|⚠️|🔒|🤷)/u.test(text), at: Date.now() };
+      this.reply = { text, ok: res.ok && !/^(💡|⚠️|🔒|🤷)/u.test(text), at: Date.now(), command };
       this.onReply?.(this.reply);
     }
     await this.load();
     return res;
+  }
+
+  /** Tries a look on (or, with undefined, puts Blitz's own outfit back). */
+  setTryOn(outfit: Outfit | undefined): void {
+    this.tryOn = outfit;
+    this.changed();
+  }
+
+  /** A section was opened (undefined: none, the menu closed): leaving the shop puts the tried-on look back. */
+  opened(sectionId: string | undefined): void {
+    if (sectionId !== "stardust" && this.tryOn) this.setTryOn(undefined);
   }
 
   /** Clears Blitz's last reply. */

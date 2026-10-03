@@ -9,7 +9,7 @@ import { COSMETICS, Cosmetic, CosmeticSlot, Outfit, cosmetic, findCosmetic } fro
 import { config } from "../config";
 import { Command, UsageError } from "../core/commands";
 import { serialize } from "../core/lock";
-import { isPerson, knownPeople, nickname } from "../core/members";
+import { AccessLevel, atLeast, isPerson, knownPeople, nickname } from "../core/members";
 import { settings } from "../core/settings";
 import { kv } from "../core/store";
 import { formatDuration } from "../logic/parse";
@@ -95,14 +95,22 @@ export async function buyCosmetic(userId: string, item: Cosmetic): Promise<Walle
   });
 }
 
-export async function wearCosmetic(userId: string, item: Cosmetic | undefined, slot?: CosmeticSlot): Promise<Wallet> {
+/**
+ * The community's admins (its creator among them) can wear anything without
+ * buying it, to try every look out; it doesn't go in their wallet as bought.
+ */
+export function wearsAnything(level: AccessLevel): boolean {
+  return atLeast(level, "admin");
+}
+
+export async function wearCosmetic(userId: string, item: Cosmetic | undefined, slot?: CosmeticSlot, free = false): Promise<Wallet> {
   return change(userId, (w) => {
     if (!item) {
       const wearing = { ...w.wearing };
       if (slot) delete wearing[slot];
       return { ...w, wearing: slot ? wearing : {} };
     }
-    if (!w.owned.includes(item.id)) throw new UsageError(`You don't have the ${item.name} yet: \`${config.prefix}buy ${item.id}\` (${formatNumber(item.price)} ✨).`);
+    if (!free && !w.owned.includes(item.id)) throw new UsageError(`You don't have the ${item.name} yet: \`${config.prefix}buy ${item.id}\` (${formatNumber(item.price)} ✨).`);
     return { ...w, wearing: { ...w.wearing, [item.slot]: item.id } };
   });
 }
@@ -208,8 +216,8 @@ export const stardustCommands: Command[] = [
   },
   {
     name: "wear",
-    usage: "<item> | none [hat | trail | glow]",
-    summary: "Change what your Blitz wears.",
+    usage: "<item>[, <item>…] | none [hat | trail | glow]",
+    summary: "Change what your Blitz wears (admins can wear any look, free).",
     level: "everyone",
     category: "Fun",
     async run(ctx) {
@@ -220,10 +228,17 @@ export const stardustCommands: Command[] = [
         await ctx.reply(slot ? `🪄 Took off the ${slot}.` : "🪄 Your Blitz is back to its plain glowing self.");
         return;
       }
-      const item = findCosmetic(ctx.rest);
-      if (!item) throw new UsageError(`Usage: \`${config.prefix}wear crown\` or \`${config.prefix}wear none\`.`);
-      await wearCosmetic(ctx.userId, item);
-      await ctx.reply(`🪄 Your Blitz put on the **${item.icon} ${item.name}**.`);
+      // One look, or a whole outfit: "crown, comet, sunset".
+      const items = ctx.rest.split(",").map((name) => findCosmetic(name.trim()));
+      if (items.length === 0 || items.some((item) => !item)) throw new UsageError(`Usage: \`${config.prefix}wear crown\`, \`${config.prefix}wear crown, comet\` or \`${config.prefix}wear none\`.`);
+      const looks = items as Cosmetic[];
+      const { owned } = await walletOf(ctx.userId);
+      const anything = wearsAnything(ctx.level);
+      const missing = looks.find((item) => !owned.includes(item.id));
+      if (missing && !anything) throw new UsageError(`You don't have the ${missing.name} yet: \`${config.prefix}buy ${missing.id}\` (${formatNumber(missing.price)} ✨).`);
+      for (const item of looks) await wearCosmetic(ctx.userId, item, undefined, anything);
+      const list = looks.map((item) => `**${item.icon} ${item.name}**`).join(", ");
+      await ctx.reply(`🪄 Your Blitz put on the ${list}.${missing ? " (Admins can wear any look free, to try it out.)" : ""}`);
     },
   },
   {

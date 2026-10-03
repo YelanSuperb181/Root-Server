@@ -255,6 +255,8 @@ function demoState(): MenuOverview {
       hat: "partyhat",
       trail: "frost",
       glow: "",
+      // The preview's visitor runs the made-up community, so every look is theirs to try.
+      wardrobe: true,
       top: [
         ["demo-luna", 8120],
         ["demo-mira", 5430],
@@ -523,10 +525,12 @@ export function demoMenu(): MenuApi {
           else dust.hat = dust.trail = dust.glow = "";
           return say(slot ? `🪄 Took off the ${slot}.` : "🪄 Your Blitz is back to its plain glowing self.");
         }
-        const item = findCosmetic(args);
-        if (!item || !dust.owned.includes(item.id)) return no("💡 You don't have that one yet.");
-        dust[item.slot] = item.id;
-        return say(`🪄 Your Blitz put on the **${item.icon} ${item.name}**.`);
+        const items = args.split(",").map((name) => findCosmetic(name.trim()));
+        if (items.length === 0 || items.some((item) => !item)) return no("💡 There's nothing like that in the shop.");
+        const looks = items as NonNullable<(typeof items)[number]>[];
+        if (!state.stardust!.wardrobe && looks.some((item) => !dust.owned.includes(item.id))) return no("💡 You don't have that one yet.");
+        for (const item of looks) dust[item.slot] = item.id;
+        return say(`🪄 Your Blitz put on the ${looks.map((item) => `**${item.icon} ${item.name}**`).join(", ")}.`);
       }
       case "enter": {
         const g = state.giveaways.find((x) => x.id === Number(args));

@@ -4,8 +4,10 @@
 // floating page with Blitz hovering beside it; send it away and it dissolves
 // back into Blitz in a stream of light.
 
+import { accentOf, accentStyle, countUp, spotlight, stardustShower, tilt } from "./flair";
 import { Menu } from "./menu";
 import { keepFields } from "./panel";
+import { offlineCard } from "./pieces";
 import { Section, SectionContext, sectionsFor } from "./sections";
 import { h, rich } from "./ui";
 
@@ -116,7 +118,9 @@ export class DreamMenu {
     this.host.hold(centre);
     const veil = h("div.dream-veil");
     veil.addEventListener("click", () => (this.page ? this.backToCards() : this.close()));
-    this.root = h("div.dream", { role: "dialog", "aria-label": "Blitz's menu" }, veil);
+    const find = h("button.dream-find", { type: "button", title: "Find anything (Ctrl K)" }, h("span", { "aria-hidden": "true" }, "✦ "), "Find anything ", h("kbd", { text: "Ctrl K" }));
+    find.addEventListener("click", () => this.onFind?.());
+    this.root = h("div.dream", { role: "dialog", "aria-label": "Blitz's menu" }, veil, find);
     this.parent.append(this.root);
     window.addEventListener("keydown", this.keyHandler);
     this.unsubscribe = this.menu.subscribe(() => this.refresh());
@@ -126,10 +130,21 @@ export class DreamMenu {
     (this.root.querySelector(".dream-card") as HTMLElement | null)?.focus({ preventScroll: true });
   }
 
+  /** Opens the quick finder (set by whoever made the menu). */
+  onFind: (() => void) | undefined;
+
+  /** Opens one section's page (summoning the menu first if it isn't up). */
+  openSection(id: string): void {
+    if (!this.isOpen) this.summon();
+    const section = sectionsFor(this.menu).find((s) => s.id === id);
+    if (section && this.root) this.openPage(section);
+  }
+
   /** Sends the menu away: it dissolves back into Blitz. */
   close(): void {
     const root = this.root;
     if (!root) return;
+    this.menu.opened(undefined);
     this.root = undefined;
     this.unsubscribe?.();
     window.removeEventListener("keydown", this.keyHandler);
@@ -212,7 +227,7 @@ export class DreamMenu {
       const p = points[i];
       const card = h(
         `button.dream-card${slim && !section.team ? ".slim" : ""}`,
-        { type: "button", style: `left:${p.x}px;top:${p.y}px;--s:${(scales?.[i] ?? scale).toFixed(3)}${slim && !section.team ? `;--h:${COMPACT_H}px` : size}`, "aria-label": `${section.title}: ${section.blurb}` },
+        { type: "button", style: `left:${p.x}px;top:${p.y}px;--s:${(scales?.[i] ?? scale).toFixed(3)}${slim && !section.team ? `;--h:${COMPACT_H}px` : size};${accentStyle(section.id)}`, "aria-label": `${section.title}: ${section.blurb}` },
         h(
           "span.dream-card-inner",
           { style: `animation-delay:${(-i * 0.73).toFixed(2)}s` },
@@ -224,6 +239,7 @@ export class DreamMenu {
         ),
       );
       card.addEventListener("click", () => this.openPage(section));
+      tilt(card);
       root.append(card);
       this.cards.set(section.id, card);
       if (!reduced) {
@@ -244,6 +260,7 @@ export class DreamMenu {
 
   /** A card unfolds into its page, and Blitz floats over beside it. */
   private openPage(section: Section): void {
+    this.menu.opened(section.id);
     const root = this.root;
     if (!root) return;
     this.section = section;
@@ -259,14 +276,17 @@ export class DreamMenu {
     const replyBox = h("div.dream-reply", { hidden: true, role: "status" });
     const page = h(
       "section.dream-page",
-      { "aria-label": section.title },
-      h("header.dream-page-head", {}, h("span.dream-page-icon", { "aria-hidden": "true" }, section.icon), h("div.dream-page-titles", {}, h("h2", { text: section.title }), h("p", { text: section.blurb })), back, close),
+      { "aria-label": section.title, style: accentStyle(section.id) },
+      h("header.dream-page-head", {}, h("span.dream-page-icon.mp-orb", { "aria-hidden": "true" }, section.icon), h("div.dream-page-titles", {}, h("h2", { text: section.title }), h("p", { text: section.blurb })), back, close),
       body,
       replyBox,
     );
     this.page?.parentElement?.remove();
     this.page = page;
     root.append(h("div.dream-page-wrap", {}, page));
+    spotlight(body);
+    body.classList.add("enter");
+    setTimeout(() => body.classList.remove("enter"), 1100);
     this.drawPage();
 
     // Blitz hovers beside the page (above it on narrow screens), looking at it.
@@ -276,6 +296,13 @@ export class DreamMenu {
     const top = rect.top - host.top;
     const narrow = box.w < NARROW;
     const at = narrow ? { x: box.w / 2, y: Math.max(box.top + 30, top - 46) } : { x: Math.max(60, left - 140), y: top + Math.min(rect.height / 2, 200) };
+    // Blitz casts the page: motes of the section's light stream from Blitz into its orb, which flares.
+    const orb = page.querySelector<HTMLElement>(".mp-orb");
+    if (orb) {
+      const b = this.host.blitzAt();
+      const o = orb.getBoundingClientRect();
+      stardustShower(DOMRect.fromRect({ x: host.left + b.x, y: host.top + b.y, width: 0, height: 0 }), { x: o.left + o.width / 2, y: o.top + o.height / 2 }, () => orb.classList.add("flare"), accentOf(section.id), 10);
+    }
     this.host.hold(at, { x: left + rect.width / 2, y: top + rect.height / 3 });
 
     if (!reduced && card) {
@@ -299,6 +326,7 @@ export class DreamMenu {
   private backToCards(): void {
     const page = this.page;
     if (!page || !this.root) return;
+    this.menu.opened(undefined);
     this.page = undefined;
     this.section = undefined;
     this.root.classList.remove("paged");
@@ -327,6 +355,7 @@ export class DreamMenu {
       body.replaceChildren(this.render(section, body));
       body.dataset.section = section.id;
       keep?.();
+      countUp(body);
     }
     this.drawn = { data: menu.data, reply: replyAt };
     const replyBox = page.querySelector<HTMLElement>(".dream-reply")!;
@@ -343,7 +372,8 @@ export class DreamMenu {
   private render(section: Section, body: HTMLElement): HTMLElement {
     const { menu } = this;
     if (!menu.data) {
-      return h("div.mcard.mloading", {}, h("span.mloading-orb", { "aria-hidden": "true" }), h("p", { text: menu.error ?? "Blitz is gathering the menu…" }));
+      if (menu.error) return offlineCard(menu);
+      return h("div.mcard.mloading", {}, h("span.mloading-orb", { "aria-hidden": "true" }), h("p", { text: "Blitz is gathering the menu…" }));
     }
     const ctx: SectionContext = {
       menu,

@@ -35,7 +35,7 @@ Every command can also be run from **Blitz's menu**, beside its domain, with the
 | `!daily` | Collect today's Stardust gift: 50, plus 10 for each day in a row (up to 150), and 100 extra every 7th day. |
 | `!shop` | Looks for your own Blitz: hats, trails and glows. |
 | `!buy <item>` | Buy one (it goes straight on): `!buy crown`. |
-| `!wear <item>` | Change what your Blitz wears; `!wear none` (or `none hat`) takes things off. |
+| `!wear <item>` | Change what your Blitz wears; several at once with commas (`!wear crown, comet, sunset`); `!wear none` (or `none hat`) takes things off. The community's admins (its creator among them) can wear every look free, to try them out. |
 | `!gift @someone <amount>` | Give some of your Stardust away. Also `!give`. |
 | `!giveaways` | Giveaways running now. `!enter <number>` joins one (same as reacting 🎉). |
 | `!warnings` | Your warnings, if you have any. |

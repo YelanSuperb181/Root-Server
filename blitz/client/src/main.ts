@@ -4,10 +4,16 @@ import { DomainView } from "./domain";
 import { cosmetic } from "@blitz/shared";
 import { demoMenu, serverMenu } from "./menu/api";
 import { DreamMenu } from "./menu/dream";
+import { recentPress, stardustShower } from "./menu/flair";
 import { Menu } from "./menu/menu";
 import { MenuPanel } from "./menu/panel";
+import { Palette } from "./menu/palette";
+import { filterCommands } from "./menu/sections";
 import { insideRoot, serverBrain } from "./net";
 import { viewerBrain } from "./sample";
+
+/** Rewards that fly from the menu into Blitz, and their colour. */
+const SHOWERS: Record<string, string> = { daily: "#ffd36e", buy: "#ffd36e", wear: "#ff9ad5", gift: "#ffd36e", enter: "#ff7ab6", birthday: "#ff8f9e" };
 
 const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -42,16 +48,34 @@ function main(): void {
   // Outside Root (or with ?demo) it shows a made-up community.
   const demo = !insideRoot() || new URLSearchParams(location.search).has("demo");
   const menu = new Menu(demo ? demoMenu() : serverMenu());
-  menu.onReply = (reply) => view.react(reply.text, reply.ok);
+  menu.onReply = (reply) => {
+    view.react(reply.text, reply.ok);
+    // A reward flies from the button into Blitz.
+    const from = reply.ok && SHOWERS[reply.command] ? recentPress() : undefined;
+    if (from) stardustShower(from, view.blitzOnScreen(), () => view.catchStardust(), SHOWERS[reply.command]);
+  };
   // Your Blitz wears what you picked in the shop, and stands guard while a shield is up.
   menu.subscribe(() => {
     const d = menu.data;
     if (!d) return;
-    view.setOutfit({ hat: d.stardust?.hat, trail: d.stardust?.trail, glow: d.stardust?.glow ? cosmetic(d.stardust.glow)?.color : undefined });
+    // What's being tried on in the shop, else what they wear.
+    const look = menu.tryOn ?? { hat: d.stardust?.hat, trail: d.stardust?.trail, glow: d.stardust?.glow };
+    view.setOutfit({ hat: look.hat || undefined, trail: look.trail || undefined, glow: look.glow ? cosmetic(look.glow)?.color : undefined });
     view.setShield(d.shieldUp);
   });
   const panel = new MenuPanel(menu);
   const dream = new DreamMenu(menu, view, byId("domain"));
+  // Ctrl+K (or "/"): find any section or command and go straight there, in whichever menu is showing.
+  const palette = new Palette(menu, (section, command) => {
+    if (command) filterCommands(command);
+    if (view.isOpen) dream.openSection(section);
+    else {
+      panel.open(section);
+      panel.el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  });
+  panel.onFind = () => palette.open();
+  dream.onFind = () => palette.open();
 
   // Talking to Blitz. Asking for the menu brings it up.
   const form = byId<HTMLFormElement>("say");

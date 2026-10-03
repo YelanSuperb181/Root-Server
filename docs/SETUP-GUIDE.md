@@ -143,6 +143,7 @@ Blitz never creates, renames or deletes channels or roles.
 | `!kick` or `!ban` says it has no permission | Blitz's role needs to be above the person's roles, and Blitz needs the kick and ban permissions (approve them when you install or update it). |
 | `They're on the team too` | Staff can only act on people ranked below them. Ask an admin or the owner. |
 | `🔒 … is for the team only` | Staff commands need the owner, a role that can manage the community, kick or ban, or someone on the Staff list in Blitz's settings. |
+| The menu says **Blitz's server isn't answering yet** | The menu tries again by itself every few seconds, and the small print says why ("It took too long to answer", or the server's error). In development: is the `npm run server` window still open, without an error at the bottom? Inside Root: is Blitz installed? If it keeps happening, Blitz's log says which part of the menu was slow ("the menu gave up waiting for …"). |
 | Blitz in the domain only answers with short canned lines | It couldn't reach Blitz's server (or the community has no API key), so it reads your mood from keywords. Inside Root: is Blitz installed? In development: is `npm run server` still running? |
 | `!blitz` says the domain isn't set up | Blitz didn't get its App channel. Make sure it was registered as an App and reinstall it. |
 | Blitz only answers with short canned lines | It has no brain yet, or the key isn't working. Blitz's log says "Claude rejected Blitz's API key" if the key is wrong. |

@@ -31,7 +31,7 @@ import { read } from "../core/api";
 import { allCommands, runFromMenu } from "../core/commands";
 import { allMembers as memberList, textChannels } from "../core/community";
 import { errMessage, log } from "../core/log";
-import { accessLevel, atLeast, communityRoles, isPerson, knownPeople, nickname } from "../core/members";
+import { AccessLevel, accessLevel, atLeast, communityRoles, isPerson, knownPeople, nickname } from "../core/members";
 import { settings } from "../core/settings";
 import { activeWarnings } from "../logic/moderation";
 import { rankByName } from "../logic/text";
@@ -46,7 +46,7 @@ import { locksAndSlows, raidStatus, recentCatches } from "../features/guardian";
 import { Ticket, addMessage, getTicket, markRead, openTickets, recentTickets, ticketsOf } from "../features/inbox";
 import { activeGiveaways, recentGiveaways } from "../features/giveaways";
 import { pulseDays } from "../features/pulse";
-import { dailyReady, stardustTop, walletOf } from "../features/stardust";
+import { dailyReady, stardustTop, walletOf, wearsAnything } from "../features/stardust";
 import { levelRewards } from "../features/levels";
 import { getCase, ladderText } from "../features/moderation";
 import { channelLink } from "../core/settings";
@@ -57,13 +57,26 @@ import { brainReady } from "./brain";
 import { askBlitz } from "./oracle";
 import { UsageError } from "../core/commands";
 
-/** Runs `get`; if it fails, logs it and gives `fallback`, so one missing piece doesn't empty the whole menu. */
-async function piece<T>(what: string, get: () => Promise<T>, fallback: T): Promise<T> {
+/**
+ * Runs `get`; if it fails, or takes longer than `ms`, logs it and gives
+ * `fallback`, so one missing or slow piece never empties (or stalls) the
+ * whole menu.
+ */
+async function piece<T>(what: string, get: () => Promise<T>, fallback: T, ms = 6000): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<"late">((resolve) => (timer = setTimeout(() => resolve("late"), ms)));
   try {
-    return await get();
+    const got = await Promise.race([get(), late]);
+    if (got === "late") {
+      log("warn", `the menu gave up waiting for ${what}`, { ms });
+      return fallback;
+    }
+    return got;
   } catch (err) {
     log("warn", `the menu couldn't load ${what}`, { error: errMessage(err) });
     return fallback;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -108,7 +121,7 @@ async function inboxFor(userId: string, staff: boolean): Promise<InboxInfo> {
   return { on: settings.on("inbox"), mine, team: await Promise.all([...open, ...closed].map((t) => ticketInfo(t, true))) };
 }
 
-async function stardustFor(userId: string): Promise<StardustInfo> {
+async function stardustFor(userId: string, access: AccessLevel): Promise<StardustInfo> {
   const w = await walletOf(userId);
   const top = await stardustTop(5);
   return {
@@ -123,6 +136,7 @@ async function stardustFor(userId: string): Promise<StardustInfo> {
     trail: w.wearing.trail ?? "",
     glow: w.wearing.glow ?? "",
     top: await Promise.all(top.map(async (e) => ({ userId: e.userId, name: await nickname(e.userId), earned: e.earned }))),
+    wardrobe: wearsAnything(access),
   };
 }
 
@@ -150,8 +164,8 @@ async function guardianInfo(): Promise<GuardianInfo> {
   const raid = raidStatus();
   const { locks, slows } = locksAndSlows();
   const catches = [...recentCatches()].reverse().slice(0, 30);
-  const names = new Map<string, string>();
-  for (const c of catches) if (c.userId && !names.has(c.userId)) names.set(c.userId, await nickname(c.userId));
+  const ids = [...new Set(catches.map((c) => c.userId).filter(Boolean))];
+  const names = new Map(await Promise.all(ids.map(async (id) => [id, await nickname(id)] as const)));
   return {
     scamOn: settings.on("scamShield"),
     raidOn: settings.on("raidShield"),
@@ -195,21 +209,49 @@ async function pulseInfo(): Promise<PulseInfo> {
 
 class BlitzMenuService extends BlitzMenuServiceBase {
   async overview(_request: MenuRequest, client: Client): Promise<MenuOverview> {
+    const started = Date.now();
     const userId = client.userId;
-    const access = await accessLevel(userId);
+    const access = await piece("who you are", () => accessLevel(userId), "everyone" as const, 5000);
     const staff = atLeast(access, "mod");
-    const [community, levels, roles, reminders, birthdays, suggestions, cases] = await Promise.all([
+    // One call names everyone (and is reused for a minute); the pieces that name people wait for it first.
+    const everyone = piece("the member list", memberList, [], 3000);
+    const named =
+      <T>(get: () => Promise<T>) =>
+      async () => {
+        await everyone;
+        return get();
+      };
+    // Every piece at once, each with its own time limit, so the menu answers within a few seconds whatever happens.
+    const [community, levels, roles, reminders, birthdays, suggestions, cases, name, banList, channels, stardust, inbox, giveaways, guardian, pulse, rewards] = await Promise.all([
       piece("the community", () => read("communities.get", () => rootServer.community.communities.get()), undefined),
-      piece("levels", () => levelsFor(userId, 10), undefined),
+      piece("levels", named(() => levelsFor(userId, 10)), undefined),
       piece("roles", () => roleChoices(userId), []),
       piece("reminders", () => remindersOf(userId), []),
-      piece("birthdays", () => birthdaysFor(userId, 8), { upcoming: [] }),
+      piece("birthdays", named(() => birthdaysFor(userId, 8)), { upcoming: [] }),
       piece("suggestions", () => recentSuggestions(8), []),
       piece("warnings", () => casesOf(userId), []),
+      piece("your name", named(() => nickname(userId)), "someone"),
+      staff ? piece("bans", named(bans), []) : Promise.resolve([]),
+      staff ? piece("channels", textChannels, []) : Promise.resolve([]),
+      piece("stardust", named(() => stardustFor(userId, access)), undefined),
+      piece("the inbox", named(() => inboxFor(userId, staff)), undefined),
+      piece("giveaways", named(() => giveawaysFor(userId)), []),
+      staff ? piece("the shields", named(guardianInfo), undefined) : Promise.resolve(undefined),
+      staff ? piece("the pulse", pulseInfo, undefined) : Promise.resolve(undefined),
+      piece(
+        "level rewards",
+        async () => {
+          const roles = await communityRoles();
+          return (await levelRewards()).map((r) => ({ level: r.level, roleId: r.roleId, roleName: roles.find((x) => x.id === r.roleId)?.name ?? "a role that's gone" }));
+        },
+        [],
+      ),
     ]);
+    const took = Date.now() - started;
+    if (took > 4000) log("warn", `the menu took ${(took / 1000).toFixed(1)}s to load`);
     return {
       userId,
-      name: await nickname(userId),
+      name,
       access,
       community: community?.name ?? "",
       about: settings.text("about") ?? community?.description ?? "",
@@ -241,25 +283,18 @@ class BlitzMenuService extends BlitzMenuServiceBase {
       reportsOn: settings.channel("log") !== undefined,
       suggestions,
       myWarnings: activeWarnings(cases),
-      bans: staff ? await piece("bans", bans, []) : [],
-      channels: staff ? await piece("channels", textChannels, []) : [],
-      stardust: await piece("stardust", () => stardustFor(userId), undefined),
-      inbox: await piece("the inbox", () => inboxFor(userId, staff), undefined),
-      giveaways: await piece("giveaways", () => giveawaysFor(userId), []),
-      guardian: staff ? await piece("the shields", guardianInfo, undefined) : undefined,
-      pulse: staff ? await piece("the pulse", pulseInfo, undefined) : undefined,
+      bans: banList,
+      channels,
+      stardust,
+      inbox,
+      giveaways,
+      guardian,
+      pulse,
       myCases: cases
         .filter((c) => c.kind !== "note")
         .slice(-15)
         .map((c) => ({ id: c.id, kind: c.kind, reason: c.reason ?? "", by: "", at: c.at, durationMs: c.durationMs ?? 0, revoked: c.revoked ?? false })),
-      levelRewards: await piece(
-        "level rewards",
-        async () => {
-          const roles = await communityRoles();
-          return (await levelRewards()).map((r) => ({ level: r.level, roleId: r.roleId, roleName: roles.find((x) => x.id === r.roleId)?.name ?? "a role that's gone" }));
-        },
-        [],
-      ),
+      levelRewards: rewards,
       brain: settings.ticked("brainModeration") && brainReady(),
       shieldUp: raidStatus().active || locksAndSlows().locks.some((l) => l.channelId === "all"),
     };

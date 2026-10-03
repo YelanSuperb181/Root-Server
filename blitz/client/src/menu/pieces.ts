@@ -3,6 +3,7 @@
 // the .m* classes in style.css.
 
 import type { MemberLine, MenuOverview } from "./api";
+import { notePress } from "./flair";
 import { Menu } from "./menu";
 import { avatar, h } from "./ui";
 
@@ -33,6 +34,7 @@ export interface Section {
 /** Runs `work` with the button showing it's busy (and pressed only once). */
 export async function busy(button: HTMLButtonElement, work: () => Promise<unknown>): Promise<void> {
   if (button.disabled) return;
+  notePress(button);
   button.disabled = true;
   button.classList.add("busy");
   try {
@@ -128,4 +130,21 @@ export function memberPicker(ctx: SectionContext, onPick: (m: MemberLine | undef
 export const bar = (fraction: number) => h("div.mbar", {}, h("span", { style: `width:${Math.round(Math.min(1, Math.max(0, fraction)) * 100)}%` }));
 
 export const MEDALS = ["🥇", "🥈", "🥉"];
+
+/** While the menu can't reach Blitz's server: what happened, that Blitz keeps trying, and a button to try now. */
+export function offlineCard(menu: Menu): HTMLElement {
+  const retry = h("button.mbtn.primary", { type: "button" }, menu.loading ? "Trying…" : "Try again now");
+  retry.disabled = menu.loading;
+  retry.addEventListener("click", () => void menu.load());
+  const when = h("p.mnote");
+  const tell = () => {
+    const secs = Math.max(0, Math.ceil((menu.retryAt - Date.now()) / 1000));
+    when.textContent = menu.loading ? "Reaching out to Blitz…" : secs ? `Blitz tries again by itself in ${secs}s.` : "Blitz keeps trying by itself.";
+  };
+  tell();
+  // Counts down while it's on screen.
+  let gone = 0;
+  const timer = setInterval(() => (when.isConnected ? tell() : ++gone > 2 && clearInterval(timer)), 1000);
+  return h("div.mcard.mempty.moffline", {}, h("span.mempty-icon", { "aria-hidden": "true" }, "🌫️"), h("p", { text: menu.error ?? "" }), menu.errorDetail && h("p.mnote", { text: menu.errorDetail }), when, retry);
+}
 

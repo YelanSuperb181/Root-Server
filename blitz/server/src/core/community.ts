@@ -3,7 +3,7 @@
 
 import { rootServer, ChannelType } from "@rootsdk/server-app";
 import { read } from "./api";
-import { isPerson } from "./members";
+import { isPerson, rememberNames } from "./members";
 
 export interface CommunityChannel {
   id: string;
@@ -57,6 +57,7 @@ export async function allMembers(): Promise<Array<{ userId: string; name: string
   if (!members || Date.now() - members.at > LIST_TTL_MS) {
     const all = await read("communityMembers.listAll", () => rootServer.community.communityMembers.listAll());
     members = { at: Date.now(), list: all.filter((m) => isPerson(m.userId)).map((m) => ({ userId: m.userId, name: m.nickname || "someone" })) };
+    rememberNames(members.list);
   }
   return members.list;
 }

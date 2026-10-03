@@ -161,20 +161,32 @@ function scheduleFacts(): void {
   }, 5000);
 }
 
+/** Starts one part of Blitz; if it fails, says so and carries on, so one broken part can't stop the rest (or the menu). */
+async function safely(what: string, start: () => void | Promise<void>): Promise<void> {
+  try {
+    await start();
+  } catch (err) {
+    log("error", `couldn't start ${what}; the rest of Blitz carries on without it`, { error: errMessage(err) });
+  }
+}
+
 async function onStarting(state: RootAppStartState): Promise<void> {
   initMembers(state);
-  await loadSelf();
+  // The domain and its menu first: whatever happens below, the domain window can reach Blitz.
+  rootServer.lifecycle.addService(domainService);
+  rootServer.lifecycle.addService(menuService);
+  await safely("its memory of itself", loadSelf);
   initJobs();
-  initPolls();
-  initWelcome();
-  initAutomod();
+  await safely("polls", initPolls);
+  await safely("welcomes", initWelcome);
+  await safely("auto-mod", initAutomod);
 
-  initReminders();
-  initMessageLog();
-  await initModeration();
-  await initGuardian();
-  await initPulse();
-  await initGiveaways();
+  await safely("reminders", initReminders);
+  await safely("the message log", initMessageLog);
+  await safely("moderation", initModeration);
+  await safely("the shields", initGuardian);
+  await safely("the pulse", initPulse);
+  await safely("giveaways", initGiveaways);
 
   register(
     ...infoCommands,
@@ -199,19 +211,17 @@ async function onStarting(state: RootAppStartState): Promise<void> {
   );
   setReplyFooter(domainFooter);
   // After the built-in commands, so a community command can never shadow one.
-  await initCustom(scheduleFacts);
+  await safely("community commands", () => initCustom(scheduleFacts));
 
   const messages = rootServer.community.channelMessages;
   messages.on(ChannelMessageEvent.ChannelMessageCreated, (evt: ChannelMessageCreatedEvent) => void onMessage(evt));
   messages.on(ChannelMessageEvent.ChannelMessageReactionCreated, (evt: ChannelMessageReactionCreatedEvent) => void onReaction(evt, true));
   messages.on(ChannelMessageEvent.ChannelMessageReactionDeleted, (evt: ChannelMessageReactionDeletedEvent) => void onReaction(evt, false));
 
-  await ensureDailyJob(config.daily.hourUtc, () => celebrateBirthdays().catch((err) => log("error", "birthdays failed", { error: errMessage(err) })));
+  await safely("the daily job", () => ensureDailyJob(config.daily.hourUtc, () => celebrateBirthdays().catch((err) => log("error", "birthdays failed", { error: errMessage(err) }))));
 
   // The domain: the App's own channel, where Blitz floats around.
-  rootServer.lifecycle.addService(domainService);
-  rootServer.lifecycle.addService(menuService);
-  await initDomain(state.channelId);
+  await safely("the domain", () => initDomain(state.channelId));
   const facts = await communityFacts();
   initBrain(facts, state.globalSettings);
   rootServer.community.channels.on(ChannelEvent.ChannelCreated, scheduleFacts);

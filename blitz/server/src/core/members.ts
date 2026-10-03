@@ -102,12 +102,56 @@ export async function communityRoles(): Promise<CommunityRole[]> {
   return rolesCache.roles;
 }
 
+/**
+ * Nicknames already looked up. Menus and lists name lots of people at once,
+ * and Root allows only about 20 reads a second, so asking once per person
+ * every time made the menu slow enough to time out.
+ */
+const names = new Map<string, { name: string; until: number }>();
+const NAME_TTL_MS = 10 * 60_000;
+/** Someone who isn't a member (left, or banned) is asked about again sooner. */
+const MISSING_TTL_MS = 2 * 60_000;
+const lookingUp = new Map<string, Promise<string>>();
+/** Name lookups running at once, at most. */
+const MAX_LOOKUPS = 6;
+let lookups = 0;
+const lookupQueue: Array<() => void> = [];
+
+/** Remembers the nicknames in a member list (one call names everyone). */
+export function rememberNames(list: Array<{ userId: string; name: string }>): void {
+  const until = Date.now() + NAME_TTL_MS;
+  for (const m of list) names.set(m.userId, { name: m.name, until });
+}
+
 export async function nickname(userId: string): Promise<string> {
+  const known = names.get(userId);
+  if (known && Date.now() < known.until) return known.name;
+  let pending = lookingUp.get(userId);
+  if (!pending) {
+    pending = lookUpName(userId).finally(() => lookingUp.delete(userId));
+    lookingUp.set(userId, pending);
+  }
+  return pending;
+}
+
+async function lookUpName(userId: string): Promise<string> {
+  // A finished lookup hands its place straight to the next one waiting.
+  if (lookups >= MAX_LOOKUPS) await new Promise<void>((go) => lookupQueue.push(go));
+  else lookups++;
   try {
     const member = await read("communityMembers.get", () => rootServer.community.communityMembers.get({ userId: userId as UserGuid }));
-    return member.nickname || "someone";
+    const name = member.nickname || "someone";
+    names.set(userId, { name, until: Date.now() + NAME_TTL_MS });
+    return name;
   } catch {
-    return "someone";
+    // Keep the name we last knew them by (someone who left still has one).
+    const name = names.get(userId)?.name ?? "someone";
+    names.set(userId, { name, until: Date.now() + MISSING_TTL_MS });
+    return name;
+  } finally {
+    const next = lookupQueue.shift();
+    if (next) next();
+    else lookups--;
   }
 }
 

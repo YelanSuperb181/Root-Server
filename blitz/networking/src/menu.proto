@@ -66,6 +66,8 @@ message StardustInfo {
   string trail = 9;
   string glow = 10;
   repeated StardustLine top = 11;
+  // An admin (the community's creator among them): can wear every look without buying it, to try them out.
+  bool wardrobe = 12;
 }
 
 message StardustLine {

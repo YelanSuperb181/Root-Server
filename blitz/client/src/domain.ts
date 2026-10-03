@@ -362,6 +362,18 @@ export class DomainView {
   private facePopAt = -1;
   private tint: RGB = [...CALM];
   private renderOffset = { x: 0, y: 0 };
+  /** The outfit last put on, to notice a new one. */
+  private outfitKey: string | undefined;
+  /**
+   * Where Blitz was one physics step ago, and how far the frame falls between
+   * that step and the last one. Physics runs in fixed steps that rarely line
+   * up with the screen's refresh, so Blitz is drawn between the two; drawn
+   * straight from the last step, a fast-moving Blitz would jump back and
+   * forth against the camera.
+   */
+  private stepFrom = { x: 0, y: 0 };
+  private stepOf: Body | undefined;
+  private stepBlend = 1;
   /** A long glide of Blitz's drawn position (the re-seal), instead of the usual quick catch-up. */
   private glide: { x: number; y: number; start: number; dur: number } | undefined;
   private particles = new Particles(reduced ? 160 : 800);
@@ -514,8 +526,30 @@ export class DomainView {
     return { w: this.W, h: this.H, top: HUD_TOP, bottom: this.H - HUD_BOTTOM };
   }
 
+  /** Where Blitz is drawn, in the window's pixels (for things flying to it from the menu). */
+  blitzOnScreen(): { x: number; y: number } {
+    const b = this.blitzPx();
+    return { x: this.rectLeft + b.x, y: this.rectTop + b.y };
+  }
+
+  /** Stardust from the menu reaches Blitz: a burst of sparkles and a happy bounce. */
+  catchStardust(): void {
+    const b = this.drawnBody();
+    this.particles.burst(b.x, b.y, reduced ? 6 : 22, 230 * PX, [GOLD, WHITE, GOLD, CYAN]);
+    this.squash = Math.max(this.squash, 0.35);
+    this.wake();
+  }
+
   /** What this person's Blitz wears (bought with Stardust in the menu). */
   setOutfit(outfit: { hat?: string; trail?: string; glow?: string }): void {
+    const key = `${outfit.hat ?? ""}|${outfit.trail ?? ""}|${outfit.glow ?? ""}`;
+    // A new look (bought, worn, or tried on in the shop): a sparkle, and Blitz shows it off.
+    if (this.outfitKey !== undefined && key !== this.outfitKey && this.t > 1.1) {
+      const b = this.drawnBody();
+      this.particles.burst(b.x, b.y, reduced ? 6 : 18, 200 * PX, [GOLD, WHITE, CYAN]);
+      this.applyMood("happy", pick(["✨ how do I look?", "ooh, fancy!", "new look! 🪞", "do you like it?", "I feel so stylish"]), 2.4);
+    }
+    this.outfitKey = key;
     this.outfit = {
       hat: outfit.hat || undefined,
       trail: outfit.trail || undefined,
@@ -607,7 +641,8 @@ export class DomainView {
   }
 
   private overBlitz(p: Point): boolean {
-    return this.t > 1.1 && Math.hypot(p.x - this.body.x, p.y - this.body.y) < ORB_RADIUS * 1.8;
+    const b = this.drawnBody();
+    return this.t > 1.1 && Math.hypot(p.x - b.x, p.y - b.y) < ORB_RADIUS * 1.8;
   }
 
   private insideArena(p: Point): boolean {
@@ -706,7 +741,10 @@ export class DomainView {
     const b = s[s.length - 1];
     const dt = Math.max(0.016, (b.at - a.at) / 1000);
     const strain = this.body.strain ?? 0;
+    const thrown = this.stepOf === this.body;
     this.body = { ...sanitize({ x: this.body.x, y: this.body.y, vx: (b.x - a.x) / dt, vy: (b.y - a.y) / dt }, this.open), strain };
+    // Same place, new speed: keep drawing it between steps, so letting go doesn't jolt.
+    if (thrown) this.stepOf = this.body;
     const fast = Math.hypot(this.body.vx, this.body.vy) > FLING_SPEED;
     if (fast) this.flingUntil = now() + FLING_COAST;
     // Out in open space Blitz settles wherever it's flung.
@@ -728,7 +766,13 @@ export class DomainView {
   // ---- Reactions to what happens ----------------------------------------------------
 
   private drawnBody(): Point {
-    return { x: this.body.x + this.renderOffset.x, y: this.body.y + this.renderOffset.y };
+    let { x, y } = this.body;
+    if (this.stepOf === this.body) {
+      const back = this.stepBlend - 1;
+      x += (x - this.stepFrom.x) * back;
+      y += (y - this.stepFrom.y) * back;
+    }
+    return { x: x + this.renderOffset.x, y: y + this.renderOffset.y };
   }
 
   private blitzPx(): Point {
@@ -1156,13 +1200,15 @@ export class DomainView {
     this.adaptQuality((ms - this.prevFrame) / (this.skipped ? 2 : 1));
     this.skipped = false;
     const dt = Math.min(0.05, (ms - this.prevFrame) / 1000);
+    // The physics catches up on a slow frame (up to half a second), so the camera keeps pace with it rather than with the capped dt.
+    const camDt = Math.min(0.5, (ms - this.prevFrame) / 1000);
     this.prevFrame = ms;
     this.t += dt;
     const slow = this.t < this.slowUntil ? 0.3 + 0.7 * clamp01(1 - (this.slowUntil - this.t) / SLOW_MO) ** 2 : 1;
     this.fxT += dt * slow;
     this.universe.tick(dt, this.layoutOpen);
-    this.simulate();
-    this.updateCam(dt);
+    this.simulate(ms / 1000);
+    this.updateCam(camDt);
     this.updateLooks(dt);
     this.updateStatus();
     try {
@@ -1184,15 +1230,19 @@ export class DomainView {
     return clampTarget(p, this.open);
   }
 
-  private simulate(): void {
+  /** Runs the physics up to `until`, the time this frame will be shown (the frame's own timestamp, so steadier than the clock). */
+  private simulate(until: number): void {
     const target = this.holdTarget();
-    const until = now();
     if (until - this.simulatedUntil > 0.5) this.simulatedUntil = until - STEP;
     while (this.simulatedUntil + STEP <= until) {
+      this.stepFrom.x = this.body.x;
+      this.stepFrom.y = this.body.y;
+      this.stepOf = this.body;
       const hit = step(this.body, { t: this.simulatedUntil, ...this.forces(target) });
       this.simulatedUntil += STEP;
       if (hit && isSplash(hit)) this.impact(hit);
     }
+    this.stepBlend = clamp01((until - this.simulatedUntil) / STEP);
     // A trick that's over: a spin leaves Blitz a little dizzy.
     if (this.trick && until > this.trick.start && trickAge(this.trick, until) === undefined) {
       if (this.trick.kind === "spin") this.dizzyUntil = this.t + 0.8;

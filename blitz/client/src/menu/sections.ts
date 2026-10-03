@@ -21,32 +21,45 @@ const you: Section = {
   blurb: "Your level, and this community",
   render({ data, menu, go }) {
     const lv = data.levels;
+    const dust = data.stardust;
     const root = h("div.msection");
+    const hour = new Date().getHours();
+    const hello = hour < 5 ? "Up late," : hour < 12 ? "Good morning," : hour < 18 ? "Good afternoon," : "Good evening,";
+    const chip = (label: string, value: number | string, key?: string) =>
+      h("div.mchip", {}, h("strong", typeof value === "number" ? { text: value.toLocaleString(), "data-count": String(value), "data-key": key } : { text: value }), h("span", { text: label }));
     root.append(
       card(
         h(
-          "div.mprofile",
+          "div.mhero",
           {},
-          avatar(data.userId, data.name || "You", 60),
+          h("div.mhero-avatar", {}, avatar(data.userId, data.name || "You", 62)),
           h(
             "div.mprofile-text",
             {},
+            h("p.mhero-hello", { text: hello }),
             h("p.mprofile-name", { text: data.name || "You" }),
-            lv?.on ? h("p.mprofile-sub", { text: `Level ${lv.level}${lv.place ? ` · #${lv.place} on the leaderboard` : ""}` }) : h("p.mprofile-sub", { text: data.community }),
+            h("p.mprofile-sub", { text: data.community ? `in ${data.community}` : "" }),
           ),
         ),
-        lv?.on && h("div.mlevel", {}, bar(lv.needed ? lv.into / lv.needed : 0), h("p.mnote", { text: `${lv.into.toLocaleString()} / ${lv.needed.toLocaleString()} XP to level ${lv.level + 1} · ${lv.messages.toLocaleString()} messages` })),
+        h(
+          "div.mchips",
+          {},
+          lv?.on && chip("Level", lv.level, "you-level"),
+          lv?.on && chip("On the board", lv.place ? `#${lv.place}` : "—"),
+          lv?.on && chip("Messages", lv.messages, "you-messages"),
+          dust?.on && chip("Stardust", dust.balance, "you-dust"),
+        ),
+        lv?.on && h("div.mlevel", {}, bar(lv.needed ? lv.into / lv.needed : 0), h("p.mnote", { text: `${lv.into.toLocaleString()} / ${lv.needed.toLocaleString()} XP to level ${lv.level + 1}` })),
       ),
     );
-    const dust = data.stardust;
     if (dust?.on) {
       root.append(
         card(
           h(
             "div.mrow.between",
             {},
-            h("div", {}, h("p.mwallet-balance", {}, h("strong", { text: dust.balance.toLocaleString() }), " Stardust"), h("p.mnote", { text: dust.streak > 0 ? `🔥 ${dust.streak}-day streak` : "Start a streak with your daily gift" })),
-            dust.dailyReady ? button("✨ Daily gift", (b) => void busy(b, () => menu.run("daily")), "primary") : button("Shop", () => go("stardust"), "ghost"),
+            h("div", {}, h("p.mcard-title", { text: dust.dailyReady ? "🎁 Your daily gift is ready" : "💫 Stardust" }), h("p.mnote", { text: dust.streak > 0 ? `🔥 ${dust.streak}-day streak. Keep it going!` : "Start a streak with your daily gift" })),
+            dust.dailyReady ? button("✨ Collect", (b) => void busy(b, () => menu.run("daily")), "primary.glowing") : button("Dress up Blitz", () => go("stardust"), "ghost"),
           ),
         ),
       );
@@ -315,6 +328,11 @@ const fun: Section = {
 
 const CATEGORY_ICON: Record<string, string> = { Community: "💬", Levels: "🌿", Fun: "🎲", Moderation: "🔨", Staff: "🛡️" };
 let commandFilter = "";
+
+/** Opens the Commands section already searching for `q` (the quick finder uses it). */
+export function filterCommands(q: string): void {
+  commandFilter = q;
+}
 let openCommand = "";
 
 const commands: Section = {
