@@ -177,6 +177,11 @@ const REVEAL = 1.4;
 const BURST_CAM = 1.4;
 /** The universe folds back into the bubble over this long. */
 const GATHER = 0.95;
+/** Frames slower than this on average (about 45 fps) make the domain draw a little softer; faster than SMOOTH lets it sharpen again. */
+const SLOW_FRAME_MS = 22;
+const SMOOTH_FRAME_MS = 18;
+const MIN_QUALITY = 0.45;
+
 /** The first moments after the burst play in slow motion. */
 const SLOW_MO = 0.35;
 /** How far Blitz's light reaches across open space, in domain units. */
@@ -934,6 +939,8 @@ export class DomainView {
   /** Switches the page between the bubble window and the full-window universe. */
   private setLayout(open: boolean): void {
     if (open === this.layoutOpen) return;
+    // The universe and the bubble cost different amounts to draw: judge each afresh.
+    this.tooSlowAt = Infinity;
     document.body.classList.toggle("open", open);
     this.layoutOpen = open;
     this.resize();
@@ -981,10 +988,46 @@ export class DomainView {
 
   // ---- Frame ----------------------------------------------------------------------
 
+  /**
+   * Render sharpness, adjusted to the computer: 1 draws at the screen's full
+   * resolution (up to a cap); when frames come too slowly it steps down, and
+   * after a long smooth stretch it tries a step back up (but not to a level
+   * that was already too slow, until the layout changes).
+   */
+  private quality = 1;
+  private tooSlowAt = Infinity;
+  private frameAvg = 16.7;
+  private slowMs = 0;
+  private smoothMs = 0;
+  private settleUntil = 0;
+
+  private adaptQuality(frameMs: number): void {
+    // Hidden tabs, resizes and layout changes cause one-off hitches; don't judge those.
+    if (frameMs > 250 || this.t < this.settleUntil) return;
+    this.frameAvg += (frameMs - this.frameAvg) * 0.05;
+    this.slowMs = this.frameAvg > SLOW_FRAME_MS ? this.slowMs + frameMs : 0;
+    this.smoothMs = this.frameAvg < SMOOTH_FRAME_MS ? this.smoothMs + frameMs : 0;
+    if (this.slowMs > 1000 && this.quality > MIN_QUALITY) {
+      this.tooSlowAt = this.quality;
+      this.setQuality(Math.max(MIN_QUALITY, this.quality * 0.8));
+    } else if (this.smoothMs > 8000 && this.quality < 1 && this.quality * 1.15 < this.tooSlowAt) {
+      this.setQuality(Math.min(1, this.quality * 1.15));
+    }
+  }
+
+  private setQuality(q: number): void {
+    this.quality = q;
+    this.slowMs = 0;
+    this.smoothMs = 0;
+    this.frameAvg = 16.7;
+    this.resize();
+  }
+
   private resize(): void {
     const rect = this.canvas.getBoundingClientRect();
-    // Fullscreen canvases are big; a slightly softer resolution keeps them smooth.
-    this.dpr = Math.min(window.devicePixelRatio || 1, this.layoutOpen ? 1.5 : 2);
+    // Fullscreen canvases are big; a softer resolution keeps them smooth.
+    this.dpr = Math.max(0.5, Math.min(window.devicePixelRatio || 1, this.layoutOpen ? 1.25 : 2) * this.quality);
+    this.settleUntil = this.t + 1;
     this.W = rect.width;
     this.H = rect.height;
     this.rectLeft = rect.left;
@@ -1049,6 +1092,7 @@ export class DomainView {
   private prevFrame = performance.now();
 
   private frame(ms: number): void {
+    this.adaptQuality(ms - this.prevFrame);
     const dt = Math.min(0.05, (ms - this.prevFrame) / 1000);
     this.prevFrame = ms;
     this.t += dt;
@@ -1632,13 +1676,20 @@ export class DomainView {
     ctx.strokeStyle = "rgba(127, 227, 255, 0.10)";
     rimPath();
     ctx.stroke();
+    // The glow: wide, faint strokes under the line (a blurred shadow this size is slow to draw every frame).
+    rimPath();
+    for (const [width, alpha] of [
+      [11 + strain * 12, 0.035],
+      [6 + strain * 6, 0.07],
+      [3 + strain * 3, 0.14],
+    ] as const) {
+      ctx.lineWidth = width;
+      ctx.strokeStyle = `rgba(127, 227, 255, ${alpha + strain * 0.1})`;
+      ctx.stroke();
+    }
     ctx.lineWidth = 1.6 + strain * 1.2;
     ctx.strokeStyle = `rgba(${190 + 65 * strain}, ${230 + 25 * strain}, 255, 0.85)`;
-    ctx.shadowColor = "rgba(127, 227, 255, 0.9)";
-    ctx.shadowBlur = 16 + strain * 14;
-    rimPath();
     ctx.stroke();
-    ctx.shadowBlur = 0;
     const ticks = 60;
     const spin = reduced ? 0 : -t * (0.02 + strain * 0.4);
     for (let i = 0; i < ticks; i++) {
@@ -1667,12 +1718,20 @@ export class DomainView {
     const { ctx } = this;
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
-    ctx.lineWidth = 2 + 3 * near + strain * 4;
-    ctx.strokeStyle = rgba(this.tint, Math.min(1, 0.75 * near * (this.asleep ? 0.6 : 1) + strain * 0.3));
-    ctx.shadowColor = rgba(this.tint, 1);
-    ctx.shadowBlur = 14 * near + strain * 20;
+    const width = 2 + 3 * near + strain * 4;
+    const strength = Math.min(1, 0.75 * near * (this.asleep ? 0.6 : 1) + strain * 0.3);
     ctx.beginPath();
     ctx.arc(cx, cy, r, a - spread, a + spread);
+    // A soft spill of light around the bright line.
+    ctx.lineCap = "round";
+    ctx.lineWidth = width * 4;
+    ctx.strokeStyle = rgba(this.tint, strength * 0.15);
+    ctx.stroke();
+    ctx.lineWidth = width * 2.2;
+    ctx.strokeStyle = rgba(this.tint, strength * 0.3);
+    ctx.stroke();
+    ctx.lineWidth = width;
+    ctx.strokeStyle = rgba(this.tint, strength);
     ctx.stroke();
     ctx.restore();
   }

@@ -57,8 +57,49 @@ const NEBULA_COLORS: RGB[] = [
   [90, 230, 190],
 ];
 
-function paintStars(count: number, minR: number, maxR: number, glowAbove: number, seed: number): HTMLCanvasElement {
-  const [c, g] = canvas(512);
+interface StarLayer {
+  /** paintStars' arguments: count, smallest and largest radius, glow above this radius, seed. */
+  stars: [number, number, number, number, number];
+  /** How fast it slides, as a share of the camera's movement. */
+  p: number;
+  /** The tile, painted for the current pixel density `k`. */
+  tile?: { k: number; canvas: HTMLCanvasElement };
+}
+
+interface Deep {
+  canvas: HTMLCanvasElement;
+  W: number;
+  H: number;
+  zoom: number;
+  /** Where the nebula layer sat when it was painted. */
+  ref: { x: number; y: number };
+  t: number;
+}
+
+const NEBULA_P = 0.07;
+const DEEP_SCALE = 0.5;
+const DEEP_MARGIN = 24;
+
+/** Darkened edges for full-screen views, painted once per size at quarter resolution. */
+function paintVignette(W: number, H: number): HTMLCanvasElement {
+  const c = document.createElement("canvas");
+  c.width = Math.max(1, Math.ceil(W / 4));
+  c.height = Math.max(1, Math.ceil(H / 4));
+  const g = c.getContext("2d")!;
+  g.scale(c.width / W, c.height / H);
+  const d = Math.hypot(W, H);
+  const v = g.createRadialGradient(W / 2, H / 2, d * 0.32, W / 2, H / 2, d * 0.62);
+  v.addColorStop(0, "rgba(2, 3, 10, 0)");
+  v.addColorStop(1, "rgba(2, 3, 10, 0.6)");
+  g.fillStyle = v;
+  g.fillRect(0, 0, W, H);
+  return c;
+}
+
+/** A 512-px tile of stars, painted at `pixels` device pixels square so it can be drawn 1:1, sharp and cheap. */
+function paintStars(count: number, minR: number, maxR: number, glowAbove: number, seed: number, pixels = 512): HTMLCanvasElement {
+  const [c, g] = canvas(pixels);
+  g.scale(pixels / 512, pixels / 512);
   const rnd = mulberry32(seed);
   for (let i = 0; i < count; i++) {
     const x = rnd() * 512;
@@ -232,7 +273,10 @@ export interface UniverseView {
 export class Universe {
   /** Hears where each new shooting star appears (screen pixels), so Blitz can look. */
   onShootingStar: ((x: number, y: number) => void) | undefined;
-  private layers: Array<{ tile: HTMLCanvasElement; p: number; pattern?: CanvasPattern | null }> = [];
+  private layers: StarLayer[] = [];
+  /** The far depths (background glow, color washes, galaxies, nebulae), painted at low resolution and redrawn only when they've moved. */
+  private deep: Deep | undefined;
+  private vignette: { canvas: HTMLCanvasElement; W: number; H: number } | undefined;
   private nebulae: HTMLCanvasElement[] = [];
   private galaxies: HTMLCanvasElement[] = [];
   private planet: HTMLCanvasElement | undefined;
@@ -244,9 +288,9 @@ export class Universe {
 
   constructor(private reduced: boolean) {
     this.layers = [
-      { tile: paintStars(reduced ? 300 : 650, 0.3, 0.8, 9, 11), p: 0.08 },
-      { tile: paintStars(reduced ? 110 : 200, 0.5, 1.2, 1.05, 23), p: 0.2 },
-      { tile: paintStars(reduced ? 30 : 55, 0.8, 1.8, 1.1, 37), p: 0.42 },
+      { stars: [reduced ? 300 : 650, 0.3, 0.8, 9, 11], p: 0.08 },
+      { stars: [reduced ? 110 : 200, 0.5, 1.2, 1.05, 23], p: 0.2 },
+      { stars: [reduced ? 30 : 55, 0.8, 1.8, 1.1, 37], p: 0.42 },
     ];
     this.nebulae = [101, 202, 303, 404, 505].map(paintNebula);
     this.galaxies = [7, 8, 9].map(paintGalaxy);
@@ -283,76 +327,28 @@ export class Universe {
 
     ctx.save();
     ctx.globalAlpha = view.alpha;
-    const base = ctx.createRadialGradient(W / 2, H * 0.42, 0, W / 2, H / 2, Math.hypot(W, H) * 0.7);
-    base.addColorStop(0, "#0E1738");
-    base.addColorStop(0.6, "#080C22");
-    base.addColorStop(1, "#04060F");
-    ctx.fillStyle = base;
-    ctx.fillRect(0, 0, W, H);
+    this.drawDeep(ctx, W, H, cam, t, zoom);
 
-    ctx.globalCompositeOperation = "lighter";
-    // Huge, faint washes of color, barely moving: the far depths.
-    const wash = this.offset(cam, 0.02, t);
-    const washes: Array<[number, number, RGB]> = [
-      [-620, -300, [40, 140, 170]],
-      [700, 220, [110, 70, 200]],
-      [80, 640, [50, 60, 170]],
-      [-200, 420, [160, 60, 140]],
-    ];
-    for (const [lx, ly, c] of washes) {
-      const r = 900 * zoom;
-      const x = wash.x + lx * zoom;
-      const y = wash.y + ly * zoom;
-      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-      g.addColorStop(0, rgba(c, 0.2));
-      g.addColorStop(1, rgba(c, 0));
-      ctx.fillStyle = g;
-      ctx.fillRect(x - r, y - r, r * 2, r * 2);
-    }
-
-    // Faraway galaxies (one is always up and to the right of where the bubble was).
-    this.cells(cam, 0.035, t, W, H, 900, 200, (ix, iy, cx, cy) => {
-      const rnd = cellRandom(ix, iy, 1);
-      if (!(ix === 0 && iy === -1) && rnd() > 0.32) return;
-      const sprite = this.galaxies[Math.floor(rnd() * this.galaxies.length)];
-      const size = (120 + rnd() * 140) * zoom;
-      ctx.save();
-      ctx.globalAlpha = view.alpha * (0.45 + rnd() * 0.4);
-      ctx.translate(cx + rnd() * 900, cy + rnd() * 900);
-      ctx.rotate(rnd() * Math.PI);
-      ctx.scale(1, 0.38 + rnd() * 0.3);
-      ctx.drawImage(sprite, -size / 2, -size / 2, size, size);
-      ctx.restore();
-    });
-
-    // Nebulae. The cells around the middle always have some, so there's color the moment the bubble bursts.
-    this.cells(cam, 0.07, t, W, H, 1500, 1000, (ix, iy, cx, cy) => {
-      const rnd = cellRandom(ix, iy, 2);
-      const home = ix === 0 && iy === 0;
-      const neighbour = ix === -1 && iy === 0;
-      if (!home && !neighbour && rnd() > 0.55) return;
-      const sprite = this.nebulae[home ? 0 : neighbour ? 2 : Math.floor(rnd() * this.nebulae.length)];
-      const size = (1000 + rnd() * 800) * zoom;
-      const x = home ? cx + 300 : neighbour ? cx + 1100 : cx + rnd() * 1500;
-      const y = home ? cy + 200 : neighbour ? cy - 250 : cy + rnd() * 1500;
-      ctx.save();
-      ctx.globalAlpha = view.alpha * (0.55 + rnd() * 0.35);
-      ctx.translate(x, y);
-      ctx.rotate(rnd() * Math.PI * 2 + (this.reduced ? 0 : t * 0.003));
-      ctx.drawImage(sprite, -size / 2, -size / 2, size, size);
-      ctx.restore();
-    });
-
-    // Star fields, near layers sliding faster than far ones.
+    // Star fields, near layers sliding faster than far ones. Each tile is drawn
+    // whole and on exact device pixels: far cheaper than a shifted pattern fill.
     ctx.globalCompositeOperation = "source-over";
+    const m = ctx.getTransform();
+    const k = Math.max(0.25, Math.round(m.a * 100) / 100);
+    const smooth = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = false;
     for (const layer of this.layers) {
-      layer.pattern ??= ctx.createPattern(layer.tile, "repeat");
-      if (!layer.pattern) continue;
+      if (!layer.tile || layer.tile.k !== k) layer.tile = { k, canvas: paintStars(...layer.stars, Math.round(512 * k)) };
+      const size = layer.tile.canvas.width / k;
       const o = this.offset(cam, layer.p, t);
-      layer.pattern.setTransform(new DOMMatrix([1, 0, 0, 1, o.x % 512, o.y % 512]));
-      ctx.fillStyle = layer.pattern;
-      ctx.fillRect(0, 0, W, H);
+      const x0 = (((o.x % size) + size) % size) - size;
+      const y0 = (((o.y % size) + size) % size) - size;
+      for (let x = x0; x < W; x += size) {
+        for (let y = y0; y < H; y += size) {
+          ctx.drawImage(layer.tile.canvas, (Math.round(m.a * x + m.e) - m.e) / m.a, (Math.round(m.d * y + m.f) - m.f) / m.d, size, size);
+        }
+      }
     }
+    ctx.imageSmoothingEnabled = smooth;
 
     // A ringed planet hanging off to one side of where the bubble was.
     if (this.planet) {
@@ -464,13 +460,99 @@ export class Universe {
     ctx.globalCompositeOperation = "source-over";
 
     if (view.vignette) {
-      const d = Math.hypot(W, H);
-      const v = ctx.createRadialGradient(W / 2, H / 2, d * 0.32, W / 2, H / 2, d * 0.62);
-      v.addColorStop(0, "rgba(2, 3, 10, 0)");
-      v.addColorStop(1, "rgba(2, 3, 10, 0.6)");
-      ctx.fillStyle = v;
-      ctx.fillRect(0, 0, W, H);
+      if (!this.vignette || this.vignette.W !== W || this.vignette.H !== H) this.vignette = { canvas: paintVignette(W, H), W, H };
+      ctx.drawImage(this.vignette.canvas, 0, 0, W, H);
     }
     ctx.restore();
+  }
+
+  /**
+   * The far depths. They barely move (a few percent of the camera's speed), so
+   * they're painted at half resolution, where their soft glows look the same,
+   * and only repainted once they've drifted a few pixels or a second has
+   * passed. In between, the painted copy just slides along with them.
+   */
+  private drawDeep(ctx: CanvasRenderingContext2D, W: number, H: number, cam: Cam, t: number, zoom: number): void {
+    const ref = this.offset(cam, NEBULA_P, t);
+    let d = this.deep;
+    if (!d || d.W !== W || d.H !== H || d.zoom !== zoom || Math.abs(ref.x - d.ref.x) > 3 || Math.abs(ref.y - d.ref.y) > 3 || t - d.t > 1 || t < d.t) {
+      d = this.paintDeep(W, H, cam, t, zoom, ref, d?.canvas);
+      this.deep = d;
+    }
+    ctx.drawImage(d.canvas, -DEEP_MARGIN + ref.x - d.ref.x, -DEEP_MARGIN + ref.y - d.ref.y, W + DEEP_MARGIN * 2, H + DEEP_MARGIN * 2);
+  }
+
+  private paintDeep(W: number, H: number, cam: Cam, t: number, zoom: number, ref: { x: number; y: number }, reuse?: HTMLCanvasElement): Deep {
+    const c = reuse ?? document.createElement("canvas");
+    const w = Math.ceil((W + DEEP_MARGIN * 2) * DEEP_SCALE);
+    const h = Math.ceil((H + DEEP_MARGIN * 2) * DEEP_SCALE);
+    if (c.width !== w || c.height !== h) {
+      c.width = w;
+      c.height = h;
+    }
+    const ctx = c.getContext("2d")!;
+    ctx.setTransform(DEEP_SCALE, 0, 0, DEEP_SCALE, DEEP_MARGIN * DEEP_SCALE, DEEP_MARGIN * DEEP_SCALE);
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
+    const base = ctx.createRadialGradient(W / 2, H * 0.42, 0, W / 2, H / 2, Math.hypot(W, H) * 0.7);
+    base.addColorStop(0, "#0E1738");
+    base.addColorStop(0.6, "#080C22");
+    base.addColorStop(1, "#04060F");
+    ctx.fillStyle = base;
+    ctx.fillRect(-DEEP_MARGIN, -DEEP_MARGIN, W + DEEP_MARGIN * 2, H + DEEP_MARGIN * 2);
+
+    ctx.globalCompositeOperation = "lighter";
+    // Huge, faint washes of color, barely moving: the far depths.
+    const wash = this.offset(cam, 0.02, t);
+    const washes: Array<[number, number, RGB]> = [
+      [-620, -300, [40, 140, 170]],
+      [700, 220, [110, 70, 200]],
+      [80, 640, [50, 60, 170]],
+      [-200, 420, [160, 60, 140]],
+    ];
+    for (const [lx, ly, c] of washes) {
+      const r = 900 * zoom;
+      const x = wash.x + lx * zoom;
+      const y = wash.y + ly * zoom;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, rgba(c, 0.2));
+      g.addColorStop(1, rgba(c, 0));
+      ctx.fillStyle = g;
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+
+    // Faraway galaxies (one is always up and to the right of where the bubble was).
+    this.cells(cam, 0.035, t, W, H, 900, 200, (ix, iy, cx, cy) => {
+      const rnd = cellRandom(ix, iy, 1);
+      if (!(ix === 0 && iy === -1) && rnd() > 0.32) return;
+      const sprite = this.galaxies[Math.floor(rnd() * this.galaxies.length)];
+      const size = (120 + rnd() * 140) * zoom;
+      ctx.save();
+      ctx.globalAlpha = 0.45 + rnd() * 0.4;
+      ctx.translate(cx + rnd() * 900, cy + rnd() * 900);
+      ctx.rotate(rnd() * Math.PI);
+      ctx.scale(1, 0.38 + rnd() * 0.3);
+      ctx.drawImage(sprite, -size / 2, -size / 2, size, size);
+      ctx.restore();
+    });
+
+    // Nebulae. The cells around the middle always have some, so there's color the moment the bubble bursts.
+    this.cells(cam, NEBULA_P, t, W, H, 1500, 1000, (ix, iy, cx, cy) => {
+      const rnd = cellRandom(ix, iy, 2);
+      const home = ix === 0 && iy === 0;
+      const neighbour = ix === -1 && iy === 0;
+      if (!home && !neighbour && rnd() > 0.55) return;
+      const sprite = this.nebulae[home ? 0 : neighbour ? 2 : Math.floor(rnd() * this.nebulae.length)];
+      const size = (1000 + rnd() * 800) * zoom;
+      const x = home ? cx + 300 : neighbour ? cx + 1100 : cx + rnd() * 1500;
+      const y = home ? cy + 200 : neighbour ? cy - 250 : cy + rnd() * 1500;
+      ctx.save();
+      ctx.globalAlpha = 0.55 + rnd() * 0.35;
+      ctx.translate(x, y);
+      ctx.rotate(rnd() * Math.PI * 2 + (this.reduced ? 0 : t * 0.003));
+      ctx.drawImage(sprite, -size / 2, -size / 2, size, size);
+      ctx.restore();
+    });
+    return { canvas: c, W, H, zoom, ref, t };
   }
 }

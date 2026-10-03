@@ -96,13 +96,19 @@ export function drawBlitz(ctx: CanvasRenderingContext2D, look: Look, t: number):
   body.addColorStop(0.55, rgba(mix(WHITE, look.tint, 0.12), 1));
   body.addColorStop(0.85, rgba(mix(WHITE, look.tint, 0.4), 1));
   body.addColorStop(1, rgba(look.tint, 0.85));
+  // The rim of light around the body (a gradient: a blurred shadow costs far more every frame).
+  const rim = ctx.createRadialGradient(0, 0, r * 0.9, 0, 0, r + 20);
+  rim.addColorStop(0, rgba(look.tint, 0.55));
+  rim.addColorStop(0.35, rgba(look.tint, 0.22));
+  rim.addColorStop(1, rgba(look.tint, 0));
+  ctx.fillStyle = rim;
+  ctx.beginPath();
+  ctx.arc(0, 0, r + 20, 0, Math.PI * 2);
+  ctx.fill();
   ctx.fillStyle = body;
-  ctx.shadowColor = rgba(look.tint, 0.9);
-  ctx.shadowBlur = 24;
   ctx.beginPath();
   ctx.arc(0, 0, r, 0, Math.PI * 2);
   ctx.fill();
-  ctx.shadowBlur = 0;
 
   drawFace(ctx, look, t);
   ctx.restore();
