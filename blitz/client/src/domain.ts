@@ -174,6 +174,9 @@ const REVEAL = 1.4;
 const BURST_CAM = 1.4;
 /** The universe folds back into the bubble over this long. */
 const GATHER = 0.95;
+/** The sharpest the full-window universe draws (the bubble goes up to 2x): a softer screen keeps it smooth. */
+const OPEN_DPR = 1.25;
+
 /** Frames slower than this on average (about 45 fps) make the domain draw a little softer; faster than SMOOTH lets it sharpen again. */
 const SLOW_FRAME_MS = 22;
 const SMOOTH_FRAME_MS = 18;
@@ -854,15 +857,21 @@ export class DomainView {
 
   private resize(): void {
     const rect = this.canvas.getBoundingClientRect();
+    this.prewarmed = false; // the window (or sharpness) changed: open space needs painting for it
     // Fullscreen canvases are big; a softer resolution keeps them smooth.
-    this.dpr = Math.max(0.5, Math.min(window.devicePixelRatio || 1, this.layoutOpen ? 1.25 : 2) * this.quality);
+    this.dpr = Math.max(0.5, Math.min(window.devicePixelRatio || 1, this.layoutOpen ? OPEN_DPR : 2) * this.quality);
     this.settleUntil = this.t + 1;
     this.W = rect.width;
     this.H = rect.height;
+    // Space is scaled to the window and its tiles painted for open space, so they serve the bubble too.
+    this.universe.setScreen(window.innerWidth, window.innerHeight, Math.max(0.5, Math.min(window.devicePixelRatio || 1, OPEN_DPR) * this.quality));
     this.rectLeft = rect.left;
     this.rectTop = rect.top;
-    this.canvas.width = Math.round(this.W * this.dpr);
-    this.canvas.height = Math.round(this.H * this.dpr);
+    // Setting a canvas's size (even to the same value) throws its pixels away, so only when it really changes.
+    const w = Math.round(this.W * this.dpr);
+    const h = Math.round(this.H * this.dpr);
+    if (this.canvas.width !== w) this.canvas.width = w;
+    if (this.canvas.height !== h) this.canvas.height = h;
   }
 
   private bubbleCam(): Cam {
@@ -922,6 +931,23 @@ export class DomainView {
   private frameCount = 0;
   private skipped = false;
 
+  /**
+   * While the bubble sits quietly, open space's textures are painted ahead of
+   * time, one piece per spare frame, so bursting the bubble doesn't stall.
+   */
+  private prewarmed = false;
+  private workAvg = 16;
+  private prewarm(): void {
+    if (this.prewarmed || this.layoutOpen || this.trans || this.t < 3 || this.workAvg > 6) return;
+    const inset = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--top-inset")) || 0;
+    const W = window.innerWidth;
+    const H = Math.max(1, window.innerHeight - inset);
+    const availH = Math.max(120, H - HUD_TOP - HUD_BOTTOM);
+    // Open space's camera as the burst begins: centred above the message box, on the middle of the bubble.
+    const cam: Cam = { x: W / 2, y: HUD_TOP + availH / 2, s: this.cam.s, fx: 0, fy: 0 };
+    if (!this.universe.prewarm(W, H, cam)) this.prewarmed = true;
+  }
+
   private frame(ms: number): void {
     // A dozing Blitz barely moves: half the frames are plenty, and kinder to batteries.
     if (this.asleep && !this.pointer.down && !this.trans && !this.mote && !this.speech && (this.frameCount++ & 1) === 1) {
@@ -943,6 +969,9 @@ export class DomainView {
     this.updateLooks(dt);
     this.updateStatus();
     this.draw(dt, dt * slow);
+    // How long a frame's own work takes (not the gap between frames, which the screen's refresh sets).
+    this.workAvg += (performance.now() - ms - this.workAvg) * 0.1;
+    this.prewarm();
     requestAnimationFrame((next) => this.frame(next));
   }
 
@@ -1452,7 +1481,9 @@ export class DomainView {
     const still = this.openStill;
     const settled = key === still.lastKey;
     still.lastKey = key;
-    if (still.key === key || settled) {
+    // Not while opening or closing (everything moves), nor before the sky's tiles are all painted.
+    const cacheable = !this.trans && (still.key === key || this.universe.skyReady(W, H, cam));
+    if (cacheable && (still.key === key || settled)) {
       if (still.key !== key) {
         const c = still.canvas ?? document.createElement("canvas");
         c.width = Math.round(W * k);
@@ -1483,16 +1514,17 @@ export class DomainView {
     if (fade <= 0.01) return;
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
-    for (const [width, color, blur] of [
-      [10, `rgba(127, 227, 255, ${0.35 * fade})`, 30],
-      [2, `rgba(235, 250, 255, ${0.9 * fade})`, 12],
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    // Layered strokes for the glow: a blurred shadow on a circle this size would cover the whole screen, every frame.
+    for (const [width, color] of [
+      [44, `rgba(127, 227, 255, ${0.05 * fade})`],
+      [22, `rgba(127, 227, 255, ${0.1 * fade})`],
+      [10, `rgba(127, 227, 255, ${0.3 * fade})`],
+      [2, `rgba(235, 250, 255, ${0.9 * fade})`],
     ] as const) {
       ctx.lineWidth = width;
       ctx.strokeStyle = color;
-      ctx.shadowColor = "rgba(127, 227, 255, 1)";
-      ctx.shadowBlur = blur;
-      ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
       ctx.stroke();
     }
     ctx.restore();
@@ -1513,7 +1545,8 @@ export class DomainView {
     // While the window is being resized the copy would be stale by the next frame, so draw directly.
     const changing = shape !== this.bubbleShape;
     this.bubbleShape = shape;
-    if (changing) {
+    // Also draw directly until every deep-sky tile in view is painted, so the copy doesn't keep gaps.
+    if (changing || (this.bubbleStill?.key !== `${shape}|${this.universe.stillKey(W, H, cam, k)}` && !this.universe.skyReady(W, H, cam))) {
       this.drawBubbleFresh(cx, cy, wallR, alpha, dt);
       this.drawRim(cx, cy, wallR, alpha, strain);
       return;

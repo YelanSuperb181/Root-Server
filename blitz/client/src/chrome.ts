@@ -51,9 +51,10 @@ export function chromeBurst(before: ChromeRects | undefined): void {
     document.body.append(ghost);
     ghost
       .animate(
+        // Scale and fade only: animating a blur this big costs a lot every frame.
         [
-          { transform: "scale(1)", opacity: 1, filter: "blur(0px)" },
-          { transform: "scale(1.22)", opacity: 0, filter: "blur(14px)" },
+          { transform: "scale(1)", opacity: 1 },
+          { transform: "scale(1.22)", opacity: 0 },
         ],
         { duration: 750, easing: "cubic-bezier(.1, .7, .3, 1)", fill: "forwards" },
       )

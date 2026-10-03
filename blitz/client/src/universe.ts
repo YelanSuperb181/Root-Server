@@ -70,8 +70,8 @@ interface StarLayer {
   stars: [number, number, number, number, number];
   /** How fast it slides, as a share of the camera's movement. */
   p: number;
-  /** The tile, painted for the current pixel density `k`. */
-  tile?: { k: number; canvas: HTMLCanvasElement };
+  /** The tile, painted for each pixel density it's been drawn at (the bubble's and open space's). */
+  tiles: Map<number, HTMLCanvasElement>;
 }
 
 /**
@@ -91,6 +91,16 @@ const DEEP_PER_FRAME = 6;
 const SPACE = "#0B1334";
 /** The faintest star layer, painted into the deep tiles. */
 const FAINT_STARS: [number, number, number, number, number] = [650, 0.3, 0.8, 9, 11];
+
+/**
+ * Browsers put off actually painting a canvas until it's first shown; copying
+ * it onto a 1-pixel scratch canvas makes them do it now, while there's time.
+ */
+let scratch: CanvasRenderingContext2D | undefined;
+function finishPainting(c: HTMLCanvasElement): void {
+  scratch ??= canvas(1)[1];
+  scratch.drawImage(c, 0, 0, 1, 1);
+}
 
 /** Rounds a canvas x (or y) so it lands on a whole device pixel under `m`, which keeps copies crisp and cheap. */
 function snapX(m: DOMMatrix, x: number): number {
@@ -333,8 +343,8 @@ export class Universe {
 
   constructor(private reduced: boolean) {
     this.layers = [
-      { stars: [reduced ? 110 : 200, 0.5, 1.2, 1.05, 23], p: 0.2 },
-      { stars: [reduced ? 30 : 55, 0.8, 1.8, 1.1, 37], p: 0.42 },
+      { stars: [reduced ? 110 : 200, 0.5, 1.2, 1.05, 23], p: 0.2, tiles: new Map() },
+      { stars: [reduced ? 30 : 55, 0.8, 1.8, 1.1, 37], p: 0.42, tiles: new Map() },
     ];
     this.nebulae = [101, 202, 303, 404, 505].map(paintNebula);
     this.galaxies = [7, 8, 9].map(paintGalaxy);
@@ -377,8 +387,74 @@ export class Universe {
     this.drawLively(ctx, W, H, cam, t, dt, view);
   }
 
-  private zoomFor(W: number, H: number): number {
-    return Math.max(0.6, Math.min(1.6, Math.min(W, H) / 800));
+  /**
+   * The window's size and open space's pixel density, from the domain. Space
+   * is scaled to the window (not to the bubble), and the deep-sky tiles are
+   * painted for open space, so the same tiles serve the bubble and carry over
+   * when it bursts.
+   */
+  private screen = { w: 1280, h: 800, k: 1 };
+
+  setScreen(w: number, h: number, k: number): void {
+    this.screen = { w, h, k };
+  }
+
+  private zoom(): number {
+    return Math.max(0.6, Math.min(1.6, Math.min(this.screen.w, this.screen.h) / 800));
+  }
+
+  /**
+   * Paints one more thing open space will need when the bubble bursts (its
+   * star tiles, vignette and deep-sky tiles), so the burst doesn't have to.
+   * Call when there's time to spare; false once there's nothing left to do.
+   */
+  prewarm(W: number, H: number, cam: Cam): boolean {
+    const k = this.screen.k;
+    for (const layer of this.layers) {
+      if (!layer.tiles.has(k)) {
+        if (layer.tiles.size >= 3) layer.tiles.clear();
+        const tile = paintStars(...layer.stars, Math.round(512 * k));
+        finishPainting(tile);
+        layer.tiles.set(k, tile);
+        return true;
+      }
+    }
+    const v = this.vignette;
+    if (!v || v.W !== W || v.H !== H || v.k !== k) {
+      this.vignette = paintVignette(W, H, k);
+      finishPainting(this.vignette.canvas);
+      return true;
+    }
+    const zoom = this.zoom();
+    if (this.deepFor !== `${k}|${zoom}`) return false; // the bubble hasn't drawn any sky yet
+    const px = Math.round(DEEP_TILE * k);
+    const size = px / k;
+    const o = this.offset(cam, DEEP_P);
+    for (let tx = Math.floor(-o.x / size) - 1; tx <= Math.floor((W - o.x) / size) + 1; tx++) {
+      for (let ty = Math.floor(-o.y / size) - 1; ty <= Math.floor((H - o.y) / size) + 1; ty++) {
+        const id = `${tx},${ty}`;
+        if (this.deep.has(id)) continue;
+        if (this.deep.size >= DEEP_KEEP) return false;
+        const tile = this.paintDeepTile(tx, ty, px, k, zoom);
+        finishPainting(tile);
+        this.deep.set(id, tile);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Whether every deep-sky tile this view needs is painted (they come a few per frame). */
+  skyReady(W: number, H: number, cam: Cam): boolean {
+    if (this.deepFor !== `${this.screen.k}|${this.zoom()}`) return false;
+    const size = Math.round(DEEP_TILE * this.screen.k) / this.screen.k;
+    const o = this.offset(cam, DEEP_P);
+    for (let tx = Math.floor(-o.x / size) - 1; tx <= Math.floor((W - o.x) / size) + 1; tx++) {
+      for (let ty = Math.floor(-o.y / size) - 1; ty <= Math.floor((H - o.y) / size) + 1; ty++) {
+        if (!this.deep.has(`${tx},${ty}`)) return false;
+      }
+    }
+    return true;
   }
 
   /**
@@ -400,7 +476,7 @@ export class Universe {
    * come a few per frame), so a copy of this would need painting again.
    */
   drawStill(ctx: CanvasRenderingContext2D, W: number, H: number, cam: Cam, t: number, alpha = 1): boolean {
-    const zoom = this.zoomFor(W, H);
+    const zoom = this.zoom();
     ctx.save();
     ctx.globalAlpha = alpha;
     const m = ctx.getTransform();
@@ -413,13 +489,18 @@ export class Universe {
     // Star fields, near layers sliding faster than far ones. Each tile is drawn
     // whole and on exact device pixels: far cheaper than a shifted pattern fill.
     for (const layer of this.layers) {
-      if (!layer.tile || layer.tile.k !== k) layer.tile = { k, canvas: paintStars(...layer.stars, Math.round(512 * k)) };
-      const size = layer.tile.canvas.width / k;
+      let tile = layer.tiles.get(k);
+      if (!tile) {
+        if (layer.tiles.size >= 3) layer.tiles.clear();
+        tile = paintStars(...layer.stars, Math.round(512 * k));
+        layer.tiles.set(k, tile);
+      }
+      const size = tile.width / k;
       const o = this.offset(cam, layer.p);
       const x0 = snapX(m, (((o.x % size) + size) % size) - size);
       const y0 = snapY(m, (((o.y % size) + size) % size) - size);
       for (let x = x0; x < W; x += size) {
-        for (let y = y0; y < H; y += size) ctx.drawImage(layer.tile.canvas, x, y, size, size);
+        for (let y = y0; y < H; y += size) ctx.drawImage(tile, x, y, size, size);
       }
     }
     ctx.imageSmoothingEnabled = smooth;
@@ -461,7 +542,7 @@ export class Universe {
       this.camVel.y += ((cam.fy - this.lastFocus.y) / dt - this.camVel.y) * kv;
     }
     this.lastFocus = { x: cam.fx, y: cam.fy };
-    const zoom = this.zoomFor(W, H);
+    const zoom = this.zoom();
     const k = ctx.getTransform().a;
     const dim = view.dim ?? (() => 1);
     ctx.save();
@@ -575,7 +656,10 @@ export class Universe {
   }
 
   /** The deep sky: the painted tiles on screen, painting any that are missing (a few per frame). False if some are still missing. */
-  private drawDeep(ctx: CanvasRenderingContext2D, W: number, H: number, cam: Cam, zoom: number, m: DOMMatrix, k: number): boolean {
+  private drawDeep(ctx: CanvasRenderingContext2D, W: number, H: number, cam: Cam, zoom: number, m: DOMMatrix, _k: number): boolean {
+    // Tiles are painted for open space's pixel density; drawn anywhere else (the bubble), they're scaled smoothly.
+    const k = this.screen.k;
+    const scaled = Math.abs(m.a - k) > 1e-3;
     const key = `${k}|${zoom}`;
     if (key !== this.deepFor) {
       this.deep.clear();
@@ -606,20 +690,26 @@ export class Universe {
       this.deep.set(`${tx},${ty}`, this.paintDeepTile(tx, ty, px, k, zoom));
     }
     ctx.fillStyle = SPACE;
+    const smooth = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = scaled;
     for (let tx = x0; tx <= x1; tx++) {
       for (let ty = y0; ty <= y1; ty++) {
         const id = `${tx},${ty}`;
         const tile = this.deep.get(id);
-        const x = ox + tx * size;
-        const y = oy + ty * size;
+        // Edges on whole device pixels, so neighbouring tiles always meet exactly.
+        const x = snapX(m, ox + tx * size);
+        const y = snapY(m, oy + ty * size);
+        const w = snapX(m, ox + (tx + 1) * size) - x;
+        const h = snapY(m, oy + (ty + 1) * size) - y;
         if (tile) {
           // Most recently used goes last, so the oldest are dropped first.
           this.deep.delete(id);
           this.deep.set(id, tile);
-          ctx.drawImage(tile, x, y, size, size);
-        } else ctx.fillRect(x, y, size, size);
+          ctx.drawImage(tile, x, y, w, h);
+        } else ctx.fillRect(x, y, w, h);
       }
     }
+    ctx.imageSmoothingEnabled = smooth;
     // Spare time: paint the ring just off screen, so travelling finds it ready.
     for (let tx = x0 - 1; tx <= x1 + 1 && budget > 0; tx++) {
       for (let ty = y0 - 1; ty <= y1 + 1 && budget > 0; ty++) {

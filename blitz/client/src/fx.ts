@@ -152,12 +152,19 @@ export function drawRipples(ctx: CanvasRenderingContext2D, cam: Cam, ripples: Ri
     const fade = (1 - age / 1.1) * rp.power;
     const spread = 0.12 + age * 1.6;
     const a = Math.atan2(rp.ny, rp.nx);
-    ctx.lineWidth = 2 + 5 * fade;
-    ctx.strokeStyle = `rgba(150, 235, 255, ${0.9 * fade})`;
-    ctx.shadowColor = "rgba(127, 227, 255, 1)";
-    ctx.shadowBlur = 20 * fade;
+    const width = 2 + 5 * fade;
     ctx.beginPath();
     ctx.arc(cx, cy, wallRadius, a - spread, a + spread);
+    // The glow is wide, faint strokes under the bright one: a blurred shadow
+    // along an arc this long is very slow to draw, and there can be several.
+    ctx.lineWidth = width + 22 * fade;
+    ctx.strokeStyle = `rgba(127, 227, 255, ${0.07 * fade})`;
+    ctx.stroke();
+    ctx.lineWidth = width + 9 * fade;
+    ctx.strokeStyle = `rgba(127, 227, 255, ${0.16 * fade})`;
+    ctx.stroke();
+    ctx.lineWidth = width;
+    ctx.strokeStyle = `rgba(150, 235, 255, ${0.9 * fade})`;
     ctx.stroke();
   }
   ctx.restore();
@@ -403,12 +410,18 @@ export class Shatter {
           continue;
         }
       }
-      ctx.strokeStyle = rgba(s.color, 0.85 * fade);
-      ctx.lineWidth = s.width * Math.max(0.2, fade);
-      ctx.shadowColor = rgba(s.color, 1);
-      ctx.shadowBlur = 24 * fade;
+      const width = s.width * Math.max(0.2, fade);
       ctx.beginPath();
       ctx.arc(s.x, s.y, Math.max(1, radius), 0, Math.PI * 2);
+      // Glow from wide, faint strokes: a blurred shadow on a ring this big would cover the screen.
+      ctx.lineWidth = width + 30 * fade;
+      ctx.strokeStyle = rgba(s.color, 0.06 * fade);
+      ctx.stroke();
+      ctx.lineWidth = width + 12 * fade;
+      ctx.strokeStyle = rgba(s.color, 0.14 * fade);
+      ctx.stroke();
+      ctx.lineWidth = width;
+      ctx.strokeStyle = rgba(s.color, 0.85 * fade);
       ctx.stroke();
     }
     ctx.restore();
