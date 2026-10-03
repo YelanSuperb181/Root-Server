@@ -341,16 +341,28 @@ export class Universe {
     this.planet = paintPlanet();
   }
 
+  /**
+   * How long space has been drifting, in seconds. Out in the open the layers
+   * creep along slowly; inside the bubble they hold still (and pick up where
+   * they left off when it bursts), so the bubble's view never needs repainting.
+   */
+  private driftT = 0;
+
+  /** Moves the drift on by `dt` while space is open. */
+  tick(dt: number, open: boolean): void {
+    if (open && !this.reduced) this.driftT += dt;
+  }
+
   /** Where layer point (lx, ly) lands on screen, for a layer moving at `p` times the camera. */
-  private offset(cam: Cam, p: number, t: number): { x: number; y: number } {
-    const driftX = this.reduced ? 0 : t * 5;
-    const driftY = this.reduced ? 0 : t * 2;
+  private offset(cam: Cam, p: number): { x: number; y: number } {
+    const driftX = this.driftT * 5;
+    const driftY = this.driftT * 2;
     return { x: cam.x - (cam.fx * REF + driftX) * p, y: cam.y - (cam.fy * REF + driftY) * p };
   }
 
   /** Calls `each` for every cell of a `size`-px grid on layer `p` that could show within the screen (plus `margin`). */
-  private cells(cam: Cam, p: number, t: number, W: number, H: number, size: number, margin: number, each: (ix: number, iy: number, ox: number, oy: number) => void): void {
-    const o = this.offset(cam, p, t);
+  private cells(cam: Cam, p: number, W: number, H: number, size: number, margin: number, each: (ix: number, iy: number, ox: number, oy: number) => void): void {
+    const o = this.offset(cam, p);
     const x0 = Math.floor((-margin - o.x) / size);
     const x1 = Math.floor((W + margin - o.x) / size);
     const y0 = Math.floor((-margin - o.y) / size);
@@ -374,12 +386,12 @@ export class Universe {
    * drifted a whole device pixel, or the far rocks have turned a little), so a
    * painted copy of the still layers can be reused until then.
    */
-  stillKey(W: number, H: number, cam: Cam, t: number, k: number): string {
+  stillKey(W: number, H: number, cam: Cam, k: number): string {
     const at = (p: number) => {
-      const o = this.offset(cam, p, t);
+      const o = this.offset(cam, p);
       return `${Math.round(o.x * k)},${Math.round(o.y * k)}`;
     };
-    return [W, H, k, at(DEEP_P), ...this.layers.map((l) => at(l.p)), at(PLANET_P), at(FAR_ROCK_P), this.reduced ? 0 : Math.floor(t * 2)].join("|");
+    return [W, H, k, at(DEEP_P), ...this.layers.map((l) => at(l.p)), at(PLANET_P), at(FAR_ROCK_P), Math.floor(this.driftT * 2)].join("|");
   }
 
   /** The layers that only drift: deep sky, star fields, the planet and the distant rocks. */
@@ -392,14 +404,14 @@ export class Universe {
     const k = m.a;
     const smooth = ctx.imageSmoothingEnabled;
     ctx.imageSmoothingEnabled = false;
-    this.drawDeep(ctx, W, H, cam, t, zoom, m, k);
+    this.drawDeep(ctx, W, H, cam, zoom, m, k);
 
     // Star fields, near layers sliding faster than far ones. Each tile is drawn
     // whole and on exact device pixels: far cheaper than a shifted pattern fill.
     for (const layer of this.layers) {
       if (!layer.tile || layer.tile.k !== k) layer.tile = { k, canvas: paintStars(...layer.stars, Math.round(512 * k)) };
       const size = layer.tile.canvas.width / k;
-      const o = this.offset(cam, layer.p, t);
+      const o = this.offset(cam, layer.p);
       const x0 = snapX(m, (((o.x % size) + size) % size) - size);
       const y0 = snapY(m, (((o.y % size) + size) % size) - size);
       for (let x = x0; x < W; x += size) {
@@ -410,19 +422,19 @@ export class Universe {
 
     // A ringed planet hanging off to one side of where the bubble was.
     if (this.planet) {
-      const o = this.offset(cam, PLANET_P, t);
+      const o = this.offset(cam, PLANET_P);
       const size = 420 * zoom;
       ctx.drawImage(this.planet, o.x - 560 * zoom - size / 2, o.y + 280 * zoom - size / 2, size, size);
     }
 
     // Distant rocks, dim and small, drifting by slower than the ones Blitz can reach.
-    this.cells(cam, FAR_ROCK_P, t, W, H, 360, 40, (ix, iy, cx, cy) => {
+    this.cells(cam, FAR_ROCK_P, W, H, 360, 40, (ix, iy, cx, cy) => {
       const rnd = cellRandom(ix, iy, 5);
       if (rnd() > 0.2) return;
       const x = cx + rnd() * 360;
       const y = cy + rnd() * 360;
       const size = (5 + rnd() * 13) * zoom;
-      const turn = rnd() * 6.28 + (this.reduced ? 0 : t * (rnd() - 0.5) * 0.5);
+      const turn = rnd() * 6.28 + this.driftT * (rnd() - 0.5) * 0.5;
       const key = `${ix},${iy}`;
       let art = this.farRocks.get(key);
       if (!art) {
@@ -453,7 +465,7 @@ export class Universe {
     // Bright stars: twinkling, with soft spikes, and streaking when the camera rushes along.
     ctx.globalCompositeOperation = "lighter";
     const speed = Math.hypot(this.camVel.x, this.camVel.y) * REF;
-    this.cells(cam, 0.32, t, W, H, 190, 20, (ix, iy, cx, cy) => {
+    this.cells(cam, 0.32, W, H, 190, 20, (ix, iy, cx, cy) => {
       const rnd = cellRandom(ix, iy, 3);
       if (rnd() > 0.24) return;
       const x = cx + rnd() * 190;
@@ -524,7 +536,7 @@ export class Universe {
     }
 
     // Dust drifting close past the camera, faster than everything else.
-    this.cells(cam, 1.5, t, W, H, 280, 20, (ix, iy, cx, cy) => {
+    this.cells(cam, 1.5, W, H, 280, 20, (ix, iy, cx, cy) => {
       const rnd = cellRandom(ix, iy, 4);
       if (rnd() > 0.22) return;
       const size = (3 + rnd() * 6) * zoom;
@@ -558,7 +570,7 @@ export class Universe {
   }
 
   /** The deep sky: the painted tiles on screen, painting any that are missing (a few per frame). */
-  private drawDeep(ctx: CanvasRenderingContext2D, W: number, H: number, cam: Cam, t: number, zoom: number, m: DOMMatrix, k: number): void {
+  private drawDeep(ctx: CanvasRenderingContext2D, W: number, H: number, cam: Cam, zoom: number, m: DOMMatrix, k: number): void {
     const key = `${k}|${zoom}`;
     if (key !== this.deepFor) {
       this.deep.clear();
@@ -567,7 +579,7 @@ export class Universe {
     }
     const px = Math.round(DEEP_TILE * k);
     const size = px / k;
-    const o = this.offset(cam, DEEP_P, t);
+    const o = this.offset(cam, DEEP_P);
     const ox = snapX(m, o.x);
     const oy = snapY(m, o.y);
     const x0 = Math.floor(-ox / size);

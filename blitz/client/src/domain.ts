@@ -937,6 +937,7 @@ export class DomainView {
     this.t += dt;
     const slow = this.t < this.slowUntil ? 0.3 + 0.7 * clamp01(1 - (this.slowUntil - this.t) / SLOW_MO) ** 2 : 1;
     this.fxT += dt * slow;
+    this.universe.tick(dt, this.layoutOpen);
     this.simulate();
     this.updateCam(dt);
     this.updateLooks(dt);
@@ -1447,7 +1448,7 @@ export class DomainView {
   private drawOpenUniverse(dt: number, view: UniverseView): void {
     const { ctx, W, H, cam, t } = this;
     const k = this.dpr;
-    const key = this.universe.stillKey(W, H, cam, t, k);
+    const key = this.universe.stillKey(W, H, cam, k);
     const still = this.openStill;
     const settled = key === still.lastKey;
     still.lastKey = key;
@@ -1502,19 +1503,21 @@ export class DomainView {
    * glass are painted once into a copy that's reused until they've drifted a
    * pixel; only the twinkling stars and dust are drawn fresh every frame.
    */
-  private drawBubble(cx: number, cy: number, r: number, alpha: number, strain: number, dt: number): void {
-    const { ctx, W, H, cam, t } = this;
+  private drawBubble(cx: number, cy: number, wallR: number, alpha: number, strain: number, dt: number): void {
+    const { ctx, W, H, cam } = this;
     const k = this.dpr;
+    // The copy is painted for the bubble at its full size; while it opens it shows through the growing circle.
+    const r = this.cam.s;
     const shape = `${r}|${cx}|${cy}|${k}`;
-    // While the bubble is still changing size (opening, resizing), a copy would be stale by the next frame.
+    // While the window is being resized the copy would be stale by the next frame, so draw directly.
     const changing = shape !== this.bubbleShape;
     this.bubbleShape = shape;
     if (changing) {
-      this.drawBubbleFresh(cx, cy, r, alpha, dt);
-      this.drawRim(cx, cy, r, alpha, strain);
+      this.drawBubbleFresh(cx, cy, wallR, alpha, dt);
+      this.drawRim(cx, cy, wallR, alpha, strain);
       return;
     }
-    const key = `${shape}|${this.universe.stillKey(W, H, cam, t, k)}`;
+    const key = `${shape}|${this.universe.stillKey(W, H, cam, k)}`;
     let still = this.bubbleStill;
     if (!still || still.key !== key) {
       const size = Math.ceil(r * 2 * k) + 2;
@@ -1530,17 +1533,25 @@ export class DomainView {
     }
     ctx.save();
     ctx.globalAlpha = alpha;
+    const opening = wallR < r - 0.5;
+    if (opening) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, wallR, 0, Math.PI * 2);
+      ctx.clip();
+    }
     const smooth = ctx.imageSmoothingEnabled;
     ctx.imageSmoothingEnabled = false;
     // Copied pixel for pixel onto the device pixels it was painted for (unless the screen is shaking).
     ctx.drawImage(still.canvas, still.left / k, still.top / k, still.canvas.width / k, still.canvas.height / k);
     ctx.imageSmoothingEnabled = smooth;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.clip();
-    this.drawBubbleLively(cx, cy, r, alpha, dt);
+    if (!opening) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, wallR, 0, Math.PI * 2);
+      ctx.clip();
+    }
+    this.drawBubbleLively(cx, cy, wallR, alpha, dt);
     ctx.restore();
-    this.drawRim(cx, cy, r, alpha, strain);
+    this.drawRim(cx, cy, wallR, alpha, strain);
   }
 
   /** The drifting layers seen through the bubble's tinted glass, clipped to the bubble. */
