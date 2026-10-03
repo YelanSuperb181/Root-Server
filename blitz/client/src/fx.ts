@@ -70,16 +70,19 @@ interface Particle {
   life: number;
   max: number;
   size: number; // px
-  color: RGB;
+  sprite: HTMLCanvasElement;
 }
 
 export class Particles {
   private list: Particle[] = [];
+  /** When full, new particles replace old ones in turn from here. */
+  private next = 0;
   constructor(private max: number) {}
 
   emit(x: number, y: number, vx: number, vy: number, life: number, size: number, color: RGB): void {
-    if (this.list.length >= this.max) this.list.shift();
-    this.list.push({ x, y, vx, vy, life, max: life, size, color });
+    const p = { x, y, vx, vy, life, max: life, size, sprite: glowSprite(color) };
+    if (this.list.length < this.max) this.list.push(p);
+    else this.list[(this.next = (this.next + 1) % this.max)] = p;
   }
 
   /** A spray from a point: all around, or aimed (with spread) along (dirX, dirY). */
@@ -96,14 +99,17 @@ export class Particles {
   draw(ctx: CanvasRenderingContext2D, cam: Cam, dt: number): void {
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
-    for (let i = this.list.length - 1; i >= 0; i--) {
-      const p = this.list[i];
+    const drag = Math.exp(-1.6 * dt);
+    const list = this.list;
+    for (let i = list.length - 1; i >= 0; i--) {
+      const p = list[i];
       p.life -= dt;
       if (p.life <= 0) {
-        this.list.splice(i, 1);
+        // Added light doesn't care about order: move the last one into this slot.
+        list[i] = list[list.length - 1];
+        list.pop();
         continue;
       }
-      const drag = Math.exp(-1.6 * dt);
       p.vx *= drag;
       p.vy *= drag;
       p.x += p.vx * dt;
@@ -112,8 +118,9 @@ export class Particles {
       const size = p.size * (0.6 + 0.8 * k) * 3;
       const [sx, sy] = toScreen(cam, p.x, p.y);
       ctx.globalAlpha = k;
-      ctx.drawImage(glowSprite(p.color), sx - size, sy - size, size * 2, size * 2);
+      ctx.drawImage(p.sprite, sx - size, sy - size, size * 2, size * 2);
     }
+    if (this.next >= list.length) this.next = 0;
     ctx.restore();
   }
 }

@@ -919,9 +919,19 @@ export class DomainView {
   }
 
   private prevFrame = performance.now();
+  private frameCount = 0;
+  private skipped = false;
 
   private frame(ms: number): void {
-    this.adaptQuality(ms - this.prevFrame);
+    // A dozing Blitz barely moves: half the frames are plenty, and kinder to batteries.
+    if (this.asleep && !this.pointer.down && !this.trans && !this.mote && !this.speech && (this.frameCount++ & 1) === 1) {
+      this.skipped = true;
+      requestAnimationFrame((next) => this.frame(next));
+      return;
+    }
+    // A skipped frame doubles the gap; that isn't the computer being slow.
+    this.adaptQuality((ms - this.prevFrame) / (this.skipped ? 2 : 1));
+    this.skipped = false;
     const dt = Math.min(0.05, (ms - this.prevFrame) / 1000);
     this.prevFrame = ms;
     this.t += dt;

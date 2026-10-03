@@ -11,7 +11,9 @@ import type { Brain } from "./domain";
 
 /** Claude gets 20 s on the server; past this the window stops waiting. */
 const THINK_TIMEOUT_MS = 25_000;
-/** After a failed call, keywords only for this long before trying the server again. */
+/** How long the quick "are you there?" check may take. */
+const CHECK_TIMEOUT_MS = 5000;
+/** While the server can't be reached, keywords only; it's checked again this often. */
 const RETRY_AFTER_MS = 60_000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -39,17 +41,34 @@ export function insideRoot(): boolean {
   }
 }
 
-/** Blitz's server-side brain, when the page is inside Root. */
+/**
+ * Blitz's server-side brain, when the page is inside Root. It checks right
+ * away that the server answers (an empty message, which the server turns
+ * down instantly), so if it can't be reached Blitz reacts from keywords at
+ * once instead of pondering until a long timeout.
+ */
 export function serverBrain(): Brain | undefined {
   if (!insideRoot()) return undefined;
-  let downUntil = 0;
+  const svc = blitzDomainServiceClient;
+  const check = () => withTimeout(svc.think({ text: "", asleep: false, open: false }), CHECK_TIMEOUT_MS).then(() => true, () => false);
+  let reachable = check();
+  let checkedAt = Date.now();
+  const down = () => {
+    reachable = Promise.resolve(false);
+    checkedAt = Date.now();
+  };
   return async (s) => {
-    if (Date.now() < downUntil) return undefined;
+    if (!(await reachable)) {
+      if (Date.now() - checkedAt < RETRY_AFTER_MS) return undefined;
+      checkedAt = Date.now();
+      reachable = check();
+      if (!(await reachable)) return undefined;
+    }
     try {
-      const res = await withTimeout(blitzDomainServiceClient.think({ text: s.text, asleep: s.asleep ?? false, open: s.open ?? false }), THINK_TIMEOUT_MS);
+      const res = await withTimeout(svc.think({ text: s.text, asleep: s.asleep ?? false, open: s.open ?? false }), THINK_TIMEOUT_MS);
       return res.thought ? readThought({ mood: res.mood, trick: res.trick || "none", say: res.say }) : undefined;
     } catch {
-      downUntil = Date.now() + RETRY_AFTER_MS;
+      down();
       return undefined;
     }
   };

@@ -388,7 +388,8 @@ export class Universe {
     ctx.save();
     ctx.globalAlpha = alpha;
     const m = ctx.getTransform();
-    const k = Math.max(0.25, Math.round(m.a * 100) / 100);
+    // The exact scale: tiles painted for it land on whole device pixels.
+    const k = m.a;
     const smooth = ctx.imageSmoothingEnabled;
     ctx.imageSmoothingEnabled = false;
     this.drawDeep(ctx, W, H, cam, t, zoom, m, k);
@@ -444,7 +445,7 @@ export class Universe {
     }
     this.lastFocus = { x: cam.fx, y: cam.fy };
     const zoom = this.zoomFor(W, H);
-    const k = Math.max(0.25, Math.round(ctx.getTransform().a * 100) / 100);
+    const k = ctx.getTransform().a;
     const dim = view.dim ?? (() => 1);
     ctx.save();
     ctx.globalAlpha = view.alpha;
