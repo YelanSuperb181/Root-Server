@@ -40,10 +40,15 @@ export const rgba = (c: RGB, a: number) => `rgba(${c[0] | 0}, ${c[1] | 0}, ${c[2
 
 const sprites = new Map<string, HTMLCanvasElement>();
 
+/** A color rounded so caches of things painted in it stay small, and its key in them. */
+function rounded(c: RGB): [RGB, string] {
+  const q: RGB = [Math.round(c[0] / 16) * 16, Math.round(c[1] / 16) * 16, Math.round(c[2] / 16) * 16];
+  return [q, `${q[0]},${q[1]},${q[2]}`];
+}
+
 /** A soft round glow, cached per color (rounded so the cache stays small). */
 export function glowSprite(c: RGB): HTMLCanvasElement {
-  const q = c.map((v) => Math.round(v / 16) * 16) as unknown as RGB;
-  const key = q.join(",");
+  const [q, key] = rounded(c);
   let sprite = sprites.get(key);
   if (!sprite) {
     sprite = document.createElement("canvas");
@@ -60,6 +65,33 @@ export function glowSprite(c: RGB): HTMLCanvasElement {
   return sprite;
 }
 
+const stamps = new Map<string, HTMLCanvasElement>();
+
+/**
+ * The glow for `c`, painted `R` device pixels in radius (to the nearest pixel,
+ * or two for big ones), to be copied pixel for pixel with stampAt: the one way
+ * of drawing an image that's always quick. Drawn scaled, or between device
+ * pixels, every pixel is filtered, which with added light costs several times more.
+ */
+export function glowStamp(c: RGB, R: number): HTMLCanvasElement {
+  const r = R < 12 ? Math.max(1, Math.round(R)) : Math.round(R / 2) * 2;
+  const key = `${rounded(c)[1]}|${r}`;
+  let stamp = stamps.get(key);
+  if (!stamp) {
+    stamp = document.createElement("canvas");
+    stamp.width = stamp.height = r * 2;
+    stamp.getContext("2d")!.drawImage(glowSprite(c), 0, 0, r * 2, r * 2);
+    if (stamps.size >= 600) stamps.delete(stamps.keys().next().value as string);
+    stamps.set(key, stamp);
+  }
+  return stamp;
+}
+
+/** Copies `stamp` with its middle on device pixel (dx, dy). The canvas must be set to device pixels (setTransform(1, 0, 0, 1, 0, 0)). */
+export function stampAt(ctx: CanvasRenderingContext2D, stamp: HTMLCanvasElement, dx: number, dy: number): void {
+  ctx.drawImage(stamp, Math.round(dx - stamp.width / 2), Math.round(dy - stamp.height / 2));
+}
+
 // ---- Particles --------------------------------------------------------------
 
 interface Particle {
@@ -70,7 +102,7 @@ interface Particle {
   life: number;
   max: number;
   size: number; // px
-  sprite: HTMLCanvasElement;
+  color: RGB;
 }
 
 export class Particles {
@@ -80,7 +112,7 @@ export class Particles {
   constructor(private max: number) {}
 
   emit(x: number, y: number, vx: number, vy: number, life: number, size: number, color: RGB): void {
-    const p = { x, y, vx, vy, life, max: life, size, sprite: glowSprite(color) };
+    const p = { x, y, vx, vy, life, max: life, size, color };
     if (this.list.length < this.max) this.list.push(p);
     else this.list[(this.next = (this.next + 1) % this.max)] = p;
   }
@@ -97,7 +129,10 @@ export class Particles {
   }
 
   draw(ctx: CanvasRenderingContext2D, cam: Cam, dt: number): void {
+    // Each glow is copied pixel for pixel, in device pixels.
+    const m = ctx.getTransform();
     ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalCompositeOperation = "lighter";
     const drag = Math.exp(-1.6 * dt);
     const list = this.list;
@@ -116,9 +151,10 @@ export class Particles {
       p.y += p.vy * dt;
       const k = p.life / p.max;
       const size = p.size * (0.6 + 0.8 * k) * 3;
-      const [sx, sy] = toScreen(cam, p.x, p.y);
+      const sx = cam.x + cam.s * (p.x - cam.fx);
+      const sy = cam.y + cam.s * (p.y - cam.fy);
       ctx.globalAlpha = k;
-      ctx.drawImage(p.sprite, sx - size, sy - size, size * 2, size * 2);
+      stampAt(ctx, glowStamp(p.color, size * m.a), m.a * sx + m.e, m.d * sy + m.f);
     }
     if (this.next >= list.length) this.next = 0;
     ctx.restore();

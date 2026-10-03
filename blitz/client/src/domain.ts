@@ -60,11 +60,12 @@ import {
   drawThought,
   easeInOut,
   easeOut,
-  glowSprite,
+  glowStamp,
   makeCrack,
   mixCam,
   rand,
   rgba,
+  stampAt,
   toScreen,
   toWorld,
 } from "./fx";
@@ -981,10 +982,11 @@ export class DomainView {
   }
 
   private frame(ms: number): void {
+    // The next frame is asked for first, so even a mistake in this one can't stop Blitz.
+    requestAnimationFrame((next) => this.frame(next));
     // A dozing Blitz barely moves: half the frames are plenty, and kinder to batteries.
     if (this.asleep && !this.pointer.down && !this.trans && !this.mote && !this.speech && (this.frameCount++ & 1) === 1) {
       this.skipped = true;
-      requestAnimationFrame((next) => this.frame(next));
       return;
     }
     // A skipped frame doubles the gap; that isn't the computer being slow.
@@ -1000,11 +1002,16 @@ export class DomainView {
     this.updateCam(dt);
     this.updateLooks(dt);
     this.updateStatus();
-    this.draw(dt, dt * slow);
+    try {
+      this.draw(dt, dt * slow);
+    } catch (err) {
+      // Don't leave the canvas half set up (clipped, or moved) for the next frame.
+      this.ctx.reset();
+      throw err;
+    }
     // How long a frame's own work takes (not the gap between frames, which the screen's refresh sets).
     this.workAvg += (performance.now() - ms - this.workAvg) * 0.1;
     this.prewarm();
-    requestAnimationFrame((next) => this.frame(next));
   }
 
   private holdTarget(): Point | undefined {
@@ -1561,6 +1568,12 @@ export class DomainView {
     const k = this.dpr;
     const st = this.openStill;
     let back = st.back;
+    if (back?.key === key && back.step >= OPEN_STEPS.length) {
+      // The view is back where an earlier copy was painted (only whole copies keep their key): show that one again.
+      st.back = st.front;
+      st.front = back;
+      return;
+    }
     if (!back || back.key !== key) {
       const canvas = back?.canvas ?? opaqueCanvas();
       const w = Math.round(W * k);
@@ -1872,10 +1885,14 @@ export class DomainView {
       this.particles.emit(w.x, w.y, rand(-30, 30) * PX, rand(-30, 30) * PX, 0.5, rand(0.8, 1.6), Math.random() < 0.5 ? WHITE : CYAN);
     }
     const size = 16 + 4 * Math.sin(this.t * 20);
+    const m = ctx.getTransform();
     ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalCompositeOperation = "lighter";
-    ctx.drawImage(glowSprite(WHITE), p.x - size, p.y - size, size * 2, size * 2);
-    ctx.drawImage(glowSprite(CYAN), p.x - size * 1.6, p.y - size * 1.6, size * 3.2, size * 3.2);
+    const dx = m.a * p.x + m.e;
+    const dy = m.d * p.y + m.f;
+    stampAt(ctx, glowStamp(WHITE, size * m.a), dx, dy);
+    stampAt(ctx, glowStamp(CYAN, size * 1.6 * m.a), dx, dy);
     ctx.restore();
   }
 }

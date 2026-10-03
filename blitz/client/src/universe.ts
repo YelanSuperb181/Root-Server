@@ -6,7 +6,7 @@
 // already there. Decoration only: none of it touches Blitz's physics.
 
 import { hash32, unit } from "@blitz/shared";
-import { Cam, RGB, glowSprite, rgba } from "./fx";
+import { Cam, RGB, glowStamp, rgba, stampAt } from "./fx";
 import { FAR_PALETTE, RockArt, RockLight, SUN, drawRockArt, makeRockArt } from "./rockart";
 
 /** The distant rocks are lit only by the far-off sun. */
@@ -56,6 +56,9 @@ const WASHES: Array<[number, number, RGB]> = [
   [80, 640, [50, 60, 170]],
   [-200, 420, [160, 60, 140]],
 ];
+
+/** Passing dust. */
+const DUST: RGB = [200, 225, 255];
 
 const NEBULA_COLORS: RGB[] = [
   [64, 196, 220],
@@ -583,6 +586,8 @@ export class Universe {
     this.lastFocus = { x: cam.fx, y: cam.fy };
     const zoom = this.zoom();
     const dim = view.dim ?? (() => 1);
+    // Glows are copied pixel for pixel, in device pixels (see glowStamp).
+    const m = ctx.getTransform();
     ctx.save();
     ctx.globalAlpha = view.alpha;
     if (view.farRocks) this.drawFarRocks(ctx, W, H, cam, ctx.getTransform(), view.dim);
@@ -622,7 +627,9 @@ export class Universe {
       const still = 1 - streak;
       const size = r * 7;
       ctx.globalAlpha = view.alpha * tw * still;
-      ctx.drawImage(glowSprite(color), x - size, y - size, size * 2, size * 2);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      stampAt(ctx, glowStamp(color, size * m.a), m.a * x + m.e, m.d * y + m.f);
+      ctx.setTransform(m);
       if (r > 1.6) {
         ctx.strokeStyle = rgba(color, 0.35 * tw * still);
         ctx.lineWidth = 0.8;
@@ -670,6 +677,7 @@ export class Universe {
     }
 
     // Dust drifting close past the camera, faster than everything else.
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     this.cells(cam, 1.5, W, H, 280, 20, (ix, iy, cx, cy) => {
       const rnd = cellRandom(ix, iy, 4);
       if (rnd() > 0.22) return;
@@ -678,8 +686,9 @@ export class Universe {
       const x = cx + rnd() * 280;
       const y = cy + rnd() * 280;
       ctx.globalAlpha *= dim(x, y);
-      ctx.drawImage(glowSprite([200, 225, 255]), x - size, y - size, size * 2, size * 2);
+      stampAt(ctx, glowStamp(DUST, size * m.a), m.a * x + m.e, m.d * y + m.f);
     });
+    ctx.setTransform(m);
     ctx.restore();
   }
 

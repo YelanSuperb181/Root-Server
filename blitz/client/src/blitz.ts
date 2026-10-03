@@ -1,7 +1,7 @@
 // Drawing Blitz itself: a glowing orb with a face. The view decides how Blitz
 // looks right now (a `Look`); this only paints it.
 
-import { RGB, rgba } from "./fx";
+import { RGB, rgba, stampAt } from "./fx";
 
 export type Eyes =
   | "open"
@@ -58,20 +58,52 @@ function mix(a: RGB, b: RGB, k: number): RGB {
 
 const WHITE: RGB = [255, 255, 255];
 
+/** The brightest the halo gets (glow tops out a little over 2): it's painted this bright and drawn fainter as needed. */
+const HALO_MAX = 2.2;
+/** Painted halos by color and size, most recently used last. */
+const halos = new Map<string, HTMLCanvasElement>();
+
+/**
+ * The halo painted at `R` device pixels' radius (to within a few, so its gentle
+ * pulse reuses a handful) in about `tint`: copied pixel for pixel, that's far
+ * quicker than filling a gradient this big every frame.
+ */
+function haloStamp(tint: RGB, R: number): HTMLCanvasElement {
+  const step = Math.max(2, Math.round(R / 40));
+  const r = Math.max(step, Math.round(R / step) * step);
+  const q: RGB = [Math.round(tint[0] / 6) * 6, Math.round(tint[1] / 6) * 6, Math.round(tint[2] / 6) * 6];
+  const key = `${q[0]},${q[1]},${q[2]}|${r}`;
+  let stamp = halos.get(key);
+  if (stamp) {
+    halos.delete(key);
+  } else {
+    stamp = document.createElement("canvas");
+    stamp.width = stamp.height = r * 2;
+    const g = stamp.getContext("2d")!;
+    const halo = g.createRadialGradient(r, r, 0, r, r, r);
+    halo.addColorStop(0, rgba(q, 0.42 * HALO_MAX));
+    halo.addColorStop(0.4, rgba(q, 0.12 * HALO_MAX));
+    halo.addColorStop(1, rgba(q, 0));
+    g.fillStyle = halo;
+    g.fillRect(0, 0, r * 2, r * 2);
+    // Colors pass through quickly as moods change; keep only the recent ones.
+    if (halos.size >= 24) halos.delete(halos.keys().next().value as string);
+  }
+  halos.set(key, stamp);
+  return stamp;
+}
+
 /** The soft light around Blitz. Drawn first, under everything else of Blitz's. */
 export function drawHalo(ctx: CanvasRenderingContext2D, look: Look): void {
-  const { x, y, r } = look;
-  const reach = r * 4.2 * Math.min(1.6, 0.7 + look.glow * 0.4);
+  const reach = look.r * 4.2 * Math.min(1.6, 0.7 + look.glow * 0.4);
+  const m = ctx.getTransform();
+  const stamp = haloStamp(look.tint, reach * m.a);
   ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalCompositeOperation = "lighter";
-  const halo = ctx.createRadialGradient(x, y, 0, x, y, reach);
-  halo.addColorStop(0, rgba(look.tint, 0.42 * look.glow));
-  halo.addColorStop(0.4, rgba(look.tint, 0.12 * look.glow));
-  halo.addColorStop(1, rgba(look.tint, 0));
-  ctx.fillStyle = halo;
-  ctx.beginPath();
-  ctx.arc(x, y, reach, 0, Math.PI * 2);
-  ctx.fill();
+  // The painting is as bright as the halo ever gets: dim it to this glow.
+  ctx.globalAlpha *= Math.min(1, look.glow / HALO_MAX);
+  stampAt(ctx, stamp, m.a * look.x + m.e, m.d * look.y + m.f);
   ctx.restore();
 }
 
