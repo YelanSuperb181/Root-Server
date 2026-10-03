@@ -4,7 +4,7 @@
 // floating page with Blitz hovering beside it; send it away and it dissolves
 // back into Blitz in a stream of light.
 
-import { accentOf, accentStyle, countUp, spotlight, stardustShower, tilt } from "./flair";
+import { accentOf, accentStyle, countUp, glint, spotlight, stardustShower } from "./flair";
 import { Menu } from "./menu";
 import { keepFields } from "./panel";
 import { offlineCard } from "./pieces";
@@ -239,7 +239,7 @@ export class DreamMenu {
         ),
       );
       card.addEventListener("click", () => this.openPage(section));
-      tilt(card);
+      glint(card);
       root.append(card);
       this.cards.set(section.id, card);
       if (!reduced) {

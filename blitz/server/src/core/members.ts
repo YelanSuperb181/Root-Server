@@ -16,6 +16,8 @@ import {
   RootGuidUtils,
   UserGuid,
 } from "@rootsdk/server-app";
+import { existsSync } from "fs";
+import { join } from "path";
 import { read } from "./api";
 import { log } from "./log";
 import { settings } from "./settings";
@@ -170,8 +172,28 @@ async function owner(): Promise<string | undefined> {
  * Admin: the owner, or a role that can manage the community. Mod: a role that
  * can kick or ban, or anyone on the community's Staff list in Blitz's settings.
  */
+/**
+ * Running in Root's dev host (`npm run server`), for testing. There the dev
+ * bar's "Virtual User" is someone the dev host makes up in your browser, not a
+ * member of the test community, so Blitz would treat its own creator as a
+ * stranger. In the dev host only, anyone who isn't a real member counts as
+ * the owner; picking a real member in the dev bar still shows their view.
+ */
+const IN_DEV_HOST =
+  // The dev host starts Blitz pointed at itself on this computer, from a folder holding the dev copy of the
+  // manifest (`npm run server` writes it; it's never in the uploaded package).
+  /^localhost:/.test(process.env.BASE_URL ?? "") && existsSync(join(__dirname, "..", "..", "..", "root-manifest.dev.json"));
+let toldAboutDevHost = false;
+
 export async function accessLevel(userId: string): Promise<AccessLevel> {
   if (!isPerson(userId)) return "everyone";
+  if (IN_DEV_HOST && !memberRoles.has(userId)) {
+    if (!toldAboutDevHost) {
+      toldAboutDevHost = true;
+      log("info", "testing in the dev host: the dev bar's Virtual User counts as the community's owner (pick a real member in the dev bar to see their view)");
+    }
+    return "admin";
+  }
   if (userId === (await owner())) return "admin";
   const mine = memberRoles.get(userId) ?? new Set<string>();
   let level: AccessLevel = "everyone";

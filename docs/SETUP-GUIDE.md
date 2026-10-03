@@ -41,7 +41,7 @@ Wait for **Blitz is up in the community "…"**, then open that community in Roo
 2. Open Blitz's **App settings** in that community and try picking a welcome channel, a quote wall and so on. `!settings` shows what's set.
 3. Say "hey blitz" and watch it react.
 
-**The domain:** in a second terminal (also in `blitz/`), run `npm run client`. The domain opens in your browser with your own Blitz to play with. In the Root bar at the top of the page, pick yourself under **Current User**; when you type to Blitz, it asks the Blitz running in the first terminal what to say. (Root's app shows the domain itself only once Blitz is installed from the store.)
+**The domain:** in a second terminal (also in `blitz/`), run `npm run client`. The domain opens in your browser with your own Blitz to play with. In the Root bar at the top of the page, pick yourself under **Current User**; when you type to Blitz, it asks the Blitz running in the first terminal what to say. Left on **Virtual User** (someone the Root bar makes up, not a member of your test community), you count as the community's owner while testing, so every menu, every team tool and the creator's wardrobe (every look, free) are there to try. Pick a real member under **Current User** to see Blitz as they do. (Root's app shows the domain itself only once Blitz is installed from the store.)
 
 Leave `npm run server` running while you test; closing it turns Blitz off.
 
@@ -143,6 +143,7 @@ Blitz never creates, renames or deletes channels or roles.
 | `!kick` or `!ban` says it has no permission | Blitz's role needs to be above the person's roles, and Blitz needs the kick and ban permissions (approve them when you install or update it). |
 | `They're on the team too` | Staff can only act on people ranked below them. Ask an admin or the owner. |
 | `🔒 … is for the team only` | Staff commands need the owner, a role that can manage the community, kick or ban, or someone on the Staff list in Blitz's settings. |
+| In testing, the shop shows "Need …" instead of "Wear" | You're seen as an ordinary member. Update Blitz: in the dev host, the Root bar's **Virtual User** now counts as the owner. Picked yourself instead? You need to own the test community, or have a role that can manage it. |
 | The menu says **Blitz's server isn't answering yet** | The menu tries again by itself every few seconds, and the small print says why ("It took too long to answer", or the server's error). In development: is the `npm run server` window still open, without an error at the bottom? Inside Root: is Blitz installed? If it keeps happening, Blitz's log says which part of the menu was slow ("the menu gave up waiting for …"). |
 | Blitz in the domain only answers with short canned lines | It couldn't reach Blitz's server (or the community has no API key), so it reads your mood from keywords. Inside Root: is Blitz installed? In development: is `npm run server` still running? |
 | `!blitz` says the domain isn't set up | Blitz didn't get its App channel. Make sure it was registered as an App and reinstall it. |

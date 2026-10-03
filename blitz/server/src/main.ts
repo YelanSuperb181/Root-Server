@@ -238,6 +238,12 @@ async function onStarting(state: RootAppStartState): Promise<void> {
   await checkCanRead();
 }
 
+// A promise that fails with nobody waiting on it would otherwise stop the whole server (Node's default):
+// one slip in one feature mustn't take Blitz offline for everyone. Say what it was and carry on.
+process.on("unhandledRejection", (reason) => {
+  log("error", "something went wrong that nothing was waiting for; Blitz carries on", { error: errMessage(reason) });
+});
+
 (async () => {
   await rootServer.lifecycle.start(onStarting);
 })();

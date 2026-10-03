@@ -1,7 +1,7 @@
 // The menu's flourishes: each section's own colour, numbers that count up,
 // a soft spotlight that follows the pointer over cards, Stardust that flies
-// into Blitz (and from Blitz into a dream page it opens), and cards that lean
-// toward the pointer.
+// into Blitz (and from Blitz into a dream page it opens), and a glint that
+// follows the pointer over the dream cards.
 // Everything moves with transforms and opacity only, and only briefly or
 // while the pointer is there, so it stays cheap on computers without a
 // graphics card (Root's desktop app often draws in software).
@@ -156,8 +156,8 @@ export function stardustShower(from: DOMRect, to: { x: number; y: number }, arri
   }
 }
 
-/** A card that leans toward the pointer while it's over it (only that card, and only then), with a glint where the pointer is. */
-export function tilt(card: HTMLElement): void {
+/** A glint that follows the pointer over a card (only that card, and only then). */
+export function glint(card: HTMLElement): void {
   if (reduced || matchMedia("(hover: none)").matches) return;
   let queued: PointerEvent | undefined;
   card.addEventListener("pointermove", (e) => {
@@ -165,17 +165,9 @@ export function tilt(card: HTMLElement): void {
       const ev = queued!;
       queued = undefined;
       const r = card.getBoundingClientRect();
-      const x = Math.max(-0.5, Math.min(0.5, (ev.clientX - r.left) / r.width - 0.5));
-      const y = Math.max(-0.5, Math.min(0.5, (ev.clientY - r.top) / r.height - 0.5));
-      card.style.setProperty("--rx", `${(-y * 16).toFixed(2)}deg`);
-      card.style.setProperty("--ry", `${(x * 20).toFixed(2)}deg`);
-      card.style.setProperty("--gx", `${((x + 0.5) * 100).toFixed(0)}%`);
-      card.style.setProperty("--gy", `${((y + 0.5) * 100).toFixed(0)}%`);
+      card.style.setProperty("--gx", `${(((ev.clientX - r.left) / r.width) * 100).toFixed(0)}%`);
+      card.style.setProperty("--gy", `${(((ev.clientY - r.top) / r.height) * 100).toFixed(0)}%`);
     });
     queued = e;
-  });
-  card.addEventListener("pointerleave", () => {
-    card.style.removeProperty("--rx");
-    card.style.removeProperty("--ry");
   });
 }

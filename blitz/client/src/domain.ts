@@ -411,6 +411,21 @@ export class DomainView {
     this.ctx = canvas.getContext("2d")!;
     this.font = getComputedStyle(document.body).fontFamily;
     new ResizeObserver(() => this.resize()).observe(canvas);
+    // The canvas also moves without changing size (the page scrolls, say, when the menu's list is scrolled past
+    // its end); a click must still land where Blitz is drawn. (Capturing, so scrolls inside the page count too.)
+    let placing = false;
+    window.addEventListener(
+      "scroll",
+      () => {
+        if (placing) return;
+        placing = true;
+        requestAnimationFrame(() => {
+          placing = false;
+          this.placeRect();
+        });
+      },
+      { passive: true, capture: true },
+    );
     this.resize();
     this.bindInput();
     this.universe.onShootingStar = (x, y) => this.noticeShootingStar(x, y);
@@ -664,7 +679,10 @@ export class DomainView {
 
   private bindInput(): void {
     const c = this.canvas;
+    // Where the canvas is, checked again as the pointer arrives and presses (it may have moved since).
+    c.addEventListener("pointerenter", () => this.placeRect());
     c.addEventListener("pointerdown", (e) => {
+      this.placeRect();
       const p = this.toDomain(e.clientX, e.clientY);
       Object.assign(this.pointer, p, { cx: e.clientX, cy: e.clientY, inside: true });
       if (!this.overBlitz(p) || this.trans) return;
@@ -1085,13 +1103,18 @@ export class DomainView {
     this.H = rect.height;
     // Space is scaled to the window and its tiles painted for open space, so they serve the bubble too.
     this.universe.setScreen(window.innerWidth, window.innerHeight, Math.max(0.5, Math.min(window.devicePixelRatio || 1, OPEN_DPR) * this.quality));
-    this.rectLeft = rect.left;
-    this.rectTop = rect.top;
+    this.placeRect(rect);
     // Setting a canvas's size (even to the same value) throws its pixels away, so only when it really changes.
     const w = Math.round(this.W * this.dpr);
     const h = Math.round(this.H * this.dpr);
     if (this.canvas.width !== w) this.canvas.width = w;
     if (this.canvas.height !== h) this.canvas.height = h;
+  }
+
+  /** Where the canvas sits in the window, for turning pointer positions into Blitz's world. */
+  private placeRect(rect = this.canvas.getBoundingClientRect()): void {
+    this.rectLeft = rect.left;
+    this.rectTop = rect.top;
   }
 
   private bubbleCam(): Cam {

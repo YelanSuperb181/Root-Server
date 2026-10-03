@@ -7,8 +7,12 @@ export function serialize<T>(key: string, work: () => Promise<T>): Promise<T> {
   const previous = tails.get(key) ?? Promise.resolve();
   const next = previous.catch(() => undefined).then(work);
   tails.set(key, next);
-  void next.finally(() => {
+  // Tidy up either way. (Not .finally(): that hands back a promise that fails
+  // when the work does, and with nobody waiting on it, Node would stop the
+  // whole server over an ordinary "you can't afford that".)
+  const tidy = () => {
     if (tails.get(key) === next) tails.delete(key);
-  });
+  };
+  next.then(tidy, tidy);
   return next;
 }
