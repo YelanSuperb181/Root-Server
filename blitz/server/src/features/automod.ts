@@ -1,6 +1,7 @@
 // Light auto-moderation: removes mass mentions, invite links, blocked words,
 // floods and copy-paste spam, tells the member why, logs it for the team, and
 // raises a flag in the mod log when someone keeps at it. Staff are exempt.
+// Each community sets its own blocked words and invite rule in Blitz's settings.
 
 import type { ChannelMessageCreatedEvent } from "@rootsdk/server-app";
 import { config } from "../config";
@@ -9,15 +10,30 @@ import { accessLevel, nickname } from "../core/members";
 import { modLog, remove, sendEphemeral } from "../core/messaging";
 import { channelLink, settings, staffPing } from "../core/settings";
 import { AutomodRules, History, addStrike, checkContent, checkRate, emptyHistory } from "../logic/automod";
+import { parseWordList } from "../logic/moderation";
+import { parseCommand } from "../logic/parse";
 import { defuseMentions, truncate, userMention } from "../logic/text";
 
-const RULES: AutomodRules = {
-  maxMentions: config.automod.maxMentions,
-  spam: config.automod.spam,
-  duplicates: config.automod.duplicates,
-  blockInviteLinks: config.automod.blockInviteLinks,
-  blockedWords: config.automod.blockedWords,
-};
+/** The rules, with the community's own blocked words and invite setting from Blitz's settings. */
+let cached: { words: string | undefined; invites: boolean; rules: AutomodRules } | undefined;
+function rules(): AutomodRules {
+  const words = settings.text("blockedWords");
+  const invites = settings.ticked("blockInvites");
+  if (!cached || cached.words !== words || cached.invites !== invites) {
+    cached = {
+      words,
+      invites,
+      rules: {
+        maxMentions: config.automod.maxMentions,
+        spam: config.automod.spam,
+        duplicates: config.automod.duplicates,
+        blockInviteLinks: config.automod.blockInviteLinks || invites,
+        blockedWords: [...config.automod.blockedWords, ...parseWordList(words)],
+      },
+    };
+  }
+  return cached.rules;
+}
 
 const histories = new Map<string, History>();
 const strikes = new Map<string, number[]>();
@@ -45,7 +61,9 @@ export async function screenMessage(evt: ChannelMessageCreatedEvent): Promise<bo
     histories.set(evt.userId, history);
   }
   const now = Date.now();
-  const verdict = checkContent(text, RULES) ?? checkRate(history, text, now, RULES);
+  // A report often quotes the very words it's about, so only flooding counts against one.
+  const isReport = parseCommand(text, config.prefix)?.name === "report";
+  const verdict = (isReport ? undefined : checkContent(text, rules())) ?? checkRate(history, text, now, rules());
   if (!verdict) return false;
 
   try {

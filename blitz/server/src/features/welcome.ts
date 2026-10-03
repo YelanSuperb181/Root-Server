@@ -13,7 +13,7 @@ import { welcomeLines } from "../content/lines";
 import { config } from "../config";
 import { read } from "../core/api";
 import { errMessage, log } from "../core/log";
-import { hasRole, isPerson, nickname } from "../core/members";
+import { hasRole, isPerson, knownPeople, nickname } from "../core/members";
 import { addRole, modLog, sendTo } from "../core/messaging";
 import { settings } from "../core/settings";
 import { fillTemplate, pick, userMention } from "../logic/text";
@@ -34,7 +34,13 @@ export function initWelcome(): void {
 export async function greet(userId: string): Promise<void> {
   if (!settings.channel("welcome")) return;
   const name = await nickname(userId);
-  const line = fillTemplate(pick(welcomeLines), { user: userMention(name, userId), community: `**${communityName}**` });
+  const vars = { user: userMention(name, userId), name, community: `**${communityName}**`, members: String(knownPeople().length) };
+  const custom = settings.text("welcomeMessage");
+  if (custom) {
+    await sendTo("welcome", fillTemplate(custom, vars));
+    return;
+  }
+  const line = fillTemplate(pick(welcomeLines), vars);
   await sendTo("welcome", `${line}\nSay \`${config.prefix}help\` to see what ${config.botName} can do ✨`);
 }
 

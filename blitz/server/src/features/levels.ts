@@ -24,6 +24,12 @@ const RULES = {
 
 const xpKey = (userId: string) => `xp:${userId}`;
 
+/** Someone's level and message count, for !userinfo. */
+export async function xpOf(userId: string): Promise<{ level: number; xp: number; messages: number }> {
+  const record = (await kv.get<XpRecord>(xpKey(userId))) ?? EMPTY_XP;
+  return { level: levelFromXp(record.xp).level, xp: record.xp, messages: record.messages };
+}
+
 export async function awardXp(evt: ChannelMessageCreatedEvent): Promise<void> {
   if (!settings.on("levels")) return;
   if (settings.isPrivate(evt.channelId) || settings.isLog(evt.channelId)) return;

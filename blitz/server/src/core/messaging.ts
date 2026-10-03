@@ -62,7 +62,16 @@ export async function getMessage(channelId: string, messageId: string): Promise<
   }
 }
 
+/** Messages Blitz deleted itself (auto-mod, !clear, mutes), so the message log doesn't report them. */
+const removedByBlitz = new Set<string>();
+
+export function removedByMe(messageId: string): boolean {
+  return removedByBlitz.has(messageId);
+}
+
 export async function remove(channelId: string, messageId: string): Promise<void> {
+  removedByBlitz.add(messageId);
+  if (removedByBlitz.size > 2000) removedByBlitz.delete(removedByBlitz.values().next().value as string);
   await write("channelMessages.delete", () =>
     rootServer.community.channelMessages.delete({ channelId: channelId as ChannelGuid, id: messageId as MessageGuid }),
   );
@@ -122,14 +131,15 @@ export async function removeRole(userId: string, roleId: string): Promise<void> 
  * Push notification. Best effort: a failure is logged, never thrown, and the
  * text is cut to Root's limits. Shows on lock screens, so keep it gentle.
  */
-export async function notify(userIds: string[], title: string, description: string): Promise<void> {
-  if (userIds.length === 0) return;
+export async function notify(userIds: string[], title: string, description: string, roleIds: string[] = []): Promise<void> {
+  if (userIds.length === 0 && roleIds.length === 0) return;
   try {
     await write("notifications.send", () =>
       rootServer.community.notifications.send({
         title: truncate(title, MAX_NOTIFY_TITLE),
         description: truncate(description, MAX_NOTIFY_BODY),
-        userIds: userIds as UserGuid[],
+        userIds: userIds.length > 0 ? (userIds as UserGuid[]) : undefined,
+        communityRoleIds: roleIds.length > 0 ? (roleIds as CommunityRoleGuid[]) : undefined,
       }),
     );
   } catch (err) {

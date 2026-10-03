@@ -37,7 +37,7 @@ Settings are declared in `root-manifest.json` under `settings.groups`: each item
 
 ### Block words
 
-Add them to `automod.blockedWords` in `config.ts`. Matching is whole-word and case-insensitive; end a word with `*` to also match longer forms (`scam*` catches "scammer"). Staff are never filtered.
+Each community lists its own in **Blocked words** in Blitz's App settings, separated by commas. Words in `automod.blockedWords` in `config.ts` are blocked in every community on top of those. Matching is whole-word and case-insensitive; end a word with `*` to also match longer forms (`scam*` catches "scammer"). Staff are never filtered.
 
 ### Change Blitz's lines
 

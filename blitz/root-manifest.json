@@ -48,9 +48,29 @@
             }
           },
           {
+            "key": "suggestions",
+            "title": "Suggestions channel",
+            "description": "Where !suggest posts ideas for everyone to vote on. Leave empty to turn suggestions off.",
+            "required": false,
+            "confirmation": "Save",
+            "channel": {
+              "multiSelect": false
+            }
+          },
+          {
             "key": "log",
             "title": "Staff log",
-            "description": "Where Blitz notes auto-mod removals, joins and leaves. Leave empty for no log.",
+            "description": "Where Blitz notes reports, moderation, auto-mod removals, joins and leaves, for the team. Leave empty for no staff log.",
+            "required": false,
+            "confirmation": "Save",
+            "channel": {
+              "multiSelect": false
+            }
+          },
+          {
+            "key": "messageLog",
+            "title": "Message log",
+            "description": "Where Blitz notes edited and deleted messages, with what they said. Leave empty to turn it off.",
             "required": false,
             "confirmation": "Save",
             "channel": {
@@ -94,6 +114,16 @@
             }
           },
           {
+            "key": "selfRoles",
+            "title": "Roles people can pick",
+            "description": "Roles members can give themselves with !role (pronouns, games, ping roles…). Blitz's role must be above them.",
+            "required": false,
+            "confirmation": "Save",
+            "roleOrMember": {
+              "selectBehavior": "roleMulti"
+            }
+          },
+          {
             "key": "staff",
             "title": "Staff",
             "description": "Can use staff commands like !clear, !announce and !setxp. The owner, and roles that can manage the community, kick or ban, always can.",
@@ -106,6 +136,20 @@
         ]
       },
       {
+        "key": "messages",
+        "title": "Messages",
+        "items": [
+          {
+            "key": "welcomeMessage",
+            "title": "Welcome message",
+            "description": "Your own welcome for new members. {user} pings them, {name} is their name, {community} the community's name and {members} the member count. Leave empty for Blitz's own greetings.",
+            "required": false,
+            "confirmation": "Save",
+            "text": {}
+          }
+        ]
+      },
+      {
         "key": "features",
         "title": "Features",
         "items": [
@@ -113,16 +157,6 @@
             "key": "levelsOff",
             "title": "Turn off levels",
             "description": "Tick to stop Blitz handing out XP and level-ups. Levels are on while this is unticked.",
-            "required": false,
-            "confirmation": "Save",
-            "checkbox": {
-              "defaultValue": false
-            }
-          },
-          {
-            "key": "automodOff",
-            "title": "Turn off auto-mod",
-            "description": "Tick to stop Blitz removing floods, copy-paste spam and mass mentions. Auto-mod is on while this is unticked.",
             "required": false,
             "confirmation": "Save",
             "checkbox": {
@@ -145,13 +179,47 @@
         ]
       },
       {
+        "key": "automod",
+        "title": "Auto-mod",
+        "items": [
+          {
+            "key": "automodOff",
+            "title": "Turn off auto-mod",
+            "description": "Tick to stop Blitz removing floods, copy-paste spam and mass mentions. Auto-mod is on while this is unticked.",
+            "required": false,
+            "confirmation": "Save",
+            "checkbox": {
+              "defaultValue": false
+            }
+          },
+          {
+            "key": "blockInvites",
+            "title": "Block invite links",
+            "description": "Tick to remove invite links to Discord servers and Telegram or WhatsApp groups.",
+            "required": false,
+            "confirmation": "Save",
+            "checkbox": {
+              "defaultValue": false
+            }
+          },
+          {
+            "key": "blockedWords",
+            "title": "Blocked words",
+            "description": "Words or phrases auto-mod removes, separated by commas. End one with * to catch any ending, like scam*.",
+            "required": false,
+            "confirmation": "Save",
+            "text": {}
+          }
+        ]
+      },
+      {
         "key": "brain",
         "title": "Blitz's brain",
         "items": [
           {
             "key": "anthropicApiKey",
             "title": "Anthropic API key",
-            "description": "Lets Blitz understand and answer messages with Claude. Create a key at console.anthropic.com. Messages that mention Blitz, plus the last few messages in that channel, are sent to Anthropic's API (never from the vent). Leave empty to keep Blitz on simple keyword reactions.",
+            "description": "Lets Blitz understand and answer messages with Claude. Create a key at console.anthropic.com. Messages that mention Blitz, plus the last few messages in that channel, are sent to Anthropic's API (never from private channels). Leave empty to keep Blitz on simple keyword reactions.",
             "required": false,
             "confirmation": "Save",
             "text": {}
@@ -185,7 +253,10 @@
   },
   "permissions": {
     "community": {
-      "manageRoles": true
+      "manageRoles": true,
+      "kick": true,
+      "createBan": true,
+      "manageBans": true
     },
     "channel": {
       "view": true,

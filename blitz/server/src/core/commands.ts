@@ -10,7 +10,7 @@ import { log } from "./log";
 import { AccessLevel, accessLevel, atLeast } from "./members";
 import { send } from "./messaging";
 
-export type Category = "Community" | "Levels" | "Fun" | "Staff";
+export type Category = "Community" | "Levels" | "Fun" | "Moderation" | "Staff";
 
 export interface CommandContext {
   evt: ChannelMessageCreatedEvent;
@@ -54,6 +54,19 @@ export function register(...commands: Command[]): void {
   }
 }
 
+/** Whether a name (or alias) belongs to one of Blitz's own commands. */
+export function isCommandName(name: string): boolean {
+  return byName.has(name);
+}
+
+/** Runs names that aren't Blitz's own commands (the community's custom commands). True if it handled one. */
+type Fallback = (name: string, ctx: Omit<CommandContext, "level">) => Promise<boolean>;
+let fallback: Fallback | undefined;
+
+export function setFallback(handler: Fallback): void {
+  fallback = handler;
+}
+
 export function allCommands(): readonly Command[] {
   return ordered;
 }
@@ -67,15 +80,21 @@ export async function handleCommand(evt: ChannelMessageCreatedEvent): Promise<bo
   const parsed = parseCommand(evt.messageContent ?? "", config.prefix);
   if (!parsed) return false;
   const cmd = byName.get(parsed.name);
-  if (!cmd) return false; // Not ours (maybe another bot's); stay quiet.
+  const reply = async (text: string) => {
+    await send(evt.channelId, text, evt.id);
+  };
+  const base = { evt, userId: evt.userId, channelId: evt.channelId, messageId: evt.id, args: parsed.args, rest: parsed.rest, reply };
+
+  if (!cmd) {
+    // Maybe one of the community's own commands; otherwise not ours (maybe another bot's), so stay quiet.
+    if (!fallback || !(await fallback(parsed.name, base).catch(() => false))) return false;
+    lastUse.set(evt.userId, Date.now());
+    return true;
+  }
 
   const now = Date.now();
   if (now - (lastUse.get(evt.userId) ?? 0) < COOLDOWN_MS) return true;
   lastUse.set(evt.userId, now);
-
-  const reply = async (text: string) => {
-    await send(evt.channelId, text, evt.id);
-  };
 
   try {
     const level = await accessLevel(evt.userId);
@@ -83,16 +102,7 @@ export async function handleCommand(evt: ChannelMessageCreatedEvent): Promise<bo
       await reply(`🔒 \`${config.prefix}${cmd.name}\` is for ${cmd.level === "admin" ? "admins" : "the team"} only.`);
       return true;
     }
-    await cmd.run({
-      evt,
-      userId: evt.userId,
-      channelId: evt.channelId,
-      messageId: evt.id,
-      args: parsed.args,
-      rest: parsed.rest,
-      level,
-      reply,
-    });
+    await cmd.run({ ...base, level });
   } catch (err) {
     if (err instanceof UsageError) {
       await reply(`💡 ${err.message}`).catch(() => undefined);

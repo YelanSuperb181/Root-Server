@@ -9,7 +9,7 @@ import { channelMention, roleMention } from "../logic/text";
 import { read } from "./api";
 
 /** Channels a community can point Blitz at. */
-export type ChannelSetting = "welcome" | "levelUps" | "quotes" | "birthdays" | "log";
+export type ChannelSetting = "welcome" | "levelUps" | "quotes" | "birthdays" | "suggestions" | "log" | "messageLog";
 /** Roles a community can give Blitz to hand out. */
 export type RoleSetting = "joinRole" | "birthdayRole";
 
@@ -42,9 +42,9 @@ export const settings = {
     return channelList("private").includes(channelId as ChannelGuid);
   },
 
-  /** Whether this is the staff log channel (Blitz's own notes go there, so it's left alone). */
+  /** Whether this is a staff log channel (Blitz's own notes go there, so it's left alone). */
   isLog(channelId: string): boolean {
-    return settings.channel("log") === channelId;
+    return settings.channel("log") === channelId || settings.channel("messageLog") === channelId;
   },
 
   /** The role picked for `key`, if any. */
@@ -71,11 +71,21 @@ export const settings = {
 
   /**
    * Whether a feature is on. Root sends an untouched checkbox as unticked
-   * (whatever its default says), so the settings are "Turn off …" boxes:
-   * the feature stays on until an admin ticks one.
+   * (whatever its default says), so these are "Turn off …" boxes: the
+   * feature stays on until an admin ticks one.
    */
   on(key: "levels" | "automod"): boolean {
-    return raw("features", `${key}Off`) !== true;
+    return raw(key === "levels" ? "features" : "automod", `${key}Off`) !== true;
+  },
+
+  /** An opt-in checkbox: true only once an admin ticks it. */
+  ticked(key: "blockInvites"): boolean {
+    return raw("automod", key) === true;
+  },
+
+  /** Roles members can give themselves with !role. */
+  selfRoles(): CommunityRoleGuid[] {
+    return memberGroup("roles", "selfRoles")?.communityRoleIds ?? [];
   },
 
   /** A whole number setting, kept within bounds. (While testing it arrives as text; see dev-manifest.js.) */
@@ -85,9 +95,10 @@ export const settings = {
     return typeof n === "number" && Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n))) : fallback;
   },
 
-  /** Free text from the brain settings ("about" this community). */
-  text(key: "about"): string | undefined {
-    const value = raw("brain", key);
+  /** Free text an admin typed in (the welcome message, blocked words, "about" this community). */
+  text(key: "about" | "welcomeMessage" | "blockedWords"): string | undefined {
+    const group = key === "about" ? "brain" : key === "blockedWords" ? "automod" : "messages";
+    const value = raw(group, key);
     return typeof value === "string" && value.trim() ? value.trim() : undefined;
   },
 };

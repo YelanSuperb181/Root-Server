@@ -12,10 +12,16 @@ Blitz saves a few things in the private storage Root gives each App for each com
 - **Birthday:** the month and day you give `!birthday`. Never the year. `!birthday remove` deletes it.
 - **Quote wall:** if the community picked a quote wall channel, a message that gets enough 🗣️ reactions is reposted there with who said it. Messages in channels the community marked private are never quoted.
 - **Polls:** their questions and options. Votes are the reactions themselves.
+- **Moderation history:** when the team warns, mutes, kicks, bans or unbans someone, or adds a staff note, Blitz keeps a numbered record: who, who did it, when, for how long, and the reason given. Members can see their own warnings with `!warnings`; the team can see everything.
+- **Reminders:** what you asked to be reminded of, where, and when. Deleted once it's delivered or you cancel it.
+- **Suggestions:** the idea, who suggested it, and the team's answer.
+- **Community commands:** the commands the team makes with `!addcmd`, who made them, and how often they're used.
 
 ## What Blitz uses without keeping
 
-- It reads messages in the channels it can see to answer commands, count XP and catch spam (floods, copy-paste spam, mass mentions). When it removes a spam message, it posts a short excerpt of it in the community's staff log channel (if it picked one) so the team can check. It also notes joins and leaves there.
+- It reads messages in the channels it can see to answer commands, count XP and catch spam (floods, copy-paste spam, mass mentions, and words or links the community blocks). When it removes a message, it posts a short excerpt of it in the community's staff log channel (if it picked one) so the team can check. It also notes joins and leaves there.
+- **Reports:** `!report` is removed from the chat and posted, with what you wrote (and the message you replied to, if any), in the staff log for the team.
+- **Message log:** if the community picked a message log channel, Blitz remembers recent messages in memory (never on disk, for at most two days, and never from private channels) so that when one is edited or deleted, it can post what it said before in that channel for the team.
 - In Blitz's own channel, everyone there sees who is around and who is carrying Blitz, live. None of that is saved.
 - Root and the computer Blitz runs on may keep technical logs (like which command ran, or an error) for fixing problems.
 

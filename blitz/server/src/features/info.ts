@@ -7,13 +7,16 @@ import { Category, Command, allCommands, usageOf } from "../core/commands";
 import { listChannels } from "../core/community";
 import { atLeast, communityRoles, knownPeople } from "../core/members";
 import { ChannelSetting, channelLink, settings } from "../core/settings";
+import { parseWordList } from "../logic/moderation";
 import { plural } from "../logic/text";
+import { customCommands } from "./custom";
 
-const CATEGORY_ORDER: Category[] = ["Community", "Levels", "Fun", "Staff"];
+const CATEGORY_ORDER: Category[] = ["Community", "Levels", "Fun", "Moderation", "Staff"];
 const CATEGORY_ICON: Record<Category, string> = {
   Community: "💬",
   Levels: "🌿",
   Fun: "🎲",
+  Moderation: "🔨",
   Staff: "🛡️",
 };
 
@@ -22,7 +25,9 @@ const CHANNELS: Array<[ChannelSetting, string]> = [
   ["levelUps", "Level-ups"],
   ["quotes", "Quote wall"],
   ["birthdays", "Birthdays"],
+  ["suggestions", "Suggestions"],
   ["log", "Staff log"],
+  ["messageLog", "Message log"],
 ];
 
 export const infoCommands: Command[] = [
@@ -52,6 +57,10 @@ export const infoCommands: Command[] = [
         if (inCategory.length === 0) continue;
         lines.push("", `${CATEGORY_ICON[category]} **${category}**`);
         for (const cmd of inCategory) lines.push(`${usageOf(cmd)} · ${cmd.summary}`);
+      }
+      const customs = customCommands();
+      if (customs.length > 0) {
+        lines.push("", `📌 **This community's commands**`, customs.map((c) => `\`${config.prefix}${c.name}\``).join(" · "));
       }
       lines.push("", `_\`${config.prefix}help <command>\` for details._`);
       await ctx.reply(lines.join("\n"));
@@ -100,7 +109,10 @@ export const infoCommands: Command[] = [
       lines.push(
         `Role for new members: ${(await named(settings.role("joinRole"))) ?? "none"}`,
         `Birthday role: ${(await named(settings.role("birthdayRole"))) ?? "none"}`,
-        `Levels: ${settings.on("levels") ? "on" : "off"} · Auto-mod: ${settings.on("automod") ? "on" : "off"} · Quote wall needs ${settings.number("quoteThreshold", 2, 1, 20)} 🗣️`,
+        `Roles people can pick: ${(await Promise.all(settings.selfRoles().map(named))).filter(Boolean).join(", ") || "none"}`,
+        `Welcome message: ${settings.text("welcomeMessage") ? "your own" : "Blitz's"}`,
+        `Levels: ${settings.on("levels") ? "on" : "off"} · Quote wall needs ${settings.number("quoteThreshold", 2, 1, 20)} 🗣️`,
+        `Auto-mod: ${settings.on("automod") ? "on" : "off"} · Blocked words: ${parseWordList(settings.text("blockedWords")).length} · Invite links: ${settings.ticked("blockInvites") ? "blocked" : "allowed"}`,
         "",
         "_Change these in Blitz's App settings in Root._",
       );

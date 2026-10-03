@@ -27,7 +27,15 @@ import { errMessage, log } from "./core/log";
 import { initMembers, isPerson, loadSelf } from "./core/members";
 import { checkCanRead } from "./core/selfcheck";
 import { settings } from "./core/settings";
+import { truncate } from "./logic/text";
 import { initAutomod, screenMessage } from "./features/automod";
+import { customCommands, customCommandsAdmin, initCustom } from "./features/custom";
+import { initMessageLog, rememberMessage } from "./features/messagelog";
+import { holdIfMuted, initModeration, moderationCommands } from "./features/moderation";
+import { initReminders, reminderCommands } from "./features/reminders";
+import { reportCommands } from "./features/reports";
+import { selfRoleCommands } from "./features/selfroles";
+import { suggestionCommands } from "./features/suggestions";
 import { birthdayCommands, celebrateBirthdays } from "./features/birthdays";
 import { funCommands } from "./features/fun";
 import { infoCommands } from "./features/info";
@@ -62,7 +70,12 @@ async function onMessage(evt: ChannelMessageCreatedEvent): Promise<void> {
     return;
   }
   if (word) log("info", `heard ${word}`);
+  rememberMessage(evt);
   try {
+    if (await holdIfMuted(evt)) {
+      if (word) log("info", `${word} came from a muted member`);
+      return;
+    }
     if (await screenMessage(evt)) {
       if (word) log("info", `auto-mod held back ${word}`);
       return;
@@ -110,9 +123,15 @@ async function communityFacts(): Promise<CommunityFacts> {
     about: settings.text("about"),
     prefix: config.prefix,
     groups: [...groups].slice(0, 20).map(([group, channels]) => ({ name: group, channels: channels.slice(0, 15) })),
-    commands: allCommands()
-      .filter((c) => c.level === "everyone")
-      .map((c) => ({ name: c.name, summary: c.summary })),
+    commands: [
+      ...allCommands()
+        .filter((c) => c.level === "everyone")
+        .map((c) => ({ name: c.name, summary: c.summary })),
+      // The community's own commands: their answers are things like rules and FAQs, which Blitz can point people to.
+      ...customCommands()
+        .slice(0, 40)
+        .map((c) => ({ name: c.name, summary: `(this community's own) ${truncate(c.response.replace(/\s+/g, " "), 160)}` })),
+    ],
   };
 }
 
@@ -136,7 +155,28 @@ async function onStarting(state: RootAppStartState): Promise<void> {
   initWelcome();
   initAutomod();
 
-  register(...infoCommands, ...levelCommands, ...starboardCommands, ...birthdayCommands, ...pollCommands, ...funCommands, ...staffCommands, ...domainCommands);
+  initReminders();
+  initMessageLog();
+  await initModeration();
+
+  register(
+    ...infoCommands,
+    ...levelCommands,
+    ...starboardCommands,
+    ...birthdayCommands,
+    ...pollCommands,
+    ...reminderCommands,
+    ...selfRoleCommands,
+    ...suggestionCommands,
+    ...reportCommands,
+    ...funCommands,
+    ...moderationCommands,
+    ...staffCommands,
+    ...customCommandsAdmin,
+    ...domainCommands,
+  );
+  // After the built-in commands, so a community command can never shadow one.
+  await initCustom(scheduleFacts);
 
   const messages = rootServer.community.channelMessages;
   messages.on(ChannelMessageEvent.ChannelMessageCreated, (evt: ChannelMessageCreatedEvent) => void onMessage(evt));

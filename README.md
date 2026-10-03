@@ -1,6 +1,6 @@
 # ✨ Blitz
 
-**Blitz** is a Root App for any community: a glowing little spirit that hangs out in your chat, keeps levels, a quote wall and birthdays, keeps spam out, and has a domain of its own where everyone can drag it around, fling it into the walls and burst its bubble into space.
+**Blitz** is a Root App for any community: a glowing little spirit that hangs out in your chat and does the useful work too. It moderates (warnings, mutes, kicks, bans, auto-mod, reports and logs), answers your community's FAQs with its own commands, sets reminders, hands out roles, collects suggestions, keeps levels, a quote wall and birthdays, and has a domain of its own where everyone can drag it around, fling it into the walls and burst its bubble into space.
 
 It doesn't come with a server template and never creates channels or roles. It fits whatever your community already has: you point it at your channels and roles on its settings page in Root, and anything you leave empty is simply off.
 
@@ -13,11 +13,17 @@ It doesn't come with a server template and never creates channels or roles. It f
 | ✨ **Levels** | XP for chatting (once a minute, so spam doesn't count), `!rank` and `!top`. Level-ups are announced where they happen, or in a channel you pick. |
 | 🗣️ **Quote wall** | Pick a quote wall channel, and anything that gets 🗣️ reactions (2 by default, not counting whoever said it) is saved there with a live count. `!quote` pulls a random one back up. |
 | 🎂 **Birthdays** | `!birthday July 14`, then a shout-out in the birthday channel you pick and, if you pick one, a birthday role for the day. No birth year is ever asked for. |
-| 👋 **Welcomes** | A welcome in the channel you pick, and a role for every newcomer if you pick one. |
-| 🛡️ **Auto-mod** | Removes floods, copy-paste spam and mass mentions, and notes them (plus joins and leaves) in a staff log channel if you pick one. |
+| 👋 **Welcomes** | A welcome in the channel you pick (Blitz's own, or yours with `{user}` and `{community}`), and a role for every newcomer if you pick one. |
+| 🔨 **Moderation** | `!warn`, `!mute 30m`, `!kick`, `!ban 7d`, each saved as a numbered case, so `!history @someone` shows everything that's happened. Mutes need no special role: Blitz removes a muted member's messages itself. Staff can only act on people ranked below them. |
+| 🛡️ **Auto-mod** | Removes floods, copy-paste spam, mass mentions, your community's blocked words and (if you like) invite links, and notes it in the staff log. |
+| 🚩 **Reports and logs** | `!report` lets anyone quietly flag a problem to the team. The staff log collects reports, moderation, joins and leaves; the message log shows edited and deleted messages with what they said. |
+| 📌 **Your own commands** | `!addcmd rules Be kind, no spam…` and anyone can type `!rules`. Great for rules, FAQs, links and how-tos. Blitz's brain knows them too. |
+| ⏰ **Reminders** | `!remind 2h take the pizza out`: Blitz pings you back in the same channel. |
+| 🎭 **Pick-a-role** | List roles people can give themselves (pronouns, games, ping roles); `!role gamer` toggles one. |
+| 💡 **Suggestions** | `!suggest a movie night` posts the idea for 👍/👎 votes; the team answers with `!approve` or `!deny`. |
 | 📊 **Polls** | `!poll 1h Movie night? \| Shrek \| Shrek 2`: reaction votes, auto-close and a results card. |
 | 🎲 **Toys** | `!8ball`, `!roll`, `!flip`, `!choose`. |
-| 📣 **For staff** | `!announce`, `!event`, `!say`, `!clear`, `!setxp`, and `!settings` to see how Blitz is set up. |
+| 📣 **For staff** | `!announce`, `!event`, `!say`, `!clear`, `!setxp`, `!userinfo`, and `!settings` to see how Blitz is set up. |
 
 ## Setting Blitz up in a community
 
@@ -29,16 +35,21 @@ Install Blitz, then open its **App settings** in Root. Everything is optional:
 | Level-up channel | Where level-ups go. Empty: where they happened. |
 | Quote wall | Where 🗣️-ed messages are saved. Empty: no quote wall. |
 | Birthday channel | Where Blitz wishes happy birthday. Empty: no birthdays. |
-| Staff log | Where auto-mod removals, joins and leaves are noted. Empty: no log. |
+| Suggestions channel | Where `!suggest` posts ideas. Empty: no suggestions. |
+| Staff log | Reports, moderation, auto-mod removals, joins and leaves. Empty: no log (and no `!report`). |
+| Message log | Edited and deleted messages, with what they said. Empty: no message log. |
 | Private channels | Channels Blitz stays out of: no XP, no quotes, never shown in its domain or sent to its brain. Good for vent or staff channels. |
 | Role for new members | Given to everyone who joins. |
 | Birthday role | Worn for the day on someone's birthday. |
+| Roles people can pick | Roles members can give themselves with `!role`. |
 | Staff | Who can use staff commands. The owner, and roles that can manage the community, kick or ban, always can. |
+| Welcome message | Your own welcome: `{user}`, `{name}`, `{community}` and `{members}` are filled in. Empty: Blitz's greetings. |
 | Turn off levels, Turn off auto-mod | Tick them if you'd rather not have levels or auto-mod. |
+| Block invite links, Blocked words | What else auto-mod removes. Words are separated by commas; `scam*` catches any ending. |
 | Reactions for the quote wall | How many 🗣️ a message needs. |
 | Anthropic API key, About this community | Blitz's brain (see below), and a sentence or two that tells it what your community is like. |
 
-Blitz needs permission to read and post messages, react, delete messages (for auto-mod and `!clear`) and manage roles (only to hand out the roles you pick). Type `!settings` to see what's set.
+Blitz needs permission to read and post messages, react, delete messages (for auto-mod, mutes and `!clear`), manage roles (only to hand out the roles you pick), and kick and ban (only when your staff use `!kick` or `!ban`). Type `!settings` to see what's set.
 
 ## Blitz's domain
 

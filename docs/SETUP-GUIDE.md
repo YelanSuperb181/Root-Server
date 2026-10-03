@@ -71,16 +71,22 @@ After uploading, the Developer Portal shows the version as ready to publish. Roo
    | Level-up channel | Where level-ups go (empty: where they happened) |
    | Quote wall | Where messages that get enough 🗣️ reactions are saved |
    | Birthday channel | Where Blitz wishes people happy birthday |
-   | Staff log | Where auto-mod removals, joins and leaves are noted |
+   | Suggestions channel | Where `!suggest` posts ideas for votes |
+   | Staff log | Where reports, moderation, auto-mod removals, joins and leaves are noted (`!report` needs it) |
+   | Message log | Where edited and deleted messages are shown, with what they said |
    | Private channels | Channels Blitz stays out of: no XP, no quotes, never shown in its domain or sent to its brain |
    | Role for new members | Given to everyone who joins |
    | Birthday role | Worn for the day on someone's birthday |
+   | Roles people can pick | Roles members can give themselves with `!role` |
    | Staff | Who can use staff commands, besides the owner and roles that can manage the community, kick or ban |
+   | Welcome message | Your own welcome; `{user}`, `{name}`, `{community}` and `{members}` are filled in |
    | Turn off levels, Turn off auto-mod | Both are on until you tick these |
+   | Block invite links, Blocked words | What else auto-mod removes (words separated by commas; `scam*` catches any ending) |
    | Reactions for the quote wall | How many 🗣️ a message needs (2 by default) |
 
    For the roles: Blitz can only hand out roles below its own in **Settings → Roles**.
 4. Type `!settings` to check, and `!help` to see everything Blitz can do.
+5. **Make your own commands** for the questions people always ask: `!addcmd rules …`, `!addcmd faq …`, `!addcmd links …`. Anyone can then type `!rules`, and Blitz's brain will point people to them.
 
 ## Give Blitz its brain (optional)
 
@@ -109,10 +115,11 @@ These are the permissions in [`root-manifest.json`](../blitz/root-manifest.json)
 | --- | --- |
 | View channels and read history | Hearing commands and people talking to it; the quote wall |
 | Post, mention, react | Answers, welcomes, polls, level-ups, quotes; reacting when someone talks to Blitz |
-| Delete others' messages | Auto-mod and `!clear` |
-| Manage roles | Only to give the roles you pick: the role for new members and the birthday role |
+| Delete others' messages | Auto-mod, mutes and `!clear` |
+| Manage roles | Only to give the roles you pick: the role for new members, the birthday role and the roles people can pick |
+| Kick, ban, manage bans | Only when your staff use `!kick`, `!ban` or `!unban`. Blitz never kicks or bans on its own |
 
-Blitz never creates, renames or deletes channels or roles, and it can't kick or ban.
+Blitz never creates, renames or deletes channels or roles.
 
 ## Troubleshooting
 
@@ -125,6 +132,9 @@ Blitz never creates, renames or deletes channels or roles, and it can't kick or 
 | The upload is refused because of the version | Run `npm run upload` again: it uses the next version each time. |
 | Blitz doesn't welcome people, save quotes or announce birthdays | Those are off until a channel is picked in Blitz's App settings. `!settings` shows what's set. |
 | Blitz can't give a role | In **Settings → Roles**, drag Blitz's role above the roles it should hand out. |
+| `!report` says there's no staff log | Pick a **Staff log** channel in Blitz's settings, so reports have somewhere to go. |
+| `!kick` or `!ban` says it has no permission | Blitz's role needs to be above the person's roles, and Blitz needs the kick and ban permissions (approve them when you install or update it). |
+| `They're on the team too` | Staff can only act on people ranked below them. Ask an admin or the owner. |
 | `🔒 … is for the team only` | Staff commands need the owner, a role that can manage the community, kick or ban, or someone on the Staff list in Blitz's settings. |
 | The domain says "just yours" (solo) | It couldn't reach Blitz's server. Inside Root: is Blitz installed? In development: is `npm run server` still running? Solo Blitz still works, it just isn't shared. |
 | `!blitz` says the domain isn't set up | Blitz didn't get its App channel. Make sure it was registered as an App and reinstall it. |
