@@ -257,7 +257,8 @@ select.minput { cursor: pointer; }
 .mchanpick-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .mchanpick-count { flex: 1 1 auto; font-size: 12.5px; color: var(--muted); }
 .mchanpick-top .minput { order: 1; flex: 1 1 100%; width: auto; padding: 6px 10px; font-size: 13px; }
-.mchanpick-groups { display: grid; gap: 9px; max-height: 236px; overflow-y: auto; overscroll-behavior: contain; padding: 2px 2px 2px 0; }
+/* No scroll box of its own: one inside the menu's own scrolling kept the wheel from moving the menu while the pointer was over a channel. */
+.mchanpick-groups { display: grid; gap: 9px; }
 .mchanpick-group { display: grid; gap: 5px; }
 .mchanpick-label { justify-self: start; font: inherit; font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); background: none; border: 0; padding: 2px 0; cursor: pointer; }
 .mchanpick-label:hover, .mchanpick-label[aria-pressed="true"] { color: var(--accent); }
