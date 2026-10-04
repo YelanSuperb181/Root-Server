@@ -90,13 +90,17 @@ In `config.ts` under `brain`:
 | --- | --- |
 | `model` | Which Claude model answers (`claude-opus-5-5` by default) |
 | `effort` | How hard it thinks first: `"low"` is quick and cheap, `"medium"`/`"high"` are slower and more thoughtful |
-| `maxPerHour` | A cap on answers across the community; keywords after that |
+| `maxPerHour` | A cap on answers across the community; Blitz's wits after that |
 | `contextMessages`, `memory` | How much of the channel, and of its own past exchanges, Blitz reads |
 | `replyCooldownSeconds` | At most one chat reply per channel this often |
 
 Channels a community marks private in Blitz's settings are never sent to Claude. Each community can also describe itself in the "About this community" setting, which Blitz's brain reads.
 
-### Teach Blitz new words (the keyword fallback)
+### Teach Blitz's wits something new
+
+[`wits.ts`](../blitz/shared/src/wits.ts) is how Blitz answers without a key. `CONCEPTS` lists words that mean the same kind of thing, so "drawings" finds an #art channel and "vc" finds #voice: add words (or a whole new concept) when people ask for a channel in words Blitz misses. The questions it understands are checked in order in `understand()`, each a pattern and an answer; `JOKES`, `FACTS`, `EIGHT_BALL` and `FAVORITES` are its small talk. Add a case to `blitz/server/test/wits.test.ts` for anything you add.
+
+### Teach Blitz new words (its moods)
 
 [`mood.ts`](../blitz/shared/src/mood.ts) has the lists. `FEELINGS` maps words and emoji to a mood (checked top to bottom, first match wins), `REQUESTS` maps words to tricks ("spin", "dance"), and `LINES` holds what Blitz says back for each mood. `MOOD_EMOJI` is the reaction it leaves in chat; use the shortcode names Root uses for reactions (`two_hearts`, `sparkles`). Add a case to `blitz/server/test/mood.test.ts` for anything you add, so a later change can't quietly break it.
 

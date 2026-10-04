@@ -164,6 +164,25 @@ async function runChecked(cmd: Command, base: Omit<CommandContext, "level" | "re
   }
 }
 
+/**
+ * Runs one of Blitz's commands as if `evt`'s author had typed it in that
+ * channel, for when someone asks Blitz in their own words ("remind me in 2h
+ * to stretch"): the same permission checks, but the replies come back for
+ * Blitz to post as its answer.
+ */
+export async function runAsTyped(evt: ChannelMessageCreatedEvent, name: string, rest: string): Promise<{ ok: boolean; replies: string[] }> {
+  const replies: string[] = [];
+  const reply = async (text: string) => {
+    replies.push(text);
+  };
+  const parsed = parseCommand(`${config.prefix}${name} ${rest}`, config.prefix);
+  const cmd = parsed ? byName.get(parsed.name) : undefined;
+  if (!parsed || !cmd) return { ok: false, replies };
+  const base = { evt, userId: evt.userId, channelId: evt.channelId, messageId: evt.id, args: parsed.args, rest: parsed.rest, from: "chat" as const, notice: reply };
+  const ok = await runChecked(cmd, base, reply, reply);
+  return { ok, replies };
+}
+
 /** Menu uses per person: at most MENU_BURST in MENU_WINDOW_MS (buttons are quicker to press than commands are to type). */
 const menuUses = new Map<string, number[]>();
 const MENU_BURST = 8;

@@ -96,7 +96,7 @@ After uploading, the Developer Portal shows the version as ready to publish. Roo
 
 ## Give Blitz its brain (optional)
 
-Out of the box Blitz reacts to messages with keywords: it gets the mood right most of the time, but it can't really answer anyone. Give it an Anthropic API key and Claude becomes its brain: it reads what people say to it, keeps up with the conversation, answers in its own voice and acts it out in the domain.
+Out of the box, Blitz answers with its wits: it understands common questions (where to post something, the rules, levels, Stardust, roles, how to do things) and plain requests ("remind me in 2h to stretch"), and answers from what it knows about your community, with nothing leaving Root. Give it an Anthropic API key and Claude becomes its brain, for everything else: it reads what people say to it, keeps up with the conversation, answers in its own voice and acts it out in the domain.
 
 1. **Create a key** at [console.anthropic.com](https://console.anthropic.com) (Settings → API keys). The key belongs to whoever's Anthropic account it is, and so does the bill.
 2. **Paste it into Blitz's App settings in Root**, under **Blitz's brain**. Save, and Blitz picks it up right away; no restart needed.
@@ -110,7 +110,7 @@ Things to know:
 - **Privacy:** messages that mention Blitz, plus the last 12 messages in that channel, are sent to Anthropic's API. With "Let Blitz's brain help moderate" ticked, so are a reported message and the conversation around it, a message caught for a blocked word with the few before it, the channel being caught up on with `!tldr`, and whatever Ask Blitz looks up for the team. Blitz keeps no record of them; its memory lasts only while it runs. Channels marked private are never sent. Let your community know before you turn it on. Details: [PRIVACY.md](../PRIVACY.md).
 - **Who can see the key:** anyone who can manage Blitz's App settings in the community. Use a key made just for Blitz, so you can revoke it on its own.
 - **While developing:** you can put `ANTHROPIC_API_KEY=...` in `blitz/server/.env` instead.
-- If Claude declines a message or can't be reached, Blitz quietly falls back to keywords for that message.
+- If Claude declines a message, can't be reached or hits the hourly limit, Blitz quietly answers that message with its wits instead.
 
 ---
 
@@ -145,7 +145,7 @@ Blitz never creates, renames or deletes channels or roles.
 | `🔒 … is for the team only` | Staff commands need the owner, a role that can manage the community, kick or ban, or someone on the Staff list in Blitz's settings. |
 | In testing, the shop shows "Need …" instead of "Wear" | You're seen as an ordinary member. Update Blitz: in the dev host, the Root bar's **Virtual User** now counts as the owner. Picked yourself instead? You need to own the test community, or have a role that can manage it. |
 | The menu says **Blitz's server isn't answering yet** | The menu tries again by itself every few seconds, and the small print says why ("It took too long to answer", or the server's error). In development: is the `npm run server` window still open, without an error at the bottom? Inside Root: is Blitz installed? If it keeps happening, Blitz's log says which part of the menu was slow ("the menu gave up waiting for …"). |
-| Blitz in the domain only answers with short canned lines | It couldn't reach Blitz's server (or the community has no API key), so it reads your mood from keywords. Inside Root: is Blitz installed? In development: is `npm run server` still running? |
+| Blitz in the domain only answers with short canned lines | It couldn't reach Blitz's server, so it reads your mood from keywords. Inside Root: is Blitz installed? In development: is `npm run server` still running? |
 | `!blitz` says the domain isn't set up | Blitz didn't get its App channel. Make sure it was registered as an App and reinstall it. |
 | Blitz only answers with short canned lines | It has no brain yet, or the key isn't working. Blitz's log says "Claude rejected Blitz's API key" if the key is wrong. |
 | Blitz takes a few seconds to answer | That's Claude thinking; the domain shows a thought bubble meanwhile. |

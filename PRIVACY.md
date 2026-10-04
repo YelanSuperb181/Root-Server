@@ -1,6 +1,6 @@
 # Blitz privacy policy
 
-*Last updated: October 3, 2026*
+*Last updated: October 4, 2026*
 
 Blitz is a Root App that any community can install. This page says plainly what it does with your information. Each community's data stays with that community: Blitz never mixes communities or shares one community's data with another.
 
@@ -41,7 +41,7 @@ If a community's admins add an Anthropic API key, Blitz uses Claude, made by Ant
 - Blitz remembers recent conversation only in memory while it runs, and forgets it when it restarts.
 - Anthropic handles what it receives under its own terms and [privacy policy](https://www.anthropic.com/legal/privacy).
 
-Without a key, Blitz just looks for keywords and sends nothing anywhere.
+Without a key, Blitz answers with its wits instead: it works out what you asked from the words you used and answers from what it already has (the community's channels and commands, your level and Stardust), and sends nothing anywhere.
 
 ## What Blitz never does
 

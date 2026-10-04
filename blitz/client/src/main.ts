@@ -7,6 +7,7 @@ import { DreamMenu } from "./menu/dream";
 import { recentPress, stardustShower } from "./menu/flair";
 import { Menu } from "./menu/menu";
 import { MenuPanel } from "./menu/panel";
+import { windowWits } from "./menu/wits";
 import { Palette } from "./menu/palette";
 import { filterCommands } from "./menu/sections";
 import { insideRoot, serverBrain } from "./net";
@@ -63,6 +64,8 @@ function main(): void {
     view.setOutfit({ hat: look.hat || undefined, trail: look.trail || undefined, glow: look.glow ? cosmetic(look.glow)?.color : undefined });
     view.setShield(d.shieldUp);
   });
+  // The browser preview has no server: Blitz answers from the made-up community the menu shows.
+  if (demo) view.localWits = windowWits(() => menu.data, (command, args) => void menu.run(command, args));
   const panel = new MenuPanel(menu);
   const dream = new DreamMenu(menu, view, byId("domain"));
   // Ctrl+K (or "/"): find any section or command and go straight there, in whichever menu is showing.

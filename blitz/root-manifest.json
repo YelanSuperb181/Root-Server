@@ -370,7 +370,7 @@
           {
             "key": "anthropicApiKey",
             "title": "Anthropic API key",
-            "description": "Lets Blitz understand and answer messages with Claude. Create a key at console.anthropic.com. Messages that mention Blitz, plus the last few messages in that channel, are sent to Anthropic's API (never from private channels). Leave empty to keep Blitz on simple keyword reactions.",
+            "description": "Lets Blitz understand and answer messages with Claude. Create a key at console.anthropic.com. Messages that mention Blitz, plus the last few messages in that channel, are sent to Anthropic's API (never from private channels). Leave empty and Blitz still answers common questions (where to post, the rules, levels, reminders…) from what it knows about the community, with no AI.",
             "required": false,
             "confirmation": "Save",
             "text": {}

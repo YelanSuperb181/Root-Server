@@ -45,6 +45,11 @@ export function defuseMentions(text: string): string {
   return text.replace(/\[([^\]]*)\]\(root:\/\/[^)\s]*\)/g, "$1");
 }
 
+/** Mentions that would ping (people, roles, @everyone, @here) made harmless; channel links keep working. */
+export function defusePings(text: string): string {
+  return text.replace(/\[([^\]]*)\]\(root:\/\/(?:user|role)\/[^)\s]*\)/g, "$1").replace(/@(everyone|here)\b/gi, "@\u200b$1");
+}
+
 export function truncate(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, Math.max(0, max - 1))}…`;
 }

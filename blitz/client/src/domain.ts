@@ -293,6 +293,8 @@ export class DomainView {
   beforeReform: (() => Promise<void>) | undefined;
   /** Asked how Blitz reacts to what's typed in; without one (or when it has no answer) Blitz reads the mood from keywords. */
   brain: Brain | undefined;
+  /** Without a brain, answers worked out in the window itself (the browser preview's made-up community). */
+  localWits: ((text: string) => Reaction | undefined) | undefined;
 
   private ctx: CanvasRenderingContext2D;
   private W = 0;
@@ -500,7 +502,7 @@ export class DomainView {
         if (this.talk.length > 6) this.talk.shift();
       }
     }
-    reaction ??= readMessage(clean);
+    reaction ??= this.localWits?.(clean) ?? readMessage(clean);
     this.pending = { mood: reaction.mood, say: reaction.say, at: Math.max(this.t + 0.12, landsAt) };
     if (reaction.mood === "sleepy") {
       // Blitz yawns and dozes off where it is.

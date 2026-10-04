@@ -1,10 +1,10 @@
 // Talking to Blitz in chat. A message that says "blitz", @mentions Blitz or
 // replies to one of its messages gets a reaction emoji and an answer. With an API key
 // Claude reads the message (plus the last few messages in the channel) and
-// answers as Blitz; without one, Blitz reads the mood from keywords.
+// answers as Blitz; without one (or when Claude can't), Blitz's wits answer
+// from what it knows about the community (see wits.ts).
 
 import { rootServer, ChannelGuid, ChannelMessageCreatedEvent } from "@rootsdk/server-app";
-import { readMessage } from "@blitz/shared";
 import { config } from "../config";
 import { read } from "../core/api";
 import { settings } from "../core/settings";
@@ -13,9 +13,10 @@ import { botUserId, nickname } from "../core/members";
 import { react, send } from "../core/messaging";
 import { addressedToBlitz } from "../logic/address";
 import { emoji } from "../logic/emoji";
-import { defuseMentions } from "../logic/text";
+import { defuseMentions, defusePings } from "../logic/text";
 import { think } from "./brain";
 import { nameLines, recentTalk, rememberLine, rememberTalk, snapshotLines } from "./memory";
+import { witsAnswer } from "./wits";
 
 /** One reaction per person this often, so "blitz blitz blitz" isn't a flood. */
 const REACT_COOLDOWN_MS = 3000;
@@ -65,7 +66,9 @@ export async function hearChat(evt: ChannelMessageCreatedEvent): Promise<void> {
     const where = await channelName(evt.channelId);
     const said = plain(text);
     const smart = private_ ? undefined : await think({ from: name, text: said, channel: where, chat: await nameLines(before), memory: recentTalk(evt.channelId) });
-    const reaction = smart ?? readMessage(text);
+    // No brain (or it couldn't answer): Blitz's wits. They stay in Root, so private channels get them too.
+    const witty = smart ? undefined : await witsAnswer(evt.userId, text, "chat", evt);
+    const reaction = smart ?? witty!;
     await react(evt.channelId, evt.id, emoji(reaction.emoji.code, reaction.emoji.glyph));
 
     const sinceReply = now - (lastReply.get(evt.channelId) ?? 0);
@@ -75,9 +78,13 @@ export async function hearChat(evt: ChannelMessageCreatedEvent): Promise<void> {
         await send(evt.channelId, plain(smart.reply, true), evt.id);
       }
       rememberTalk(evt.channelId, name, said, smart.reply || smart.say);
-    } else if (config.domain.replyInChat && sinceReply > config.domain.replyCooldownSeconds * 1000) {
-      lastReply.set(evt.channelId, now);
-      await send(evt.channelId, `${reaction.say} *${reaction.action}*`, evt.id);
+    } else if (witty) {
+      // A real answer goes out promptly; chatter ("hii! *hops*") at most now and then, so a busy channel isn't flooded.
+      const wait = witty.answer ? config.brain.replyCooldownSeconds : config.domain.replyInChat ? config.domain.replyCooldownSeconds : Infinity;
+      if (witty.reply && sinceReply > wait * 1000) {
+        lastReply.set(evt.channelId, now);
+        await send(evt.channelId, defusePings(witty.reply).trim(), evt.id);
+      }
     }
 
   } catch (err) {

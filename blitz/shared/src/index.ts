@@ -6,3 +6,4 @@ export * from "./mood";
 export * from "./brain";
 export * from "./richtext";
 export * from "./cosmetics";
+export * from "./wits";

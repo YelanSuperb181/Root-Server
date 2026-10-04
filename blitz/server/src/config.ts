@@ -51,17 +51,17 @@ export const config = {
    * Blitz's brain: Claude reads what people say to Blitz and decides how Blitz
    * feels, what it does and what it says back. Needs an Anthropic API key in
    * Blitz's App settings in Root (or ANTHROPIC_API_KEY in server/.env while
-   * developing). Without a key, or if Claude can't be reached, Blitz falls
-   * back to reading moods from keywords.
+   * developing). Without a key, or if Claude can't be reached, Blitz answers
+   * with its wits (shared/src/wits.ts) instead.
    */
   brain: {
     enabled: true,
     model: "claude-opus-5-5",
     /** How hard Claude thinks before answering. "low" keeps chat snappy. */
     effort: "low" as "low" | "medium" | "high",
-    /** Give up and use keywords after this long. */
+    /** Give up and answer with Blitz's wits after this long. */
     timeoutSeconds: 20,
-    /** At most this many answers an hour, across the whole community; keywords after that. */
+    /** At most this many answers an hour, across the whole community; Blitz's wits after that. */
     maxPerHour: 200,
     /** Recent messages in the channel Blitz reads along with the one for it (0 = just that one). */
     contextMessages: 12,

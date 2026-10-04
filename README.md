@@ -98,7 +98,21 @@ Type `!blitz` anywhere and Blitz replies with a link into its domain. Inside:
 
 With an Anthropic API key in Blitz's App settings (see the [setup guide](docs/SETUP-GUIDE.md#give-blitz-its-brain-optional)), Claude is Blitz's brain. It reads your message along with the last few messages in the channel and Blitz's recent conversation there, then decides how Blitz feels, which trick it does, what it says in the domain and what it replies in chat. You can ask it things ("blitz where do i post my art?", "blitz settle this: is a hotdog a sandwich"), tease it, hype it up or vent to it. It knows the community's channels and commands, matches the vibe of the chat, and drops the bit when someone sounds genuinely not okay. Tell it about your community in the "About this community" setting and it'll fit right in.
 
-Without a key, or if Claude can't be reached, Blitz falls back to reading the mood from keywords. Either way it acts it out. Some of what it picks up on:
+**Without a key, Blitz still answers**, with its wits: it works out what you're asking and answers from what it already knows about the community, and nothing leaves Root. Some of what it can do on its own:
+
+| Ask something like… | Blitz… |
+| --- | --- |
+| "blitz where do i post my art?", "and music?" | points at the channel whose name or topic fits ("drawings" finds #art), and keeps up with follow-ups |
+| "what are the rules?", "where are your socials?", "when's movie night?" | answers with the community's own commands (`!rules`, `!socials`, `!movienight`) |
+| "what level am i?", "who's at the top?", "how much stardust do i have?" | reads out your numbers and the leaderboard |
+| "what roles can i get?", "how do i get the Veteran role?" | lists the roles you can pick, or the level that unlocks one |
+| "remind me in 2h to take the pizza out", "my birthday is July 14", "give me the gamer role", "claim my daily" | **does it**: runs the real command for you, with the usual checks |
+| "how do i make a poll?", "someone's spamming, i need a mod" | the right command, with how to use it; or how to reach the team privately |
+| "what's 15% of 80?", "roll 2d6", "pizza or tacos?", "will i pass my exam?" | maths, dice, coins, picking for you, and its crystal ball |
+| "tell me a joke", "a fun fact", "how are you?", "are you an AI?" | jokes, space facts, and honest answers about itself |
+| "i want to die" | drops the bit: gently says it cares, and points to a crisis line and the team |
+
+With or without a key, Blitz acts out how it feels in its domain. The moods it picks up on:
 
 | Say something like… | Blitz… |
 | --- | --- |
@@ -113,11 +127,11 @@ Without a key, or if Claude can't be reached, Blitz falls back to reading the mo
 | "gn blitz" | yawns and falls asleep |
 | "blitz spin", "do a loop", "dance", "zoomies" | does the trick (unless it's sulking) |
 
-In chat, Blitz leaves a matching emoji on your message and replies (with the keyword fallback: a little canned line, at most once every 25 seconds per channel). In the domain, type to your Blitz: your message flies over to it, a thought bubble shows while it thinks, then it reacts.
+In chat, Blitz leaves a matching emoji on your message and replies. Without a key, real answers go out right away, and a little canned line for chatter ("hii! *hops*") at most once every 25 seconds per channel. In the domain, type to your Blitz: your message flies over to it, a thought bubble shows while it thinks, then it answers in a speech bubble.
 
-**Privacy:** with a key set, messages that mention Blitz, plus the last 12 messages in that channel, are sent to Anthropic's API to work out the answer. Nothing is stored by Blitz; its memory lives only while it runs. Channels you mark private are never sent; Blitz reacts there with keywords only. The full details are in the [privacy policy](PRIVACY.md).
+**Privacy:** with a key set, messages that mention Blitz, plus the last 12 messages in that channel, are sent to Anthropic's API to work out the answer. Nothing is stored by Blitz; its memory lives only while it runs. Channels you mark private are never sent; Blitz answers there with its wits only. The full details are in the [privacy policy](PRIVACY.md).
 
-Each person's Blitz lives entirely in their own domain window, so it's always smooth, whatever the connection. The only thing it asks Blitz's server for is a thought, when you type to it (if the server can't be reached, it reads your mood from keywords instead). **[Try it in your browser](https://claude.ai/artifact/JjoXEpCC6r2eeme9ZjCi57)**: there, Blitz thinks with Claude only for the page's creator (it asks once); everyone else gets the keyword Blitz. In Root, the brain is whatever key is in the App's settings, which only people who can manage the App can change.
+Each person's Blitz lives entirely in their own domain window, so it's always smooth, whatever the connection. The only thing it asks Blitz's server for is an answer, when you type to it (if the server can't be reached, it reads your mood from keywords instead). **[Try it in your browser](https://claude.ai/artifact/JjoXEpCC6r2eeme9ZjCi57)**: there, Blitz thinks with Claude only for the page's creator (it asks once); everyone else gets the keyword Blitz. In Root, the brain is whatever key is in the App's settings, which only people who can manage the App can change.
 
 Root Apps live inside their own channel, so the domain is a channel rather than a window over the rest of Root. Bursting the bubble is how it gets as big as Root lets it.
 
@@ -144,7 +158,8 @@ npm run upload      # puts Blitz in Root's cloud (asks for your publishing token
 | [`blitz/server/src/config.ts`](blitz/server/src/config.ts) | Defaults for every community: prefix, XP per message, auto-mod limits, the brain's model and budget |
 | [`blitz/server/src/content/lines.ts`](blitz/server/src/content/lines.ts) | Blitz's welcome lines, level-up lines, birthday lines and 8-ball answers |
 | [`blitz/shared/src/brain.ts`](blitz/shared/src/brain.ts) | Blitz's personality: what Claude is told about who Blitz is and how it talks |
-| [`blitz/shared/src/mood.ts`](blitz/shared/src/mood.ts) | The keyword fallback: words Blitz reacts to, its canned lines, and its chat emoji |
+| [`blitz/shared/src/wits.ts`](blitz/shared/src/wits.ts) | Blitz's wits, its answers without a key: the questions it understands, the words that mean the same thing ("drawings" for art), its jokes, facts and 8-ball |
+| [`blitz/shared/src/mood.ts`](blitz/shared/src/mood.ts) | The moods: words Blitz reacts to, its canned lines, and its chat emoji |
 | [`blitz/shared/src/physics.ts`](blitz/shared/src/physics.ts) | How Blitz moves in its domain: drift, drag, bounce, slam, how fast the wall cracks |
 | [`blitz/shared/src/rocks.ts`](blitz/shared/src/rocks.ts) | The space rocks: how many, how big, how far apart |
 | [`blitz/shared/src/tricks.ts`](blitz/shared/src/tricks.ts) | Blitz's tricks: loops, spins, zooms, the heart |
@@ -168,7 +183,8 @@ blitz/
 │   ├── rocks.ts                the space rocks: where they are and how they drift
 │   ├── tricks.ts               loops, spins, zooms, hops, the heart
 │   ├── brain.ts                Blitz's persona and the answer format Claude fills in
-│   ├── mood.ts                 the keyword fallback for reading what people say
+│   ├── wits.ts                 Blitz's answers without a key: what it understands, and how it answers from the community
+│   ├── mood.ts                 reading the mood of what people say
 │   ├── cosmetics.ts            the shop: hats, trails and glows
 │   └── richtext.ts             Blitz's chat formatting, for the menu to draw
 ├── server/                     the App's server: everything that happens in chat, plus Blitz's brain

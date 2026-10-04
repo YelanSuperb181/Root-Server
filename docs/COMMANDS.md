@@ -6,6 +6,8 @@ When someone uses one of the commands for everyone (the community's own included
 
 Every command can also be run from **Blitz's menu**, beside its domain, with the same rules about who can use what. Commands that post into a channel (`!announce`, `!event`, `!poll`, `!say`, `!giveaway`) ask which channel there; `!clear` and `!tldr` only work in chat, since they're about the channel they're typed in.
 
+**Or just ask.** Say "blitz" (or @mention it, or reply to it) and ask in your own words: "blitz remind me in 2h to stretch", "blitz give me the gamer role", "blitz my birthday is July 14", "blitz claim my daily". Blitz runs the command for you, with the same rules, and answers questions about the community too ("where do I post my art?", "what are the rules?", "how do I make a poll?"). It works the same in its domain.
+
 ## For everyone
 
 | Command | What it does |

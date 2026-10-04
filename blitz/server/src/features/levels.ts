@@ -2,11 +2,9 @@
 // and level up with a little celebration. A community can switch it off in
 // Blitz's settings, and pick where level-ups are announced.
 
-import type { ChannelMessageCreatedEvent, UserGuid } from "@rootsdk/server-app";
-import { rootServer } from "@rootsdk/server-app";
+import type { ChannelMessageCreatedEvent } from "@rootsdk/server-app";
 import { levelUpLines } from "../content/lines";
 import { config } from "../config";
-import { read } from "../core/api";
 import { Command, UsageError } from "../core/commands";
 import { errMessage, log } from "../core/log";
 import { communityRoles, hasRole, knownPeople, nickname } from "../core/members";
@@ -107,16 +105,9 @@ const leaderboard = remember(15_000, async (): Promise<Array<{ userId: string; x
   return rankEntries(entries);
 });
 
+/** Names for the leaderboard, from the shared name cache (most are already known). */
 async function nicknames(userIds: string[]): Promise<Map<string, string>> {
-  const names = new Map<string, string>();
-  if (userIds.length === 0) return names;
-  try {
-    const members = await read("communityMembers.list", () => rootServer.community.communityMembers.list({ userIds: userIds as UserGuid[] }));
-    for (const m of members) names.set(m.userId, m.nickname);
-  } catch (err) {
-    log("warn", "couldn't load nicknames", { error: errMessage(err) });
-  }
-  return names;
+  return new Map(await Promise.all(userIds.map(async (id) => [id, await nickname(id)] as const)));
 }
 
 // ---- Reward roles: reach a level, get a role (free, unlike some apps) ----

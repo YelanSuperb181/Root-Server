@@ -1,8 +1,8 @@
 // Blitz's domain, server side. Everyone who opens the domain gets their own
 // Blitz, which lives entirely in their window: its physics, tricks, naps and
 // the burst bubble never touch the server. The server only does what a window
-// can't: think with Claude (the community's API key stays here) when someone
-// types to Blitz in their domain, and answer just them.
+// can't: answer when someone types to Blitz in their domain (with Claude, the
+// community's API key staying here, or else with Blitz's wits), just to them.
 
 import { rootServer, ChannelGuid, Client } from "@rootsdk/server-app";
 import { BlitzDomainServiceBase } from "@blitz/gen-server";
@@ -16,6 +16,7 @@ import { findBlockedWord } from "../logic/automod";
 import { parseWordList } from "../logic/moderation";
 import { think } from "./brain";
 import { recentTalk, rememberTalk } from "./memory";
+import { witsAnswer } from "./wits";
 
 /** One message to Blitz per person this often, in ms. */
 const THINK_COOLDOWN_MS = 1200;
@@ -44,9 +45,13 @@ class BlitzDomainService extends BlitzDomainServiceBase {
       const from = await nickname(client.userId);
       const place = `domain:${client.userId}`;
       const smart = await think({ from, text, channel: "", chat: [], memory: recentTalk(place), asleep: request.asleep, open: request.open });
-      if (!smart) return NO_THOUGHT;
-      rememberTalk(place, from, text, smart.say);
-      return { thought: true, mood: smart.mood, say: smart.say, trick: smart.trick ?? "" };
+      if (smart) {
+        rememberTalk(place, from, text, smart.say);
+        return { thought: true, mood: smart.mood, say: smart.say, trick: smart.trick ?? "" };
+      }
+      // No brain (or it couldn't answer): Blitz's wits, from what it knows about the community.
+      const witty = await witsAnswer(client.userId, text, "domain");
+      return { thought: true, mood: witty.mood, say: witty.say, trick: witty.trick ?? "" };
     } catch (err) {
       log("warn", "Blitz couldn't think about a domain message", { error: errMessage(err) });
       return NO_THOUGHT;

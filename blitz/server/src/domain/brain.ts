@@ -1,6 +1,6 @@
 // Blitz's brain on the server: asks Claude how Blitz reacts to a message.
 // Returns undefined whenever Claude can't help (no API key, over the hourly
-// budget, an error, a refusal), and the caller falls back to keywords.
+// budget, an error, a refusal), and the caller answers with Blitz's wits instead.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -30,9 +30,9 @@ export function initBrain(facts: CommunityFacts, settings: GlobalSettings | unde
   keyFromSettings = readKey(settings);
   rootServer.globalSettings?.on(GlobalSettingsEvent.Update, (evt) => {
     keyFromSettings = readKey(evt.current);
-    log("info", keyFromSettings ? "Blitz's brain has an API key" : "Blitz's brain has no API key; using keywords");
+    log("info", keyFromSettings ? "Blitz's brain has an API key" : "Blitz's brain has no API key; using its wits");
   });
-  log("info", brainReady() ? `Blitz's brain is on (${config.brain.model})` : "Blitz's brain has no API key; using keywords");
+  log("info", brainReady() ? `Blitz's brain is on (${config.brain.model})` : "Blitz's brain has no API key; using its wits");
 }
 
 /** What Blitz knows about the community changed (channels, its "About" setting): rebuild the persona. */
@@ -103,12 +103,12 @@ export function textOf(response: { content: Array<{ type: string; text?: string 
   return text || undefined;
 }
 
-/** How Blitz reacts to this message, according to Claude. Undefined: use keywords. */
+/** How Blitz reacts to this message, according to Claude. Undefined: use Blitz's wits. */
 export async function think(situation: Situation): Promise<Reaction | undefined> {
   const claude = api();
   if (!claude || !persona) return undefined;
   if (!withinBudget()) {
-    log("warn", "Blitz's brain hit its hourly limit; using keywords", { maxPerHour: config.brain.maxPerHour });
+    log("warn", "Blitz's brain hit its hourly limit; using its wits", { maxPerHour: config.brain.maxPerHour });
     return undefined;
   }
   try {
@@ -123,16 +123,16 @@ export async function think(situation: Situation): Promise<Reaction | undefined>
       messages: [{ role: "user", content: situationPrompt(situation) }],
     });
     if (response.stop_reason === "refusal") {
-      log("info", "Claude declined a message for Blitz; using keywords");
+      log("info", "Claude declined a message for Blitz; using its wits");
       return undefined;
     }
     const text = response.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("");
     return readThought(JSON.parse(text));
   } catch (err) {
     if (err instanceof Anthropic.AuthenticationError) log("warn", "Claude rejected Blitz's API key; check Blitz's App settings");
-    else if (err instanceof Anthropic.RateLimitError) log("warn", "Claude is rate limiting Blitz; using keywords for now");
-    else if (err instanceof Anthropic.APIError) log("warn", "Claude API error; using keywords", { status: err.status, error: err.message });
-    else log("warn", "couldn't read Claude's answer; using keywords", { error: errMessage(err) });
+    else if (err instanceof Anthropic.RateLimitError) log("warn", "Claude is rate limiting Blitz; using Blitz's wits for now");
+    else if (err instanceof Anthropic.APIError) log("warn", "Claude API error; using its wits", { status: err.status, error: err.message });
+    else log("warn", "couldn't read Claude's answer; using its wits", { error: errMessage(err) });
     return undefined;
   }
 }

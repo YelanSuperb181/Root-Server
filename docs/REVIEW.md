@@ -83,9 +83,9 @@ Only one thing, and only if a community's admins paste an Anthropic API key into
 
 - **Chat:** the message to Blitz and up to 12 messages before it in that channel (with display names), plus the community's name, channels, commands and the admins' "about" text.
 - **With "Let Blitz's brain help moderate" ticked:** a reported message with up to 25 around it, a blocked-word hit with the 6 before it, a channel's recent messages for `!tldr`, and what Ask Blitz looks up for a team member's question (read-only tools over Blitz's records and recent chat; it can't change anything).
-- Never anything from channels a community marks private. At most 200 requests an hour per community, after which Blitz falls back to keywords. The key is read from the App settings and never logged or stored by Blitz.
+- Never anything from channels a community marks private. At most 200 requests an hour per community, after which Blitz answers with its wits (below). The key is read from the App settings and never logged or stored by Blitz.
 
-Without a key, Blitz sends nothing anywhere.
+Without a key, Blitz sends nothing anywhere: it answers with its wits (`shared/src/wits.ts`), plain pattern matching over what it already knows (the community's channels and their topics, its own commands, the asker's level and Stardust). When someone asks for something in their own words ("remind me in 2h to stretch", "give me the gamer role"), it runs the real command as them, through the same permission checks as typing it.
 
 ## Known limits
 
