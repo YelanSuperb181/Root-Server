@@ -5,7 +5,7 @@
 
 import type { MemberCard, MemberLine } from "./api";
 import { Menu } from "./menu";
-import { MEDALS, Section, SectionContext, bar, busy, button, card, cardTitle, empty, input, memberPicker, note, segmented, select, textarea } from "./pieces";
+import { MEDALS, Section, SectionContext, bar, busy, button, card, cardTitle, empty, filters, input, memberPicker, note, segmented, select, submitOn, textarea } from "./pieces";
 import { MONTHS, avatar, dateLabel, fromNow, h, rich } from "./ui";
 import { constellation } from "./constellation";
 import { MORE, startAppeal } from "./sections-plus";
@@ -189,7 +189,8 @@ const reminders: Section = {
       if (!what.value.trim()) return what.focus();
       void busy(b, () => menu.run("remind", `${when} ${what.value.trim()}`));
     }, "primary");
-    what.addEventListener("keydown", (e) => e.key === "Enter" && go.click());
+    submitOn(what, go);
+    submitOn(custom, go);
     return h(
       "div.msection",
       {},
@@ -246,15 +247,26 @@ const birthday: Section = {
 
 const STATUS: Record<string, string> = { open: "🗳️ Open for votes", approved: "✅ Approved", denied: "❌ Not this time" };
 
+let ideasShown = "all";
 const ideas: Section = {
   id: "ideas",
   icon: "💡",
   title: "Ideas",
   blurb: "Suggest things, see what's coming",
-  render({ data, menu }) {
+  render({ data, menu, redraw }) {
     const idea = textarea("A weekly movie night…", "", 1500);
     const list = h("div.mlist");
-    for (const s of data.suggestions) {
+    // With ideas in more than one state, a filter for each (with how many are in it).
+    const states = (["open", "approved", "denied"] as const).filter((st) => data.suggestions.some((x) => x.status === st));
+    if (ideasShown !== "all" && !states.includes(ideasShown as (typeof states)[number])) ideasShown = "all";
+    const filter =
+      states.length > 1 &&
+      filters(
+        [["all", `All (${data.suggestions.length})`], ...states.map((st): [string, string] => [st, `${{ open: "🗳️ Open", approved: "✅ Approved", denied: "❌ Not this time" }[st]} (${data.suggestions.filter((x) => x.status === st).length})`])],
+        ideasShown,
+        (v) => ((ideasShown = v), redraw()),
+      );
+    for (const s of data.suggestions.filter((x) => ideasShown === "all" || x.status === ideasShown)) {
       const actions =
         menu.team && s.status === "open"
           ? h(
@@ -283,16 +295,18 @@ const ideas: Section = {
         ),
       );
     }
+    const postIdea = button("Post idea", (b) => {
+      if (idea.value.trim().length < 3) return idea.focus();
+      void busy(b, () => menu.run("suggest", idea.value.trim()));
+    }, "primary");
+    submitOn(idea, postIdea);
     return h(
       "div.msection",
       {},
       data.suggestionsOn
-        ? card(cardTitle("Share an idea"), note("It's posted for everyone to vote on."), idea, h("div.mrow.end", {}, button("Post idea", (b) => {
-            if (idea.value.trim().length < 3) return idea.focus();
-            void busy(b, () => menu.run("suggest", idea.value.trim()));
-          }, "primary")))
+        ? card(cardTitle("Share an idea"), note("It's posted for everyone to vote on."), idea, h("div.mrow.end", {}, postIdea))
         : card(empty("💡", "This community hasn't picked a suggestions channel yet (it's in Blitz's App settings).")),
-      card(cardTitle("Latest ideas"), data.suggestions.length ? list : empty("💡", "No ideas yet. Be the first!")),
+      card(cardTitle("Latest ideas"), filter, data.suggestions.length ? list : empty("💡", "No ideas yet. Be the first!")),
     );
   },
 };
@@ -307,6 +321,18 @@ const fun: Section = {
     const options = input("pizza | tacos | sushi", "", 300);
     const dice = input("2d6+1", "", 20);
     dice.classList.add("short");
+    const roll = button("Roll", (b) => void busy(b, () => menu.run("roll", dice.value.trim() || "d20")), "primary");
+    const askBall = button("Ask", (b) => {
+      if (question.value.trim().length < 3) return question.focus();
+      void busy(b, () => menu.run("8ball", question.value.trim()));
+    }, "primary");
+    const pick = button("Pick", (b) => {
+      if (!options.value.trim()) return options.focus();
+      void busy(b, () => menu.run("choose", options.value.trim()));
+    }, "primary");
+    submitOn(dice, roll);
+    submitOn(question, askBall);
+    submitOn(options, pick);
     return h(
       "div.msection.mfun",
       {},
@@ -314,13 +340,10 @@ const fun: Section = {
       card(
         h("p.mfun-icon", { text: "🎲" }),
         cardTitle("Roll dice"),
-        h("div.mrow", {}, button("d6", (b) => void busy(b, () => menu.run("roll", "d6"))), button("d20", (b) => void busy(b, () => menu.run("roll", "d20"))), dice, button("Roll", (b) => void busy(b, () => menu.run("roll", dice.value.trim() || "d20")), "primary")),
+        h("div.mrow", {}, button("d6", (b) => void busy(b, () => menu.run("roll", "d6"))), button("d20", (b) => void busy(b, () => menu.run("roll", "d20"))), dice, roll),
       ),
-      card(h("p.mfun-icon", { text: "🎱" }), cardTitle("Ask the 8-ball"), h("div.mrow", {}, question, button("Ask", (b) => {
-        if (question.value.trim().length < 3) return question.focus();
-        void busy(b, () => menu.run("8ball", question.value.trim()));
-      }, "primary"))),
-      card(h("p.mfun-icon", { text: "🤔" }), cardTitle("Can't decide?"), h("div.mrow", {}, options, button("Pick", (b) => void busy(b, () => menu.run("choose", options.value.trim())), "primary"))),
+      card(h("p.mfun-icon", { text: "🎱" }), cardTitle("Ask the 8-ball"), h("div.mrow", {}, question, askBall)),
+      card(h("p.mfun-icon", { text: "🤔" }), cardTitle("Can't decide?"), h("div.mrow", {}, options, pick)),
       card(h("p.mfun-icon", { text: "🗣️" }), cardTitle("A saved quote"), button("Show one", (b) => void busy(b, () => menu.run("quote")), "primary")),
     );
   },
@@ -334,6 +357,7 @@ export function filterCommands(q: string): void {
   commandFilter = q;
 }
 let openCommand = "";
+let tryChannel = "";
 
 const commands: Section = {
   id: "commands",
@@ -366,9 +390,10 @@ const commands: Section = {
             else if (c.menu === "channel" && !menu.team) body.append(note("Type this one in the channel you want it in."));
             else {
               const args = input(c.usage || "(nothing needed)", "", 1000);
-              const where = c.menu === "channel" ? select(data.channels.map((ch) => [ch.id, `#${ch.name}`])) : undefined;
+              const where = c.menu === "channel" ? select(data.channels.map((ch) => [ch.id, `#${ch.name}`]), tryChannel) : undefined;
+              where?.addEventListener("change", () => (tryChannel = where.value));
               const go = button("Try it", (b) => void busy(b, () => menu.run(c.name, args.value.trim(), where?.value ?? "")), "primary.small");
-              args.addEventListener("keydown", (e) => e.key === "Enter" && go.click());
+              submitOn(args, go);
               body.append(h("div.mrow", {}, where, args, go));
             }
             row.append(body);
@@ -398,6 +423,8 @@ const commands: Section = {
 const KIND_ICON: Record<string, string> = { warn: "⚠️", mute: "🔇", unmute: "🔊", kick: "👢", ban: "🔨", unban: "🕊️", note: "📝" };
 const KIND_WORD: Record<string, string> = { warn: "Warning", mute: "Mute", unmute: "Unmute", kick: "Kick", ban: "Ban", unban: "Ban lifted", note: "Note" };
 const mod: { picked?: MemberLine; card?: MemberCard; loading?: boolean; confirm?: string; reason: string; muteFor: string; banFor: string } = { reason: "", muteFor: "1h", banFor: "" };
+/** The people looked up lately (newest first), to get back to them in one tap. */
+const lookedUp: MemberLine[] = [];
 
 async function loadCard(ctx: SectionContext): Promise<void> {
   if (!mod.picked) return;
@@ -417,21 +444,35 @@ const moderation: Section = {
   render(ctx) {
     const { data, menu, redraw } = ctx;
     const root = h("div.msection");
-    const picker = memberPicker(
-      ctx,
-      (m) => {
-        mod.picked = m;
-        mod.card = undefined;
-        mod.confirm = undefined;
-        if (m) void loadCard(ctx);
-        else redraw();
-      },
-      mod.picked,
-    );
+    const pickMember = (m: MemberLine | undefined) => {
+      mod.picked = m;
+      mod.card = undefined;
+      mod.confirm = undefined;
+      if (m) {
+        const was = lookedUp.findIndex((x) => x.userId === m.userId);
+        if (was >= 0) lookedUp.splice(was, 1);
+        lookedUp.unshift(m);
+        lookedUp.length = Math.min(lookedUp.length, 6);
+        void loadCard(ctx);
+      } else redraw();
+    };
+    const picker = memberPicker(ctx, pickMember, mod.picked);
+    const recent = lookedUp.filter((m) => m.userId !== mod.picked?.userId);
     root.append(
       card(
         cardTitle("Find a member"),
         picker,
+        recent.length > 0 &&
+          h(
+            "div.mrecent",
+            {},
+            h("span.mnote", { text: "Recently:" }),
+            ...recent.map((m) => {
+              const chip = h("button.mrecent-chip", { type: "button", title: `Look up ${m.name} again` }, avatar(m.userId, m.name, 20), h("span", { text: m.name }));
+              chip.addEventListener("click", () => pickMember(m));
+              return chip;
+            }),
+          ),
         !mod.picked && note("Pick someone to see their record and act on it. Warnings, mutes, kicks and bans become numbered cases, and the member is told why (unless that's turned off in Blitz's settings); notes stay with the team."),
       ),
     );
@@ -523,23 +564,32 @@ const moderation: Section = {
     }
 
     const bans = h("div.mlist");
+    // A long ban list gets a filter (it hides rows as you type, so the field keeps its place).
+    const banFilter = data.bans.length > 6 ? input("Find a ban by name or reason…", "", 64) : undefined;
+    banFilter?.addEventListener("input", () => {
+      const q = banFilter.value.trim().toLowerCase();
+      for (const row of bans.children) (row as HTMLElement).hidden = !!q && !(row as HTMLElement).dataset.find!.includes(q);
+    });
     for (const b of data.bans) {
       bans.append(
         h(
           "div.mlist-row",
-          {},
+          { "data-find": `${b.name} ${b.reason}`.toLowerCase() },
           h("span.mcase-icon", { "aria-hidden": "true" }, "🔨"),
           h("div.mlist-main", {}, h("p", { text: b.name }), h("p.mnote", { text: `${b.reason || "No reason given"}${b.until ? ` · ends ${fromNow(b.until)}` : " · for good"}` })),
           button("Lift ban", (btn) => void busy(btn, () => menu.run("unban", b.userId)), "ghost.small"),
         ),
       );
     }
-    root.append(card(cardTitle("Banned"), data.bans.length ? bans : empty("🕊️", "Nobody is banned.")));
+    root.append(card(cardTitle(data.bans.length ? `Banned (${data.bans.length})` : "Banned"), banFilter, data.bans.length ? bans : empty("🕊️", "Nobody is banned.")));
     return root;
   },
 };
 
 let customEdit = { name: "", response: "" };
+let customSort: "name" | "uses" = "name";
+/** Set when Edit is pressed: the form scrolls into view, ready to type in. */
+let focusEditor = false;
 const customs: Section = {
   id: "customs",
   icon: "📌",
@@ -550,82 +600,212 @@ const customs: Section = {
     const name = input("name (like rules)", customEdit.name, 32);
     const response = textarea("What Blitz answers. {user} becomes whoever uses it.", customEdit.response, 4000);
     const list = h("div.mlist");
-    for (const c of data.customs) {
+    const sorted = [...data.customs].sort((a, b) => (customSort === "uses" ? b.uses - a.uses : 0) || a.name.localeCompare(b.name));
+    for (const c of sorted) {
       list.append(
         h(
-          "div.mlist-row.col",
-          {},
+          `div.mlist-row.col${customEdit.name === c.name ? ".editing" : ""}`,
+          { "data-find": `${c.name} ${c.response}`.toLowerCase() },
           h("div.mrow", {}, h("code", { text: `!${c.name}` }), h("span.mnote", { text: `used ${c.uses} time${c.uses === 1 ? "" : "s"}` })),
           rich(c.response),
-          h("div.mrow.end", {}, button("Edit", () => ((customEdit = { name: c.name, response: c.response }), redraw()), "ghost.small"), button("Remove", (b) => void busy(b, () => menu.run("delcmd", c.name)), "ghost.small")),
+          h("div.mrow.end", {}, button("Edit", () => ((customEdit = { name: c.name, response: c.response }), (focusEditor = true), redraw()), "ghost.small"), button("Remove", (b) => void busy(b, () => menu.run("delcmd", c.name)), "ghost.small")),
         ),
       );
+    }
+    // A long list gets a filter (rows hide as you type) and a choice of order.
+    const many = data.customs.length > 5;
+    const find = many ? input("Find a command…", "", 40) : undefined;
+    find?.addEventListener("input", () => {
+      const q = find.value.trim().toLowerCase().replace(/^!/, "");
+      for (const row of list.children) (row as HTMLElement).hidden = !!q && !(row as HTMLElement).dataset.find!.includes(q);
+    });
+    const save = button("Save", (b) => {
+      const n = name.value.trim().replace(/^!/, "").toLowerCase();
+      if (!n) return name.focus();
+      if (!response.value.trim()) return response.focus();
+      const renamed = customEdit.name && customEdit.name !== n ? customEdit.name : "";
+      void busy(b, async () => {
+        const res = await menu.run("addcmd", `${n} ${response.value.trim()}`);
+        if (!res.ok) return;
+        // Renamed while editing: the old name goes, rather than staying as a copy.
+        if (renamed) {
+          await menu.api.run("delcmd", renamed).catch(() => undefined);
+          await menu.load();
+        }
+        customEdit = { name: "", response: "" };
+        redraw();
+      });
+    }, "primary");
+    name.addEventListener("keydown", (e) => e.key === "Enter" && (e.preventDefault(), response.focus()));
+    submitOn(response, save);
+    const form = card(
+      cardTitle(customEdit.name ? `Edit !${customEdit.name}` : "Make a command"),
+      note(customEdit.name ? "Change the answer, or the name (the old one goes)." : "Anyone can then type it, or find it in the menu. Handy for rules, FAQs and links."),
+      name,
+      response,
+      h("div.mrow.end", {}, customEdit.name ? button("Cancel", () => ((customEdit = { name: "", response: "" }), redraw()), "ghost") : undefined, save),
+    );
+    if (focusEditor) {
+      focusEditor = false;
+      requestAnimationFrame(() => {
+        if (!response.isConnected) return;
+        form.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        response.focus({ preventScroll: true });
+      });
     }
     return h(
       "div.msection",
       {},
+      form,
       card(
-        cardTitle(customEdit.name ? `Edit !${customEdit.name}` : "Make a command"),
-        note("Anyone can then type it, or find it in the menu. Handy for rules, FAQs and links."),
-        name,
-        response,
-        h("div.mrow.end", {}, customEdit.name ? button("Cancel", () => ((customEdit = { name: "", response: "" }), redraw()), "ghost") : undefined, button("Save", (b) => {
-          const n = name.value.trim().replace(/^!/, "");
-          if (!n) return name.focus();
-          if (!response.value.trim()) return response.focus();
-          void busy(b, async () => {
-            await menu.run("addcmd", `${n} ${response.value.trim()}`);
-            customEdit = { name: "", response: "" };
-          });
-        }, "primary")),
+        cardTitle(data.customs.length ? `Your commands (${data.customs.length})` : "Your commands"),
+        many &&
+          h(
+            "div.mrow.mlist-tools",
+            {},
+            find,
+            filters(
+              [
+                ["name", "A–Z"],
+                ["uses", "Most used"],
+              ],
+              customSort,
+              (v) => ((customSort = v as typeof customSort), redraw()),
+            ),
+          ),
+        data.customs.length ? list : empty("📌", "None yet."),
       ),
-      card(cardTitle("Your commands"), data.customs.length ? list : empty("📌", "None yet.")),
     );
   },
 };
 
 let postKind = "announce";
+let postChannel = "";
+/** The poll being put together: a question, its options (none for yes/no), and how long it runs. */
+const pollDraft = { question: "", options: ["", ""], length: "1d", yesNo: false };
+const MAX_OPTIONS = 10;
+
 const post: Section = {
   id: "post",
   icon: "📣",
   title: "Post",
   blurb: "Announcements, events and polls",
   team: true,
-  render({ data, menu }) {
+  render({ data, menu, redraw }) {
     if (!data.channels.length) return h("div.msection", {}, empty("📣", "Blitz can't see any text channels to post in."));
-    const channel = select(data.channels.map((c) => [c.id, `#${c.name}${c.group ? ` · ${c.group}` : ""}`]));
+    const channel = select(data.channels.map((c) => [c.id, `#${c.name}${c.group ? ` · ${c.group}` : ""}`]), postChannel);
+    channel.addEventListener("change", () => (postChannel = channel.value));
     const hints: Record<string, string> = {
       announce: "We hit 100 members! 🎉",
       event: "Game night Friday 8pm UTC 🎮",
       say: "Hello everyone!",
-      poll: "Best snack? | Chips | Cookies | Fruit  (start with 1h to close it after an hour)",
     };
-    const text = textarea(hints[postKind], "", 3000);
-    return h(
-      "div.msection",
-      {},
-      card(
-        cardTitle("Post in a channel"),
-        segmented(
-          [
-            ["announce", "📣 Announcement"],
-            ["event", "📅 Event"],
-            ["poll", "📊 Poll"],
-            ["say", "✨ As Blitz"],
-          ],
-          postKind,
-          (v) => ((postKind = v), (text.placeholder = hints[v])),
-        ),
-        h("p.mlabel", { text: "Where" }),
-        channel,
-        h("p.mlabel", { text: "What" }),
-        text,
-        h("div.mrow.end", {}, button("Post", (b) => {
-          if (!text.value.trim()) return text.focus();
-          void busy(b, () => menu.run(postKind, text.value.trim(), channel.value));
-        }, "primary")),
-      ),
+    const text = textarea(hints[postKind] ?? "", "", 3000);
+    const kinds = segmented(
+      [
+        ["announce", "📣 Announcement"],
+        ["event", "📅 Event"],
+        ["poll", "📊 Poll"],
+        ["say", "✨ As Blitz"],
+      ],
+      postKind,
+      (v) => {
+        const switching = (v === "poll") !== (postKind === "poll");
+        postKind = v;
+        if (switching) redraw();
+        else text.placeholder = hints[v];
+      },
     );
+    const where = h("div", {}, h("p.mlabel", { text: "Where" }), channel);
+
+    if (postKind === "poll") {
+      // A question, an option per box (or yes/no), and how long it's open: no | syntax to remember.
+      const question = input("What should we play on Friday?", pollDraft.question, 300);
+      question.addEventListener("input", () => (pollDraft.question = question.value));
+      const options = h("div.mpoll-options");
+      pollDraft.options.forEach((value, i) => {
+        const field = input(`Option ${i + 1}`, value, 100);
+        field.addEventListener("input", () => (pollDraft.options[i] = field.value));
+        // Enter on the last option adds another.
+        field.addEventListener("keydown", (e) => {
+          if (e.key !== "Enter") return;
+          e.preventDefault();
+          if (i === pollDraft.options.length - 1 && pollDraft.options.length < MAX_OPTIONS && field.value.trim()) addOption();
+          else (options.querySelectorAll("input")[i + 1] as HTMLInputElement | undefined)?.focus();
+        });
+        const remove = pollDraft.options.length > 2 && button("✕", () => (pollDraft.options.splice(i, 1), redraw()), "ghost.small");
+        if (remove) remove.setAttribute("aria-label", `Remove option ${i + 1}`);
+        options.append(h("div.mpoll-option", {}, h("span.mpoll-dot", { "aria-hidden": "true" }, String(i + 1)), field, remove));
+      });
+      const addOption = () => {
+        pollDraft.options.push("");
+        redraw();
+        requestAnimationFrame(() => {
+          const fields = document.querySelectorAll<HTMLInputElement>(".mpoll-options input");
+          fields[fields.length - 1]?.focus();
+        });
+      };
+      const start = button("📊 Start the poll", (b) => {
+        const q = pollDraft.question.trim();
+        if (!q) return question.focus();
+        const picked = pollDraft.yesNo ? [] : pollDraft.options.map((o) => o.replace(/\|/g, "/").trim()).filter(Boolean);
+        if (!pollDraft.yesNo && picked.length < 2) return (options.querySelectorAll("input")[picked.length] as HTMLInputElement | undefined)?.focus();
+        const args = [pollDraft.length, [q.replace(/\|/g, "/"), ...picked].join(" | ")].filter(Boolean).join(" ");
+        void busy(b, async () => {
+          const res = await menu.run("poll", args, channel.value);
+          if (!res.ok) return;
+          Object.assign(pollDraft, { question: "", options: ["", ""], yesNo: false });
+          redraw();
+        });
+      }, "primary");
+      submitOn(question, start);
+      return h(
+        "div.msection",
+        {},
+        card(
+          cardTitle("Post in a channel"),
+          kinds,
+          where,
+          h("p.mlabel", { text: "Question" }),
+          question,
+          h(
+            "div.mrow.between",
+            {},
+            h("p.mlabel", { text: "Answers" }),
+            segmented(
+              [
+                ["options", "Options"],
+                ["yesno", "👍 Yes / 👎 No"],
+              ],
+              pollDraft.yesNo ? "yesno" : "options",
+              (v) => ((pollDraft.yesNo = v === "yesno"), redraw()),
+            ),
+          ),
+          !pollDraft.yesNo && options,
+          !pollDraft.yesNo && pollDraft.options.length < MAX_OPTIONS && h("div.mrow", {}, button("＋ Add an option", addOption, "ghost.small")),
+          h("p.mlabel", { text: "Open for" }),
+          segmented(
+            [
+              ["1h", "1 hour"],
+              ["1d", "1 day"],
+              ["3d", "3 days"],
+              ["7d", "1 week"],
+              ["", "Until closed"],
+            ],
+            pollDraft.length,
+            (v) => (pollDraft.length = v),
+          ),
+          h("div.mrow.end", {}, start),
+        ),
+      );
+    }
+
+    const send = button("Post", (b) => {
+      if (!text.value.trim()) return text.focus();
+      void busy(b, () => menu.run(postKind, text.value.trim(), channel.value));
+    }, "primary");
+    submitOn(text, send);
+    return h("div.msection", {}, card(cardTitle("Post in a channel"), kinds, where, h("p.mlabel", { text: "What" }), text, h("div.mrow.end", {}, send)));
   },
 };
 
@@ -659,16 +839,19 @@ function levelRewardsCard(menu: Menu, rewards: SectionContext["data"]["levelRewa
   level.inputMode = "numeric";
   const role = input("Role name, like Regular", "", 80);
   const list = h("div.mlist");
+  const add = button("Add", (b) => {
+    if (!Number(level.value)) return level.focus();
+    if (!role.value.trim()) return role.focus();
+    void busy(b, () => menu.run("levelrole", `${Number(level.value)} ${role.value.trim()}`));
+  }, "primary");
+  submitOn(level, add);
+  submitOn(role, add);
   for (const r of rewards) list.append(h("div.mlist-row", {}, h("span.mreward-level", { text: `Lv ${r.level}` }), h("div.mlist-main", {}, h("p", { text: r.roleName })), button("Remove", (b) => void busy(b, () => menu.run("levelrole", `remove ${r.level}`)), "ghost.small")));
   return card(
     cardTitle("🎁 Level rewards"),
     note("Give a role to everyone who reaches a level. Free, however many you add. Blitz's role must be above them."),
     rewards.length > 0 && list,
-    h("div.mrow", {}, level, role, button("Add", (b) => {
-      if (!Number(level.value)) return level.focus();
-      if (!role.value.trim()) return role.focus();
-      void busy(b, () => menu.run("levelrole", `${Number(level.value)} ${role.value.trim()}`));
-    }, "primary")),
+    h("div.mrow", {}, level, role, add),
     rewards.length > 0 && h("div.mrow.end", {}, button("Give them to everyone already past", (b) => void busy(b, () => menu.run("levelrole", "sync")), "ghost.small")),
   );
 }

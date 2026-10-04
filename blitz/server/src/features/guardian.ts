@@ -19,7 +19,7 @@ import { RaidState, clampHold, onJoin, raidActive, recordJoin, slowmodeWait } fr
 import { parseLeadingDuration } from "../logic/moderation";
 import { formatDuration } from "../logic/parse";
 import { checkScam, hasLink } from "../logic/scams";
-import { defuseMentions, mentionedChannelIds, mentionedRoleIds, mentionedUserIds, plural, truncate, userMention } from "../logic/text";
+import { defuseMentions, leadingChannels, listWords, mentionedChannelIds, mentionedRoleIds, mentionedUserIds, plural, truncate, userMention } from "../logic/text";
 import { AUTO, muteMember } from "./moderation";
 import { countCatch } from "./pulse";
 
@@ -283,87 +283,97 @@ export async function screenGuardian(evt: ChannelMessageCreatedEvent): Promise<b
 // ---- Commands -----------------------------------------------------------------------------
 
 /** The channel a command is about: one it mentions, "all", or the one it was typed in. */
-function channelTarget(ctx: CommandContext, allowAll: boolean): { channelId: string; rest: string } {
+/** The channels a command is about: the ones it starts with (several are fine), else `all`, else the one it was typed in. */
+function channelTargets(ctx: CommandContext, allowAll: boolean): { ids: string[]; rest: string } {
+  const lead = leadingChannels(ctx.rest);
+  if (lead.ids.length) return lead;
+  // One channel named later on, as in "slowmode 30s #general".
   const mentioned = mentionedChannelIds(ctx.rest)[0];
-  if (mentioned) return { channelId: mentioned, rest: ctx.rest.replace(/\[#[^\]]*\]\(root:\/\/channel\/[^)\s]+\)/, "").trim() };
-  if (allowAll && /^(all|everything|everywhere|server|community)\b/i.test(ctx.rest)) return { channelId: "all", rest: ctx.rest.replace(/^\S+\s*/, "") };
-  if (ctx.channelId) return { channelId: ctx.channelId, rest: ctx.rest };
-  throw new UsageError(`Say which channel, like \`${config.prefix}${allowAll ? "lockdown #general 30m" : "slowmode #general 30s"}\`${allowAll ? ", or `all`" : ""}.`);
+  if (mentioned) return { ids: [mentioned], rest: ctx.rest.replace(/\[#[^\]]*\]\(root:\/\/channel\/[^)\s]+\)/, "").replace(/\s+/g, " ").trim() };
+  if (allowAll && /^(all|everything|everywhere|server|community)\b/i.test(ctx.rest)) return { ids: ["all"], rest: ctx.rest.replace(/^\S+\s*/, "") };
+  if (ctx.channelId) return { ids: [ctx.channelId], rest: ctx.rest };
+  throw new UsageError(`Say which channels, like \`${config.prefix}${allowAll ? "lockdown #general #memes 30m" : "slowmode #general #memes 30s"}\`${allowAll ? ", or `all`" : ""}.`);
 }
 
-const where = async (channelId: string) => (channelId === "all" ? "every channel" : channelLink(channelId));
+/** "every channel", or the channels as links: "#general, #memes and #art". */
+const where = async (ids: string[]) => (ids.includes("all") ? "every channel" : listWords(await Promise.all(ids.map(channelLink))));
 
 export const guardianCommands: Command[] = [
   {
     name: "lockdown",
     aliases: ["lock"],
-    usage: "[#channel | all] [30m] [reason]",
-    summary: "Lock a channel (or every channel) so only the team can talk, for a while or until you unlock it.",
+    usage: "[#channel #channel … | all] [30m] [reason]",
+    summary: "Lock one or more channels (or every channel) so only the team can talk, for a while or until you unlock them.",
     level: "mod",
     category: "Moderation",
     async run(ctx) {
-      const target = channelTarget(ctx, true);
-      const timed = parseLeadingDuration(target.rest);
+      const { ids, rest } = channelTargets(ctx, true);
+      const timed = parseLeadingDuration(rest);
       const ms = clampHold(timed?.ms);
-      const reason = (timed ? timed.rest : target.rest) || undefined;
+      const reason = (timed ? timed.rest : rest) || undefined;
       const now = Date.now();
-      const lock: Lock = { channelId: target.channelId, until: ms ? now + ms : undefined, reason, by: ctx.userId, at: now };
-      locks.set(target.channelId, lock);
+      for (const id of ids) locks.set(id, { channelId: id, until: ms ? now + ms : undefined, reason, by: ctx.userId, at: now } satisfies Lock);
       await saveLocks();
       const length = ms ? ` for ${formatDuration(ms)}` : "";
-      if (target.channelId !== "all") {
-        await send(target.channelId, `🔒 **This channel is locked**${length}${reason ? `: ${truncate(reason, 200)}` : ""}. Only the team can post until it opens again.`).catch(() => undefined);
+      for (const id of ids) {
+        if (id !== "all") await send(id, `🔒 **This channel is locked**${length}${reason ? `: ${truncate(reason, 200)}` : ""}. Only the team can post until it opens again.`).catch(() => undefined);
       }
-      await ctx.reply(`🔒 Locked ${await where(target.channelId)}${length}. \`${config.prefix}unlock\` opens it again.`);
-      await modLog(`🔒 **${await nickname(ctx.userId)}** locked ${await where(target.channelId)}${length}${reason ? `: ${truncate(reason, 200)}` : ""}`);
+      const places = await where(ids);
+      await ctx.reply(`🔒 Locked ${places}${length}. \`${config.prefix}unlock\` opens ${ids.length > 1 ? "them" : "it"} again.`);
+      await modLog(`🔒 **${await nickname(ctx.userId)}** locked ${places}${length}${reason ? `: ${truncate(reason, 200)}` : ""}`);
     },
   },
   {
     name: "unlock",
-    usage: "[#channel | all]",
-    summary: "Open a locked channel again (`all` opens everything).",
+    usage: "[#channel #channel … | all]",
+    summary: "Open locked channels again (`all` opens everything).",
     level: "mod",
     category: "Moderation",
     async run(ctx) {
-      const target = channelTarget(ctx, true);
-      const ids = target.channelId === "all" ? [...locks.keys()] : [target.channelId];
-      const opened = ids.filter((id) => locks.delete(id));
+      const { ids } = channelTargets(ctx, true);
+      const everything = ids.includes("all");
+      const asked = everything ? [...locks.keys()] : ids;
+      const opened = asked.filter((id) => locks.delete(id));
       if (opened.length === 0) {
-        await ctx.reply(`${await where(target.channelId)} isn't locked.`);
+        await ctx.reply(everything ? "Nothing is locked." : `${await where(ids)} ${ids.length > 1 ? "aren't" : "isn't"} locked.`);
         return;
       }
       await saveLocks();
       for (const id of opened) if (id !== "all") await send(id, "🔓 This channel is open again.").catch(() => undefined);
-      await ctx.reply(`🔓 Opened ${target.channelId === "all" ? plural(opened.length, "lock") : await where(target.channelId)}.`);
-      await modLog(`🔓 **${await nickname(ctx.userId)}** opened ${target.channelId === "all" ? "every locked channel" : await where(target.channelId)}.`);
+      const places = everything ? plural(opened.length, "lock") : await where(opened);
+      const skipped = asked.length - opened.length;
+      await ctx.reply(`🔓 Opened ${places}.${skipped > 0 ? ` (${plural(skipped, "other")} ${skipped === 1 ? "wasn't" : "weren't"} locked.)` : ""}`);
+      await modLog(`🔓 **${await nickname(ctx.userId)}** opened ${everything ? "every locked channel" : places}.`);
     },
   },
   {
     name: "slowmode",
     aliases: ["slow"],
-    usage: "[#channel] <30s | 5m | off>",
-    summary: "Make people wait between messages in a channel (the team isn't held back).",
+    usage: "[#channel #channel …] <30s | 5m | off>",
+    summary: "Make people wait between messages in one or more channels (the team isn't held back).",
     level: "mod",
     category: "Moderation",
     async run(ctx) {
-      const target = channelTarget(ctx, false);
-      if (/^(off|stop|none|0)\b/i.test(target.rest)) {
-        if (!slows.delete(target.channelId)) {
-          await ctx.reply(`Slowmode isn't on in ${await where(target.channelId)}.`);
+      const { ids, rest } = channelTargets(ctx, false);
+      if (/^(off|stop|none|0)\b/i.test(rest)) {
+        const off = ids.filter((id) => slows.delete(id));
+        if (off.length === 0) {
+          await ctx.reply(`Slowmode isn't on in ${await where(ids)}.`);
           return;
         }
         await saveSlows();
-        await send(target.channelId, "🐇 Slowmode is off.").catch(() => undefined);
-        await ctx.reply(`🐇 Slowmode is off in ${await where(target.channelId)}.`);
+        for (const id of off) await send(id, "🐇 Slowmode is off.").catch(() => undefined);
+        await ctx.reply(`🐇 Slowmode is off in ${await where(off)}.`);
         return;
       }
-      const timed = parseLeadingDuration(target.rest);
+      const timed = parseLeadingDuration(rest);
       if (!timed || timed.ms < 2000 || timed.ms > 6 * 3_600_000) throw new UsageError(`Give a wait between 2 seconds and 6 hours, like \`${config.prefix}slowmode 30s\`, or \`off\`.`);
-      slows.set(target.channelId, { channelId: target.channelId, ms: timed.ms, by: ctx.userId, at: Date.now() });
+      for (const id of ids) slows.set(id, { channelId: id, ms: timed.ms, by: ctx.userId, at: Date.now() });
       await saveSlows();
-      await send(target.channelId, `🐢 Slowmode is on: one message every ${formatDuration(timed.ms)}.`).catch(() => undefined);
-      await ctx.reply(`🐢 Slowmode in ${await where(target.channelId)}: one message every ${formatDuration(timed.ms)}.`);
-      await modLog(`🐢 **${await nickname(ctx.userId)}** turned on slowmode in ${await where(target.channelId)} (${formatDuration(timed.ms)}).`);
+      for (const id of ids) await send(id, `🐢 Slowmode is on: one message every ${formatDuration(timed.ms)}.`).catch(() => undefined);
+      const places = await where(ids);
+      await ctx.reply(`🐢 Slowmode in ${places}: one message every ${formatDuration(timed.ms)}.`);
+      await modLog(`🐢 **${await nickname(ctx.userId)}** turned on slowmode in ${places} (${formatDuration(timed.ms)}).`);
     },
   },
   {
@@ -415,8 +425,8 @@ export const guardianCommands: Command[] = [
         `🎣 Scam shield: ${settings.on("scamShield") ? "on" : "off"} · ${plural(count("scam"), "scam link")} stopped today`,
         `🚨 Raid shield: ${settings.on("raidShield") ? (raidStatus().active ? "**UP**" : "watching") : "off"}`,
         `👋 Newcomer links: ${settings.number("newcomerMinutes", 10, 0, 1440) ? `after ${settings.number("newcomerMinutes", 10, 0, 1440)} minutes` : "allowed right away"} · ${count("newcomer")} held today`,
-        `🔒 Locked: ${l.length ? (await Promise.all(l.map((x) => where(x.channelId)))).join(", ") : "nothing"}`,
-        `🐢 Slowmode: ${s.length ? (await Promise.all(s.map(async (x) => `${await where(x.channelId)} (${formatDuration(x.ms)})`))).join(", ") : "nowhere"}`,
+        `🔒 Locked: ${l.length ? (await Promise.all(l.map((x) => where([x.channelId])))).join(", ") : "nothing"}`,
+        `🐢 Slowmode: ${s.length ? (await Promise.all(s.map(async (x) => `${await where([x.channelId])} (${formatDuration(x.ms)})`))).join(", ") : "nowhere"}`,
         `🧹 Auto-mod removed ${plural(day.filter((c) => !["scam", "newcomer", "raid", "lockdown", "slowmode"].includes(c.kind)).length, "message")} today`,
       ];
       await ctx.reply(lines.join("\n"));

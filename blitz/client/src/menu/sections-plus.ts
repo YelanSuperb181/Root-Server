@@ -6,7 +6,7 @@
 import { COSMETICS, CosmeticSlot } from "@blitz/shared";
 import type { MemberLine, MenuOverview, TicketInfo, TicketThread } from "./api";
 import { barList, healthFigure, hoursChart, statTile, tableView, trendChart, upDownChart } from "./charts";
-import { Section, SectionContext, busy, button, card, cardTitle, empty, input, memberPicker, note, segmented, select, textarea } from "./pieces";
+import { Section, SectionContext, busy, button, card, cardTitle, channelPicker, empty, filters, input, memberPicker, note, segmented, select, submitOn, textarea } from "./pieces";
 import { Outfit, blitzPortrait } from "./preview";
 import { avatar, fromNow, h, rich } from "./ui";
 
@@ -24,6 +24,7 @@ const shortDate = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateStri
 const SLOT_TITLE: Record<CosmeticSlot, string> = { hat: "🎩 Hats", trail: "🌠 Trails", glow: "🔮 Glows" };
 const SLOTS = ["hat", "trail", "glow"] as const;
 const pickOne = <T>(list: readonly T[]): T => list[Math.floor(Math.random() * list.length)];
+let shopShown: "all" | "afford" | "mine" = "all";
 
 const stardust: Section = {
   id: "stardust",
@@ -102,9 +103,24 @@ const stardust: Section = {
         ),
       );
     const shop = h("div.msection");
+    if (d.wardrobe && shopShown === "afford") shopShown = "all";
+    const showing = (c: (typeof COSMETICS)[number]) => shopShown === "all" || (shopShown === "mine" ? d.owned.includes(c.id) : !d.owned.includes(c.id) && d.balance >= c.price);
+    shop.append(
+      filters(
+        [
+          ["all", `All looks (${COSMETICS.length})`],
+          ...(d.wardrobe ? [] : [["afford", `✨ Can buy now (${COSMETICS.filter((c) => !d.owned.includes(c.id) && d.balance >= c.price).length})`] as [string, string]]),
+          ["mine", `Yours (${d.owned.length})`],
+        ],
+        shopShown,
+        (v) => ((shopShown = v as typeof shopShown), redraw()),
+      ),
+    );
     for (const slot of SLOTS) {
       const grid = h("div.mshop");
-      for (const c of COSMETICS.filter((x) => x.slot === slot)) {
+      const inSlot = COSMETICS.filter((x) => x.slot === slot && showing(x));
+      if (!inSlot.length) continue;
+      for (const c of inSlot) {
         const owned = d.owned.includes(c.id);
         const on = wearing[slot] === c.id;
         const tried = shown[slot] === c.id && !on;
@@ -137,6 +153,7 @@ const stardust: Section = {
       }
       shop.append(card(cardTitle(SLOT_TITLE[slot]), grid));
     }
+    if (shop.children.length === 1) shop.append(card(empty(shopShown === "mine" ? "🎩" : "✨", shopShown === "mine" ? "No looks of your own yet. Try some on!" : "Nothing you can buy just yet. Your daily gift helps!")));
     const top = h("ol.mboard");
     d.top.forEach((row, i) =>
       top.append(h(`li.mboard-row${row.userId === data.userId ? ".me" : ""}`, {}, h("span.mboard-place", { text: ["🥇", "🥈", "🥉"][i] ?? `#${i + 1}` }), avatar(row.userId, row.name, 28), h("span.mboard-name", { text: row.name }), h("span.mboard-xp", { text: `${row.earned.toLocaleString()} ✨` }))),
@@ -155,15 +172,15 @@ const stardust: Section = {
 
 // ---- Giveaways -----------------------------------------------------------------------
 
-const draftGiveaway = { length: "1d", winners: "1", prize: "" };
+const draftGiveaway = { length: "1d", winners: "1", prize: "", channel: "" };
 
 const giveaways: Section = {
   id: "giveaways",
   icon: "🎉",
   title: "Giveaways",
   blurb: "Enter for prizes",
-  render({ data, menu }) {
-    const running = data.giveaways.filter((g) => !g.ended);
+  render({ data, menu, redraw }) {
+    const running = data.giveaways.filter((g) => !g.ended).sort((a, b) => a.endsAt - b.endsAt);
     const ended = data.giveaways.filter((g) => g.ended);
     const list = h("div.mlist");
     for (const g of running) {
@@ -186,11 +203,22 @@ const giveaways: Section = {
     for (const g of ended) past.append(h("div.mlist-row", {}, h("span.mcase-icon", { "aria-hidden": "true" }, "🏆"), h("div.mlist-main", {}, h("p", { text: g.prize }), h("p.mnote", { text: g.winnerNames.length ? `Won by ${g.winnerNames.join(", ")}` : "Nobody entered" }))));
     const root = h("div.msection", {}, card(cardTitle("Running now"), running.length ? list : empty("🎉", "No giveaways right now. Keep an eye out!")));
     if (menu.team) {
-      const channel = select(data.channels.map((c) => [c.id, `#${c.name}`]));
+      const channel = select(data.channels.map((c) => [c.id, `#${c.name}`]), draftGiveaway.channel);
+      channel.addEventListener("change", () => (draftGiveaway.channel = channel.value));
       const prize = input("Prize, like Nitro, or 500 stardust", draftGiveaway.prize, 200);
       prize.addEventListener("input", () => (draftGiveaway.prize = prize.value));
       const winners = select(["1", "2", "3", "5", "10"].map((n) => [n, `${n} winner${n === "1" ? "" : "s"}`]), draftGiveaway.winners);
       winners.addEventListener("change", () => (draftGiveaway.winners = winners.value));
+      const start = button("Start it", (b) => {
+        if (!prize.value.trim()) return prize.focus();
+        void busy(b, async () => {
+          const res = await menu.run("giveaway", `${draftGiveaway.length} ${draftGiveaway.winners} winners ${prize.value.trim()}`, channel.value);
+          if (!res.ok) return;
+          draftGiveaway.prize = "";
+          redraw();
+        });
+      }, "primary");
+      submitOn(prize, start);
       root.append(
         card(
           cardTitle("Start a giveaway"),
@@ -207,13 +235,7 @@ const giveaways: Section = {
           ),
           h("div.mrow", {}, channel, winners),
           prize,
-          h("div.mrow.end", {}, button("Start it", (b) => {
-            if (!prize.value.trim()) return prize.focus();
-            void busy(b, async () => {
-              await menu.run("giveaway", `${draftGiveaway.length} ${draftGiveaway.winners} winners ${prize.value.trim()}`, channel.value);
-              draftGiveaway.prize = "";
-            });
-          }, "primary")),
+          h("div.mrow.end", {}, start),
         ),
       );
     }
@@ -236,7 +258,22 @@ const box: {
   about?: MemberLine;
   caseId?: number;
   closeNote: string;
-} = { view: "team", kind: "question", closeNote: "" };
+  /** Which kind of conversation the team's list shows. */
+  shown: string;
+} = { view: "team", kind: "question", closeNote: "", shown: "all" };
+
+const SEVERITY_RANK: Record<string, number> = { high: 3, medium: 2, low: 1 };
+const waitingOnTeam = (t: TicketInfo) => t.unread === "team" && t.status === "open";
+/** The team's open conversations in the order to deal with them: waiting ones first, the most urgent and then the longest waiting at the top. */
+function teamOrder(list: TicketInfo[]): TicketInfo[] {
+  return [...list].sort((a, b) => {
+    const wa = waitingOnTeam(a);
+    const wb = waitingOnTeam(b);
+    if (wa !== wb) return wa ? -1 : 1;
+    if (wa) return (SEVERITY_RANK[b.triageSeverity] ?? 0) - (SEVERITY_RANK[a.triageSeverity] ?? 0) || a.updatedAt - b.updatedAt;
+    return b.updatedAt - a.updatedAt;
+  });
+}
 
 /** Opens the inbox ready to appeal a case (from the You page). */
 export function startAppeal(caseId: number): void {
@@ -282,7 +319,8 @@ function ticketRow(ctx: SectionContext, t: TicketInfo, teamView: boolean): HTMLE
 
 function threadView(ctx: SectionContext): HTMLElement {
   const { menu, data, redraw } = ctx;
-  const back = button("◂ All conversations", () => ((box.openId = undefined), (box.thread = undefined), redraw()), "ghost.small");
+  const toList = () => ((box.openId = undefined), (box.thread = undefined), redraw());
+  const back = button("◂ All conversations", toList, "ghost.small");
   if (box.loading || !box.thread?.ticket) return h("div.msection", {}, card(back, h("p.mnote.loading", { text: box.loading ? "Opening it…" : "Couldn't open that one." })));
   const t = box.thread.ticket;
   const mine = t.userId === data.userId;
@@ -304,17 +342,21 @@ function threadView(ctx: SectionContext): HTMLElement {
   }, "primary");
   const closeNote = input(t.kind === "appeal" ? "A note for them (optional)" : "Closing note for them (optional)", box.closeNote, 300);
   closeNote.addEventListener("input", () => (box.closeNote = closeNote.value));
+  // Once it's dealt with, back to the list (Blitz's reply says how it went), ready for the next one.
   const decide = async (b: HTMLButtonElement, command: string) =>
     busy(b, async () => {
-      await menu.run(command, `${t.id} ${box.closeNote.trim()}`.trim());
+      const res = await menu.run(command, `${t.id} ${box.closeNote.trim()}`.trim());
+      if (!res.ok) return;
       box.closeNote = "";
-      await openThread(ctx, t.id);
+      toList();
     });
+  submitOn(reply, send);
+  const next = teamView ? teamOrder(data.inbox?.team.filter((x) => waitingOnTeam(x) && x.id !== t.id) ?? [])[0] : undefined;
   return h(
     "div.msection",
     {},
     card(
-      h("div.mrow", {}, back),
+      h("div.mrow.between", {}, back, next && button(`Next waiting ▸`, () => void openThread(ctx, next.id), "ghost.small")),
       h("div.mthread-head", {}, h("span.mticket-icon", { "aria-hidden": "true" }, k.icon), h("div", {}, h("p.mthread-subject", { text: t.subject }), h("p.mnote", { text: [`#${t.id} ${k.label}`, teamView ? `from ${t.name}` : "", t.status === "closed" ? `closed${t.resolution ? ` · ${t.resolution}` : ""}` : "open"].filter(Boolean).join(" · ") }))),
       box.thread.about && h("p.mabout", { text: `About: ${box.thread.about}` }),
       teamView && t.triageSummary
@@ -373,10 +415,21 @@ const inbox: Section = {
       );
     }
     if (teamView) {
-      const open = data.inbox?.team.filter((t) => t.status === "open") ?? [];
+      const open = teamOrder(data.inbox?.team.filter((t) => t.status === "open") ?? []);
       const closed = data.inbox?.team.filter((t) => t.status === "closed") ?? [];
-      const list = h("div.mtickets", {}, ...open.map((t) => ticketRow(ctx, t, true)));
-      root.append(card(cardTitle("Open conversations"), open.length ? list : empty("📭", "All caught up! Nothing's waiting.")));
+      // With more than one kind open, a filter for each.
+      const kinds = Object.keys(KIND).filter((k) => open.some((t) => t.kind === k));
+      if (box.shown !== "all" && !kinds.includes(box.shown)) box.shown = "all";
+      const filter =
+        kinds.length > 1 &&
+        filters(
+          [["all", `All (${open.length})`], ...kinds.map((k): [string, string] => [k, `${KIND[k].icon} ${KIND[k].label}s (${open.filter((t) => t.kind === k).length})`])],
+          box.shown,
+          (v) => ((box.shown = v), redraw()),
+        );
+      const shown = open.filter((t) => box.shown === "all" || t.kind === box.shown);
+      const list = h("div.mtickets", {}, ...shown.map((t) => ticketRow(ctx, t, true)));
+      root.append(card(cardTitle(open.length ? `Open conversations (${open.length})` : "Open conversations"), filter, open.length ? list : empty("📭", "All caught up! Nothing's waiting.")));
       if (closed.length) root.append(card(cardTitle("Recently closed"), h("div.mtickets", {}, ...closed.map((t) => ticketRow(ctx, t, true)))));
       return root;
     }
@@ -391,13 +444,19 @@ const inbox: Section = {
       const text = what.value.trim();
       if (!text) return what.focus();
       void busy(b, async () => {
-        if (box.kind === "report") await menu.run("report", `${box.about ? `${box.about.userId} ` : ""}${text}`);
-        else if (box.kind === "appeal") await menu.run("appeal", `${pickCase.value} ${text}`);
-        else await menu.run("ticket", text);
+        const res =
+          box.kind === "report"
+            ? await menu.run("report", `${box.about ? `${box.about.userId} ` : ""}${text}`)
+            : box.kind === "appeal"
+              ? await menu.run("appeal", `${pickCase.value} ${text}`)
+              : await menu.run("ticket", text);
+        if (!res.ok) return;
         box.about = undefined;
         box.caseId = undefined;
+        redraw();
       });
     }, "primary");
+    submitOn(what, sendNew);
     const kinds: Array<[string, string]> = on
       ? [
           ["question", "💬 Ask the team"],
@@ -425,7 +484,15 @@ const inbox: Section = {
 // ---- Guardian (the team) ---------------------------------------------------------------
 
 const CATCH_ICON: Record<string, string> = { scam: "🎣", raid: "🚨", newcomer: "👋", lockdown: "🔒", slowmode: "🐢", spam: "💨", duplicate: "📋", mentions: "📢", invite: "🔗", word: "🤐", zalgo: "👾", caps: "🔠", emoji: "😵", wall: "🧱" };
-const guard = { lockFor: "1h", lockWhere: "", lockReason: "", slowFor: "15s", slowWhere: "", confirmAll: false };
+const FEED_GROUPS: Record<string, { label: string; kinds: string[] }> = {
+  scam: { label: "🎣 Scams", kinds: ["scam"] },
+  automod: { label: "🧹 Auto-mod", kinds: ["spam", "duplicate", "mentions", "invite", "word", "zalgo", "caps", "emoji", "wall"] },
+  newcomer: { label: "👋 Newcomers", kinds: ["newcomer"] },
+  raid: { label: "🚨 Raids", kinds: ["raid"] },
+  held: { label: "🔒 Held back", kinds: ["lockdown", "slowmode"] },
+};
+const guard = { feed: "all", lockFor: "1h", lockAll: false, lockPicked: new Set<string>(), lockReason: "", slowFor: "15s", slowPicked: new Set<string>(), confirmAll: false };
+const many = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 
 const guardian: Section = {
   id: "guardian",
@@ -450,24 +517,40 @@ const guardian: Section = {
       tile("🧹", "Auto-mod", g.automodOn ? (g.strict ? "On · strict" : "On") : "Off", g.automodOn, `${count(["spam", "duplicate", "mentions", "invite", "word", "zalgo", "caps", "emoji", "wall"])} removed today${g.coolOff ? " · cool-offs on" : ""}`),
     );
 
-    const channelOptions: Array<[string, string]> = data.channels.map((c) => [c.id, `#${c.name}`]);
     const mention = (id: string) => {
       const c = data.channels.find((x) => x.id === id);
       return c ? `[#${c.name}](root://channel/${c.id})` : "";
     };
-    const lockWhere = select([["all", "🌐 Every channel"], ...channelOptions], guard.lockWhere || channelOptions[0]?.[0] || "all");
-    lockWhere.addEventListener("change", () => ((guard.lockWhere = lockWhere.value), (guard.confirmAll = false), redraw()));
+    const mentions = (ids: Iterable<string>) => [...ids].map(mention).filter(Boolean).join(" ");
+    const choices = data.channels.map((c) => ({ id: c.id, name: c.name, group: c.group }));
+
+    // Lockdown: pick any channels (or every channel at once), how long, and why.
+    const lockedMarks = Object.fromEntries(g.locks.filter((l) => l.channelId !== "all").map((l) => [l.channelId, { sign: "🔒", label: "Locked now" }]));
     const lockReason = input("Reason (shown in the channel)", guard.lockReason, 200);
     lockReason.addEventListener("input", () => (guard.lockReason = lockReason.value));
-    const everything = lockWhere.value === "all";
     const lockIt = (b: HTMLButtonElement) =>
       void busy(b, async () => {
-        const where = everything ? "all" : mention(lockWhere.value);
-        await menu.run("lockdown", `${where} ${guard.lockFor === "open" ? "" : guard.lockFor} ${guard.lockReason}`.replace(/\s+/g, " ").trim());
-        guard.lockReason = "";
+        const where = guard.lockAll ? "all" : mentions(guard.lockPicked);
+        const res = await menu.run("lockdown", `${where} ${guard.lockFor === "open" ? "" : guard.lockFor} ${guard.lockReason}`.replace(/\s+/g, " ").trim());
+        if (res.ok) {
+          guard.lockReason = "";
+          guard.lockPicked.clear();
+        }
         guard.confirmAll = false;
+        redraw();
       });
-    const lockButton = everything && !guard.confirmAll ? button("🔒 Lock everything…", () => ((guard.confirmAll = true), redraw()), "ghost") : button(everything ? "Really lock every channel?" : "🔒 Lock", lockIt, everything ? "danger" : "primary");
+    const lockLabel = () => (guard.lockPicked.size ? `🔒 Lock ${many(guard.lockPicked.size, "channel")}` : "🔒 Lock");
+    const lockButton = guard.lockAll
+      ? guard.confirmAll
+        ? button("Really lock every channel?", lockIt, "danger")
+        : button("🔒 Lock everything…", () => ((guard.confirmAll = true), redraw()), "ghost")
+      : button(lockLabel(), (b) => (guard.lockPicked.size ? lockIt(b) : undefined), "primary");
+    lockButton.disabled = !guard.lockAll && guard.lockPicked.size === 0;
+    const lockPicker = channelPicker(choices, guard.lockPicked, () => {
+      lockButton.textContent = lockLabel();
+      lockButton.disabled = guard.lockPicked.size === 0;
+    }, lockedMarks);
+    submitOn(lockReason, lockButton);
     const locks = h("div.mlist");
     for (const l of g.locks) {
       locks.append(
@@ -481,8 +564,22 @@ const guardian: Section = {
       );
     }
 
-    const slowWhere = select(channelOptions, guard.slowWhere || channelOptions[0]?.[0] || "");
-    slowWhere.addEventListener("change", () => (guard.slowWhere = slowWhere.value));
+    // Slowmode: the same picker, and how long to wait between messages.
+    const slowMarks = Object.fromEntries(g.slows.map((x) => [x.channelId, { sign: "🐢", label: `Slowed: one message every ${x.seconds >= 60 ? `${Math.round(x.seconds / 60)} min` : `${x.seconds}s`}` }]));
+    const slowLabel = () => (guard.slowPicked.size ? `🐢 Slow down ${many(guard.slowPicked.size, "channel")}` : "🐢 Slow it down");
+    const slowButton = button(slowLabel(), (b) => {
+      if (!guard.slowPicked.size) return;
+      void busy(b, async () => {
+        const res = await menu.run("slowmode", `${mentions(guard.slowPicked)} ${guard.slowFor}`);
+        if (res.ok) guard.slowPicked.clear();
+        redraw();
+      });
+    }, "primary");
+    slowButton.disabled = guard.slowPicked.size === 0;
+    const slowPicker = channelPicker(choices, guard.slowPicked, () => {
+      slowButton.textContent = slowLabel();
+      slowButton.disabled = guard.slowPicked.size === 0;
+    }, slowMarks);
     const slows = h("div.mlist");
     for (const s of g.slows) {
       slows.append(
@@ -497,7 +594,17 @@ const guardian: Section = {
     }
 
     const feed = h("div.mlist.mfeed");
-    for (const c of g.catches.slice(0, 20)) {
+    const groups = Object.entries(FEED_GROUPS).filter(([, x]) => g.catches.some((c) => x.kinds.includes(c.kind)));
+    if (guard.feed !== "all" && !groups.some(([id]) => id === guard.feed)) guard.feed = "all";
+    const feedFilter =
+      groups.length > 1 &&
+      filters(
+        [["all", `All (${g.catches.length})`], ...groups.map(([id, x]): [string, string] => [id, `${x.label} (${g.catches.filter((c) => x.kinds.includes(c.kind)).length})`])],
+        guard.feed,
+        (v) => ((guard.feed = v), redraw()),
+      );
+    const feedKinds = FEED_GROUPS[guard.feed]?.kinds;
+    for (const c of g.catches.filter((x) => !feedKinds || feedKinds.includes(x.kind)).slice(0, 20)) {
       feed.append(
         h(
           "div.mlist-row",
@@ -515,7 +622,16 @@ const guardian: Section = {
       card(
         cardTitle("Lockdown"),
         note("Only the team can post in a locked channel; Blitz removes anything else, with a note why."),
-        h("div.mrow", {}, lockWhere),
+        segmented(
+          [
+            ["some", "Pick channels"],
+            ["all", "🌐 Every channel"],
+          ],
+          guard.lockAll ? "all" : "some",
+          (v) => ((guard.lockAll = v === "all"), (guard.confirmAll = false), redraw()),
+        ),
+        !guard.lockAll && lockPicker,
+        h("p.mlabel", { text: "For how long" }),
         segmented(
           [
             ["15m", "15 min"],
@@ -526,13 +642,15 @@ const guardian: Section = {
           guard.lockFor,
           (v) => (guard.lockFor = v),
         ),
-        lockReason,
+        h("div.mrow", {}, lockReason),
         h("div.mrow.end", {}, lockButton),
-        g.locks.length > 0 && locks,
+        g.locks.length > 0 && h("div", {}, h("div.mrow.between", {}, h("p.mlabel", { text: `Locked now (${g.locks.length})` }), g.locks.length > 1 && button("🔓 Unlock all", (b) => void busy(b, () => menu.run("unlock", "all")), "ghost.small")), locks),
       ),
       card(
         cardTitle("Slowmode"),
-        h("div.mrow", {}, slowWhere),
+        note("People wait between messages; the team isn't held back."),
+        slowPicker,
+        h("p.mlabel", { text: "One message every" }),
         segmented(
           [
             ["5s", "5s"],
@@ -544,11 +662,11 @@ const guardian: Section = {
           guard.slowFor,
           (v) => (guard.slowFor = v),
         ),
-        h("div.mrow.end", {}, button("🐢 Slow it down", (b) => void busy(b, () => menu.run("slowmode", `${mention(slowWhere.value)} ${guard.slowFor}`)), "primary")),
-        g.slows.length > 0 && slows,
+        h("div.mrow.end", {}, slowButton),
+        g.slows.length > 0 && h("div", {}, h("div.mrow.between", {}, h("p.mlabel", { text: `Slowed now (${g.slows.length})` }), g.slows.length > 1 && button("🐇 Turn all off", (b) => void busy(b, () => menu.run("slowmode", `${mentions(g.slows.map((x) => x.channelId))} off`)), "ghost.small")), slows),
       ),
       card(cardTitle("Warning ladder"), h("p.mabout", { text: g.ladder === "off" ? "Off: warnings never lead to anything automatic." : g.ladder }), note("Members are told when they're moderated, and how to appeal. Change the steps in Blitz's App settings (Guardian).")),
-      card(cardTitle("What the shields caught"), g.catches.length ? feed : empty("✨", "Nothing yet. All calm.")),
+      card(cardTitle("What the shields caught"), feedFilter, g.catches.length ? feed : empty("✨", "Nothing yet. All calm.")),
     );
   },
 };
@@ -655,7 +773,7 @@ const ask: Section = {
       else await run();
     };
     const askButton = button("Ask", (b) => void go(field.value, b), "primary");
-    field.addEventListener("keydown", (e) => e.key === "Enter" && askButton.click());
+    submitOn(field, askButton);
     const chips = h("div.mchips", {}, ...EXAMPLES.map((q) => button(q, () => void go(q), "ghost.small")));
     const log = h("div.mask-log");
     for (const e of asked) {

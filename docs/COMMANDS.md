@@ -81,9 +81,9 @@ Every action is saved as a numbered **case** and noted in the staff log. Instead
 | `!note @someone <note>` | A private staff note in their history (your message is removed from the chat). |
 | `!history @someone` | Their full history: warnings, mutes, kicks, bans, notes. Also `!cases`, `!modlog`. |
 | `!userinfo [@someone]` | Roles, join date, level, warnings and mute. Also `!whois`. |
-| `!lockdown [#channel \| all] [30m] [reason]` | Only the team can post there (Blitz removes anything else, with a note); without a time, until `!unlock`. Also `!lock`. |
-| `!unlock [#channel \| all]` | Open it again. |
-| `!slowmode [#channel] <30s \| 5m \| off>` | One message per person every so often (the team isn't held back). |
+| `!lockdown [#channel #channel … \| all] [30m] [reason]` | Only the team can post there (Blitz removes anything else, with a note); name as many channels as you like. Without a time, until `!unlock`. Also `!lock`. |
+| `!unlock [#channel #channel … \| all]` | Open them again (`all` opens every lock). |
+| `!slowmode [#channel #channel …] <30s \| 5m \| off>` | One message per person every so often, in one or more channels (the team isn't held back). |
 | `!raid [on \| off]` | The raid shield: is it up, raise it now, or end it. |
 | `!guardian` | What the shields have done today, and what's locked or slowed. Also `!shield`. |
 

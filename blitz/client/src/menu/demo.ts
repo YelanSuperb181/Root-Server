@@ -76,9 +76,9 @@ const COMMANDS: Cmd[] = [
   ["unban", "Moderation", "mod", "Lift a ban.", "<@member or user ID>"],
   ["bans", "Moderation", "mod", "Who's banned, and why."],
   ["userinfo", "Moderation", "mod", "Who someone is here: roles, joined, level, warnings.", "[@member]"],
-  ["lockdown", "Moderation", "mod", "Lock a channel (or every channel) so only the team can talk.", "[#channel | all] [30m] [reason]"],
-  ["unlock", "Moderation", "mod", "Open a locked channel again.", "[#channel | all]"],
-  ["slowmode", "Moderation", "mod", "Make people wait between messages in a channel.", "[#channel] <30s | 5m | off>"],
+  ["lockdown", "Moderation", "mod", "Lock one or more channels (or every channel) so only the team can talk.", "[#channel #channel … | all] [30m] [reason]"],
+  ["unlock", "Moderation", "mod", "Open locked channels again.", "[#channel #channel … | all]"],
+  ["slowmode", "Moderation", "mod", "Make people wait between messages in one or more channels.", "[#channel #channel …] <30s | 5m | off>"],
   ["raid", "Moderation", "mod", "The raid shield: see if it's up, raise it yourself, or end it.", "[on | off]"],
   ["guardian", "Moderation", "mod", "What Blitz's shields are doing."],
   ["inbox", "Moderation", "mod", "Open conversations with members.", "[number]"],
@@ -241,8 +241,16 @@ function demoState(): MenuOverview {
       ["general", "Café"],
       ["art", "Café"],
       ["gaming", "Café"],
+      ["music", "Café"],
+      ["memes", "Café"],
+      ["pets", "Café"],
+      ["off-topic", "Café"],
       ["announcements", "Info"],
       ["events", "Info"],
+      ["rules", "Info"],
+      ["introductions", "Info"],
+      ["help", "Support"],
+      ["bug-reports", "Support"],
     ].map(([name, group], i) => ({ id: `demo-ch-${i}`, name, group })),
     stardust: {
       on: true,
@@ -372,10 +380,17 @@ export function demoMenu(): MenuApi {
     return c;
   };
   const who = (id: string) => `[@${nameOf(id)}](root://user/${id})`;
-  const channelFromArgs = (args: string) => {
-    const m = /\[#([^\]]*)\]\(root:\/\/channel\/([^)\s]+)\)/.exec(args);
-    return m ? { id: m[2], name: `#${m[1]}`, rest: args.replace(m[0], "").trim() } : undefined;
+  /** Every channel named at the start, and what follows them. */
+  const channelsFromArgs = (args: string) => {
+    const found: Array<{ id: string; name: string }> = [];
+    let rest = args;
+    for (let m = /^\s*\[#([^\]]*)\]\(root:\/\/channel\/([^)\s]+)\)/.exec(rest); m; m = /^\s*\[#([^\]]*)\]\(root:\/\/channel\/([^)\s]+)\)/.exec(rest)) {
+      if (!found.some((c) => c.id === m![2])) found.push({ id: m[2], name: `#${m[1]}` });
+      rest = rest.slice(m[0].length);
+    }
+    return { found, rest: rest.trim() };
   };
+  const names = (list: Array<{ name: string }>) => (list.length < 2 ? (list[0]?.name ?? "") : `${list.slice(0, -1).map((c) => c.name).join(", ")} and ${list[list.length - 1].name}`);
   const durationMs = (text: string) => {
     const m = /^(\d+)\s*([smhdw])/i.exec(text.trim());
     return m ? Number(m[1]) * { s: 1000, m: 60_000, h: HOUR, d: DAY, w: 7 * DAY }[m[2].toLowerCase() as "m"] : 0;
@@ -561,32 +576,40 @@ export function demoMenu(): MenuApi {
         return say(`🎉 Giveaway #${g.id} is over: ${g.winnerNames.join(", ")} won!`);
       }
       case "lockdown": {
-        const ch = channelFromArgs(args);
+        const { found, rest: after } = channelsFromArgs(args);
         const all = /^all\b/i.test(args);
-        if (!ch && !all) return no("💡 Say which channel, or `all`.");
-        const rest = ch ? ch.rest : args.replace(/^all\s*/i, "");
+        if (!found.length && !all) return no("💡 Say which channels, or `all`.");
+        const rest = found.length ? after : args.replace(/^all\s*/i, "");
         const ms = durationMs(rest);
-        guard.locks = guard.locks.filter((l) => l.channelId !== (all ? "all" : ch!.id));
-        guard.locks.push({ channelId: all ? "all" : ch!.id, name: all ? "every channel" : ch!.name, until: ms ? Date.now() + ms : 0, reason: rest.replace(/^\d+\s*[smhdw]\w*\s*/i, "") });
+        const targets = all ? [{ id: "all", name: "every channel" }] : found;
+        guard.locks = guard.locks.filter((l) => !targets.some((t) => t.id === l.channelId));
+        for (const t of targets) guard.locks.push({ channelId: t.id, name: t.name, until: ms ? Date.now() + ms : 0, reason: rest.replace(/^\d+\s*[smhdw]\w*\s*/i, "") });
         state.shieldUp = guard.raidActive || guard.locks.some((l) => l.channelId === "all");
-        return say(`🔒 Locked ${all ? "every channel" : ch!.name}${ms ? ` for ${rest.split(" ")[0]}` : ""}. \`!unlock\` opens it again.`);
+        return say(`🔒 Locked ${all ? "every channel" : names(found)}${ms ? ` for ${rest.split(" ")[0]}` : ""}. \`!unlock\` opens ${targets.length > 1 ? "them" : "it"} again.`);
       }
       case "unlock": {
-        const ch = channelFromArgs(args);
-        const all = /^all\b/i.test(args) || !ch;
-        guard.locks = all ? [] : guard.locks.filter((l) => l.channelId !== ch!.id);
-        state.shieldUp = guard.raidActive;
-        return say(`🔓 Opened ${all ? "everything" : ch!.name}.`);
+        const { found } = channelsFromArgs(args);
+        const all = /^all\b/i.test(args) || !found.length;
+        const opened = all ? guard.locks : guard.locks.filter((l) => found.some((c) => c.id === l.channelId));
+        if (!opened.length) return no(all ? "Nothing is locked." : `${names(found)} ${found.length > 1 ? "aren't" : "isn't"} locked.`);
+        guard.locks = guard.locks.filter((l) => !opened.includes(l));
+        state.shieldUp = guard.raidActive || guard.locks.some((l) => l.channelId === "all");
+        return say(`🔓 Opened ${all ? `${opened.length} lock${opened.length === 1 ? "" : "s"}` : names(opened)}.`);
       }
       case "slowmode": {
-        const ch = channelFromArgs(args);
-        if (!ch) return no("💡 Say which channel.");
-        guard.slows = guard.slows.filter((x) => x.channelId !== ch.id);
-        if (/^off/i.test(ch.rest)) return say(`🐇 Slowmode is off in ${ch.name}.`);
-        const ms = durationMs(ch.rest);
+        const { found, rest } = channelsFromArgs(args);
+        if (!found.length) return no("💡 Say which channels.");
+        if (/^off/i.test(rest)) {
+          const off = found.filter((c) => guard.slows.some((x) => x.channelId === c.id));
+          if (!off.length) return no(`Slowmode isn't on in ${names(found)}.`);
+          guard.slows = guard.slows.filter((x) => !off.some((c) => c.id === x.channelId));
+          return say(`🐇 Slowmode is off in ${names(off)}.`);
+        }
+        const ms = durationMs(rest);
         if (ms < 2000) return no("💡 Give a wait between 2 seconds and 6 hours, like `30s`.");
-        guard.slows.push({ channelId: ch.id, name: ch.name, seconds: ms / 1000 });
-        return say(`🐢 Slowmode in ${ch.name}: one message every ${ch.rest.split(" ")[0]}.`);
+        guard.slows = guard.slows.filter((x) => !found.some((c) => c.id === x.channelId));
+        for (const c of found) guard.slows.push({ channelId: c.id, name: c.name, seconds: ms / 1000 });
+        return say(`🐢 Slowmode in ${names(found)}: one message every ${rest.split(" ")[0]}.`);
       }
       case "raid": {
         if (/^on/i.test(args)) {

@@ -94,7 +94,11 @@ export class Menu {
     if (!this.loading && Date.now() - this.loadedAt > STALE_MS) void this.load();
   }
 
-  /** Runs one of Blitz's commands from the menu, shows Blitz's reply, and refreshes what the menu shows. */
+  /**
+   * Runs one of Blitz's commands from the menu, shows Blitz's reply, and
+   * refreshes what the menu shows. `ok` in what comes back says whether it
+   * worked (a reply that's a hint or a refusal means it didn't).
+   */
   async run(command: string, args = "", channelId = ""): Promise<RunResponse> {
     let res: RunResponse;
     try {
@@ -103,12 +107,14 @@ export class Menu {
       res = { ok: false, replies: ["⚠️ I couldn't reach my server. Try again in a moment."] };
     }
     const text = res.replies.join("\n\n").trim();
+    // A hint, a warning or a refusal means it didn't work ("🔒 Locked #general" is a lockdown that did).
+    const ok = res.ok && !/^(💡|⚠️|🤷|🔒(?! Locked))/u.test(text);
     if (text) {
-      this.reply = { text, ok: res.ok && !/^(💡|⚠️|🔒|🤷)/u.test(text), at: Date.now(), command };
+      this.reply = { text, ok, at: Date.now(), command };
       this.onReply?.(this.reply);
     }
     await this.load();
-    return res;
+    return { ...res, ok };
   }
 
   /** Tries a look on (or, with undefined, puts Blitz's own outfit back). */

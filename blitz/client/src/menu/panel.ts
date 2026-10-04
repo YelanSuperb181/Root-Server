@@ -43,6 +43,9 @@ export class MenuPanel {
       h("div.mp-body", {}, this.nav, h("div.mp-main", {}, this.content, this.replyBox)),
     );
     spotlight(this.content);
+    const typed = () => noteDraft(this.current, this.content);
+    this.content.addEventListener("input", typed);
+    this.content.addEventListener("change", typed);
     menu.subscribe(() => this.draw());
     this.draw();
   }
@@ -99,18 +102,19 @@ export class MenuPanel {
     const replyAt = menu.reply?.at ?? 0;
     const same = this.drawn.section === section.id;
     if (!same || this.drawn.data !== menu.data || !menu.data) {
-      // A refresh in the background keeps what's being typed; after something's picked, the forms start afresh.
-      const keep = same && this.drawn.reply === replyAt ? keepFields(this.content) : undefined;
+      const keep = same && !afresh(this.drawn.reply, menu) ? keepFields(this.content) : undefined;
       if (same) swapIn(this.content, this.body(section));
       else {
-        // A new section's cards float in one after another.
+        // A new section's cards float in one after another, with whatever was typed there before.
         this.content.replaceChildren(this.body(section));
         enter(this.content, 900);
       }
       keep?.();
+      if (!same) restoreDraft(section.id, this.content);
+      noteDraft(section.id, this.content);
       countUp(this.content);
+      this.drawn = { section: section.id, data: menu.data, reply: replyAt };
     }
-    this.drawn = { section: section.id, data: menu.data, reply: replyAt };
     this.drawReply();
   }
 
@@ -148,6 +152,7 @@ export class MenuPanel {
       redraw: () => {
         if (this.current !== section.id) return;
         swapIn(this.content, this.body(section));
+        noteDraft(section.id, this.content);
         countUp(this.content);
       },
       go: (id) => this.open(id),
@@ -175,6 +180,42 @@ export class MenuPanel {
     this.replyTimer = setTimeout(() => {
       if (this.menu.reply?.at === reply.at) this.menu.dismissReply();
     }, REPLY_MS);
+  }
+}
+
+/**
+ * Whether the forms should start afresh in this redraw: yes after something
+ * picked in the menu worked (since the last time they were drawn), so the
+ * same announcement can't go out twice. A refresh in the background keeps
+ * what's being typed, and so does something that didn't work: fix it and
+ * try again.
+ */
+export function afresh(replyDrawn: number, menu: Menu): boolean {
+  const reply = menu.reply;
+  return !!reply && reply.at !== replyDrawn && reply.ok;
+}
+
+type Field = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+const fieldsIn = (root: HTMLElement) => [...root.querySelectorAll<Field>("input:not([type=checkbox]):not([type=radio]), textarea, select")];
+
+/** What was last in each section's fields, so leaving a section and coming back finds it as it was. */
+const drafts = new Map<string, string[]>();
+
+/** Remembers what's in `sectionId`'s fields now. */
+export function noteDraft(sectionId: string, root: HTMLElement): void {
+  drafts.set(sectionId, fieldsIn(root).map((f) => f.value));
+}
+
+/** Puts back what was in `sectionId`'s fields when it was left (if the fields still line up), and lets the section catch up. */
+export function restoreDraft(sectionId: string, root: HTMLElement): void {
+  const values = drafts.get(sectionId);
+  const fields = fieldsIn(root);
+  if (!values || values.length !== fields.length) return;
+  const changed = fields.filter((f, i) => f.value !== values[i] && ((f.value = values[i]), true));
+  for (const f of changed) {
+    if (!f.isConnected) continue;
+    f.dispatchEvent(new Event("input", { bubbles: true }));
+    if (f instanceof HTMLSelectElement) f.dispatchEvent(new Event("change", { bubbles: true }));
   }
 }
 

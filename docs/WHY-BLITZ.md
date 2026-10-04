@@ -34,7 +34,7 @@ The complaints that came up across all of them:
 | Escalation | The **warning ladder**: an automatic mute at 3 standing warnings (growing each time), and a kick or ban at steps you choose. Auto-mod repeat offenders get a 10-minute cool-off |
 | Phishing protection | The **scam shield**: fake Nitro/Steam gifts, lookalike sites (dlscord, steamcommunlty), masked links, gift bait. The sender is muted for an hour and told their account may be hacked. It checks the team's links too |
 | Raid protection | The **raid shield**: rises on a burst of joins, holds newcomers to no links, no mentions and slow posting, alerts the team. New members wait 10 minutes before posting links |
-| Lockdown and slowmode | `!lockdown #channel 30m` or `all`, `!slowmode 30s`, kept by Blitz itself and ending on their own |
+| Lockdown and slowmode | `!lockdown #general #memes 30m` (any number of channels) or `all`, `!slowmode 30s`, picked by tapping channels in the menu, kept by Blitz itself and ending on their own |
 | A wide auto-mod | Floods, copy-paste spam, mass mentions, invites, blocked words, glitch text; opt-in caps, emoji floods and walls of text |
 | Fewer false alarms | With Claude as Blitz's brain, **blocked-word hits are checked in context** before anything is removed |
 | Telling members why | Members get a notification with the reason for any warning, mute, kick or ban, and how to appeal |

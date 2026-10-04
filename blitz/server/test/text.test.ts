@@ -4,6 +4,8 @@ import {
   channelMention,
   defuseMentions,
   fillTemplate,
+  leadingChannels,
+  listWords,
   mentionedChannelIds,
   mentionedRoleIds,
   mentionedUserIds,
@@ -23,6 +25,17 @@ test("mentions round-trip through the parsers", () => {
   assert.deepEqual(mentionedChannelIds(text), ["C1"]);
   assert.deepEqual(mentionedRoleIds(text), ["R1"]);
   assert.ok(text.includes("[@Bo admin](root://user/U2)"), "brackets in names are stripped so the link stays valid");
+});
+
+test("several channels at the start of a command, and what follows them", () => {
+  const ch = (id: string) => channelMention(id, id);
+  assert.deepEqual(leadingChannels(`${ch("C1")} ${ch("C2")}, ${ch("C3")} and ${ch("C4")} 30m raid`), { ids: ["C1", "C2", "C3", "C4"], rest: "30m raid" });
+  assert.deepEqual(leadingChannels(`${ch("C1")} ${ch("C1")} off`), { ids: ["C1"], rest: "off" }, "once each");
+  assert.deepEqual(leadingChannels(`${ch("C1")} 1h go to ${ch("C2")} instead`), { ids: ["C1"], rest: `1h go to ${ch("C2")} instead` }, "a channel in the reason isn't locked");
+  assert.deepEqual(leadingChannels("30s"), { ids: [], rest: "30s" });
+  assert.equal(listWords(["a"]), "a");
+  assert.equal(listWords(["a", "b"]), "a and b");
+  assert.equal(listWords(["a", "b", "c"]), "a, b and c");
 });
 
 test("defuseMentions keeps the text but removes the links", () => {

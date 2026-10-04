@@ -40,6 +40,29 @@ export function mentionedChannelIds(text: string): string[] {
   return [...text.matchAll(CHANNEL_MENTION)].map((m) => m[1]);
 }
 
+const LEADING_CHANNEL = /^\s*(?:(?:,|&|and\b)\s*)?\[#[^\]]*\]\(root:\/\/channel\/([^)\s]+)\)/i;
+
+/**
+ * The channels a command starts with ("#general #memes, #art 30m raid"), once
+ * each, and what follows them. A channel mentioned later on (in a reason, say)
+ * isn't one of them.
+ */
+export function leadingChannels(text: string): { ids: string[]; rest: string } {
+  const ids: string[] = [];
+  let rest = text;
+  for (let m = LEADING_CHANNEL.exec(rest); m; m = LEADING_CHANNEL.exec(rest)) {
+    if (!ids.includes(m[1])) ids.push(m[1]);
+    rest = rest.slice(m[0].length);
+  }
+  return { ids, rest: rest.replace(/^\s*,?\s*/, "").trim() };
+}
+
+/** "a", "a and b", "a, b and c". */
+export function listWords(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
 /** Turns mention links into plain text, so re-posted text never pings anyone. */
 export function defuseMentions(text: string): string {
   return text.replace(/\[([^\]]*)\]\(root:\/\/[^)\s]*\)/g, "$1");

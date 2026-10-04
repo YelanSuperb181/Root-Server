@@ -72,6 +72,116 @@ export function select(options: Array<[value: string, label: string]>, value = "
   return s;
 }
 
+/** Enter in a one-line field (Ctrl or ⌘ Enter in a bigger one, where Enter is a new line) presses `button`. */
+export function submitOn(field: HTMLInputElement | HTMLTextAreaElement, button: HTMLButtonElement): void {
+  const big = field instanceof HTMLTextAreaElement;
+  (field as HTMLElement).addEventListener("keydown", (e: KeyboardEvent) => {
+    if (e.key !== "Enter" || e.isComposing || (big && !(e.ctrlKey || e.metaKey))) return;
+    e.preventDefault();
+    button.click();
+  });
+  if (big && !button.title) button.title = "Ctrl Enter";
+}
+
+export interface ChannelChoice {
+  id: string;
+  name: string;
+  /** The category it's in (channels are grouped by it). */
+  group: string;
+}
+
+/**
+ * Tap channels to pick as many as you like, or a whole category at once.
+ * `picked` belongs to the caller, so the choice survives redraws; `marks`
+ * puts a small sign on a channel (🔒 already locked, say); `onChange` runs
+ * after every change.
+ */
+export function channelPicker(channels: ChannelChoice[], picked: Set<string>, onChange: () => void, marks: Record<string, { sign: string; label: string }> = {}): HTMLElement {
+  for (const id of [...picked]) if (!channels.some((c) => c.id === id)) picked.delete(id);
+  const chips = new Map<string, HTMLButtonElement>();
+  const groupLabels: Array<{ el: HTMLButtonElement; ids: string[] }> = [];
+  const count = h("span.mchanpick-count");
+  const sync = () => {
+    for (const [id, chip] of chips) chip.setAttribute("aria-pressed", String(picked.has(id)));
+    for (const g of groupLabels) g.el.setAttribute("aria-pressed", String(g.ids.every((id) => picked.has(id))));
+    count.textContent = picked.size ? `${picked.size} picked` : "None picked yet";
+  };
+  const change = () => {
+    sync();
+    onChange();
+  };
+  const groups = new Map<string, ChannelChoice[]>();
+  for (const c of channels) {
+    const list = groups.get(c.group) ?? [];
+    list.push(c);
+    groups.set(c.group, list);
+  }
+  const body = h("div.mchanpick-groups");
+  const groupEls: Array<{ el: HTMLElement; ids: string[] }> = [];
+  for (const [name, list] of groups) {
+    const ids = list.map((c) => c.id);
+    const groupEl = h("div.mchanpick-group");
+    if (name && groups.size > 1) {
+      const label = h("button.mchanpick-label", { type: "button", title: `Pick every channel in ${name} (again to drop them)` }, name);
+      label.addEventListener("click", () => {
+        const all = ids.every((id) => picked.has(id));
+        for (const id of ids) all ? picked.delete(id) : picked.add(id);
+        change();
+      });
+      groupLabels.push({ el: label, ids });
+      groupEl.append(label);
+    }
+    const row = h("div.mchanpick-chips");
+    for (const c of list) {
+      const mark = marks[c.id];
+      const chip = h("button.mchan", { type: "button", "aria-pressed": "false", title: mark?.label }, `#${c.name}`, mark && h("span.mchan-mark", { "aria-label": mark.label }, mark.sign));
+      chip.addEventListener("click", () => {
+        picked.has(c.id) ? picked.delete(c.id) : picked.add(c.id);
+        change();
+      });
+      chips.set(c.id, chip);
+      row.append(chip);
+    }
+    groupEl.append(row);
+    groupEls.push({ el: groupEl, ids });
+    body.append(groupEl);
+  }
+  // A filter, once there are more channels than fit at a glance; "All" picks what it shows.
+  const filter = channels.length > 12 ? input("Filter channels…", "", 40) : undefined;
+  const shown = () => channels.filter((c) => !chips.get(c.id)!.hidden);
+  const nothing = h("p.mnote", { hidden: true, text: "No channel by that name." });
+  body.append(nothing);
+  filter?.addEventListener("input", () => {
+    const q = filter.value.trim().toLowerCase().replace(/^#/, "");
+    for (const c of channels) chips.get(c.id)!.hidden = !!q && !c.name.toLowerCase().includes(q) && !c.group.toLowerCase().includes(q);
+    for (const g of groupEls) g.el.hidden = g.ids.every((id) => chips.get(id)!.hidden);
+    nothing.hidden = groupEls.some((g) => !g.el.hidden);
+  });
+  const top = h(
+    "div.mchanpick-top",
+    {},
+    count,
+    filter,
+    button("All", () => {
+      for (const c of shown()) picked.add(c.id);
+      change();
+    }, "ghost.small"),
+    button("None", () => {
+      picked.clear();
+      change();
+    }, "ghost.small"),
+  );
+  sync();
+  return h("div.mchanpick", {}, top, body);
+}
+
+/** Filter pills above a list (one picked), spaced for that spot. */
+export function filters(options: Array<[value: string, label: string]>, value: string, onPick: (v: string) => void): HTMLElement {
+  const row = segmented(options, value, onPick);
+  row.classList.add("mfilter");
+  return row;
+}
+
 /** A row of pill buttons, one picked. */
 export function segmented(options: Array<[value: string, label: string]>, value: string, onPick: (v: string) => void): HTMLElement {
   const row = h("div.mseg", { role: "radiogroup" });
@@ -94,32 +204,51 @@ export function memberPicker(ctx: SectionContext, onPick: (m: MemberLine | undef
   const field = input("Search by name…", "", 64);
   let timer: ReturnType<typeof setTimeout> | undefined;
   let asked = 0;
+  /** Enter was pressed before the results came: pick the first one when they do. */
+  let pickFirst = false;
+  /** What the results showing are for. */
+  let shownFor = "";
   const showPicked = (m: MemberLine) => {
     box.replaceChildren(
       h("div.mpicked", {}, avatar(m.userId, m.name, 26), h("span", { text: m.name }), button("✕", () => onPick(undefined), "ghost.small")),
     );
   };
+  const search = async (q: string) => {
+    const mine = ++asked;
+    const found = await ctx.menu.api.searchMembers(q).catch(() => []);
+    if (mine !== asked) return;
+    if (pickFirst && found[0]) return onPick(found[0]);
+    pickFirst = false;
+    shownFor = q;
+    results.replaceChildren(
+      ...(found.length
+        ? found.map((m) => {
+            const row = h("button.mpicker-row", { type: "button" }, avatar(m.userId, m.name, 24), h("span", { text: m.name }));
+            row.addEventListener("click", () => onPick(m));
+            return row;
+          })
+        : [h("p.mnote", { text: "Nobody by that name." })]),
+    );
+  };
   field.addEventListener("input", () => {
     if (timer) clearTimeout(timer);
+    pickFirst = false;
     const q = field.value.trim();
     if (!q) {
       results.replaceChildren();
       return;
     }
-    timer = setTimeout(async () => {
-      const mine = ++asked;
-      const found = await ctx.menu.api.searchMembers(q).catch(() => []);
-      if (mine !== asked) return;
-      results.replaceChildren(
-        ...(found.length
-          ? found.map((m) => {
-              const row = h("button.mpicker-row", { type: "button" }, avatar(m.userId, m.name, 24), h("span", { text: m.name }));
-              row.addEventListener("click", () => onPick(m));
-              return row;
-            })
-          : [h("p.mnote", { text: "Nobody by that name." })]),
-      );
-    }, 220);
+    timer = setTimeout(() => void search(q), 220);
+  });
+  // Enter takes the first match (searching right away if the results aren't in yet).
+  field.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" || e.isComposing || !field.value.trim()) return;
+    e.preventDefault();
+    const first = results.querySelector<HTMLButtonElement>(".mpicker-row");
+    if (first && shownFor === field.value.trim()) return first.click();
+    if (timer) clearTimeout(timer);
+    pickFirst = true;
+    void search(field.value.trim());
   });
   if (picked) showPicked(picked);
   else box.append(field, results);

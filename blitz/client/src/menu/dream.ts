@@ -6,7 +6,7 @@
 
 import { accentOf, accentStyle, countUp, enter, glint, spotlight, stardustShower, swapIn } from "./flair";
 import { Menu } from "./menu";
-import { keepFields } from "./panel";
+import { afresh, keepFields, noteDraft, restoreDraft } from "./panel";
 import { offlineCard } from "./pieces";
 import { Section, SectionContext, sectionsFor } from "./sections";
 import { h, rich } from "./ui";
@@ -285,6 +285,9 @@ export class DreamMenu {
     this.page = page;
     root.append(h("div.dream-page-wrap", {}, page));
     spotlight(body);
+    const typed = () => noteDraft(section.id, body);
+    body.addEventListener("input", typed);
+    body.addEventListener("change", typed);
     enter(body, 1100);
     this.drawPage();
 
@@ -350,14 +353,16 @@ export class DreamMenu {
     const replyAt = menu.reply?.at ?? 0;
     const sameSection = body.dataset.section === section.id;
     if (!sameSection || this.drawn.data !== menu.data || !menu.data) {
-      const keep = sameSection && this.drawn.reply === replyAt ? keepFields(body) : undefined;
+      const keep = sameSection && !afresh(this.drawn.reply, menu) ? keepFields(body) : undefined;
       if (sameSection) swapIn(body, this.render(section, body));
       else body.replaceChildren(this.render(section, body));
       body.dataset.section = section.id;
       keep?.();
+      if (!sameSection) restoreDraft(section.id, body);
+      noteDraft(section.id, body);
       countUp(body);
+      this.drawn = { data: menu.data, reply: replyAt };
     }
-    this.drawn = { data: menu.data, reply: replyAt };
     const replyBox = page.querySelector<HTMLElement>(".dream-reply")!;
     const reply = menu.reply;
     if (reply && reply.at >= this.openedAt && Date.now() - reply.at < 9000) {
@@ -381,6 +386,7 @@ export class DreamMenu {
       redraw: () => {
         if (this.section !== section) return;
         swapIn(body, this.render(section, body));
+        noteDraft(section.id, body);
         countUp(body);
       },
       go: (id) => {
