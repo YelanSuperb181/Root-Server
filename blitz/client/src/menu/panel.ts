@@ -2,7 +2,7 @@
 // down its side (the team's tools in their own group), the open section, and
 // Blitz's reply to whatever was just picked.
 
-import { accentStyle, countUp, spotlight } from "./flair";
+import { accentStyle, countUp, enter, spotlight, swapIn } from "./flair";
 import { Menu } from "./menu";
 import { offlineCard } from "./pieces";
 import { Section, SectionContext, sectionsFor } from "./sections";
@@ -20,7 +20,6 @@ export class MenuPanel {
   /** The glowing marker that slides to the open section's tab. */
   private marker: HTMLElement;
   private markerReady = false;
-  private enterTimer: ReturnType<typeof setTimeout> | undefined;
   /** Opens the quick finder (set by whoever made the panel). */
   onFind: (() => void) | undefined;
   private current = "you";
@@ -102,17 +101,14 @@ export class MenuPanel {
     if (!same || this.drawn.data !== menu.data || !menu.data) {
       // A refresh in the background keeps what's being typed; after something's picked, the forms start afresh.
       const keep = same && this.drawn.reply === replyAt ? keepFields(this.content) : undefined;
-      this.content.replaceChildren(this.body(section));
+      if (same) swapIn(this.content, this.body(section));
+      else {
+        // A new section's cards float in one after another.
+        this.content.replaceChildren(this.body(section));
+        enter(this.content, 900);
+      }
       keep?.();
       countUp(this.content);
-      if (!same) {
-        // A new section's cards float in one after another.
-        this.content.classList.remove("enter");
-        void this.content.offsetWidth;
-        this.content.classList.add("enter");
-        if (this.enterTimer) clearTimeout(this.enterTimer);
-        this.enterTimer = setTimeout(() => this.content.classList.remove("enter"), 900);
-      }
     }
     this.drawn = { section: section.id, data: menu.data, reply: replyAt };
     this.drawReply();
@@ -150,7 +146,9 @@ export class MenuPanel {
       menu,
       data: menu.data,
       redraw: () => {
-        if (this.current === section.id) this.content.replaceChildren(this.body(section));
+        if (this.current !== section.id) return;
+        swapIn(this.content, this.body(section));
+        countUp(this.content);
       },
       go: (id) => this.open(id),
     };

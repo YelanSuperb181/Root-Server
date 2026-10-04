@@ -4,7 +4,7 @@
 // floating page with Blitz hovering beside it; send it away and it dissolves
 // back into Blitz in a stream of light.
 
-import { accentOf, accentStyle, countUp, glint, spotlight, stardustShower } from "./flair";
+import { accentOf, accentStyle, countUp, enter, glint, spotlight, stardustShower, swapIn } from "./flair";
 import { Menu } from "./menu";
 import { keepFields } from "./panel";
 import { offlineCard } from "./pieces";
@@ -285,8 +285,7 @@ export class DreamMenu {
     this.page = page;
     root.append(h("div.dream-page-wrap", {}, page));
     spotlight(body);
-    body.classList.add("enter");
-    setTimeout(() => body.classList.remove("enter"), 1100);
+    enter(body, 1100);
     this.drawPage();
 
     // Blitz hovers beside the page (above it on narrow screens), looking at it.
@@ -352,7 +351,8 @@ export class DreamMenu {
     const sameSection = body.dataset.section === section.id;
     if (!sameSection || this.drawn.data !== menu.data || !menu.data) {
       const keep = sameSection && this.drawn.reply === replyAt ? keepFields(body) : undefined;
-      body.replaceChildren(this.render(section, body));
+      if (sameSection) swapIn(body, this.render(section, body));
+      else body.replaceChildren(this.render(section, body));
       body.dataset.section = section.id;
       keep?.();
       countUp(body);
@@ -379,7 +379,9 @@ export class DreamMenu {
       menu,
       data: menu.data,
       redraw: () => {
-        if (this.section === section) body.replaceChildren(this.render(section, body));
+        if (this.section !== section) return;
+        swapIn(body, this.render(section, body));
+        countUp(body);
       },
       go: (id) => {
         const next = sectionsFor(menu).find((s) => s.id === id);

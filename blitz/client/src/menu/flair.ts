@@ -1,7 +1,8 @@
-// The menu's flourishes: each section's own colour, numbers that count up,
-// a soft spotlight that follows the pointer over cards, Stardust that flies
-// into Blitz (and from Blitz into a dream page it opens), and a glint that
-// follows the pointer over the dream cards.
+// The menu's flourishes: each section's own colour, cards that float in
+// (and carry on through a redraw), numbers that count up, a soft spotlight
+// that follows the pointer over cards, Stardust that flies into Blitz (and
+// from Blitz into a dream page it opens), and a glint that follows the
+// pointer over the dream cards.
 // Everything moves with transforms and opacity only, and only briefly or
 // while the pointer is there, so it stays cheap on computers without a
 // graphics card (Root's desktop app often draws in software).
@@ -55,6 +56,8 @@ export function recentPress(ms = 6000): DOMRect | undefined {
 
 /** Last value shown per counter, so a refresh counts from there (not from 0 again). */
 const shownCounts = new Map<string, number>();
+/** Counters still counting, by key, so a redraw mid-count carries on rather than jumping to the end. */
+const counting = new Map<string, { from: number; to: number; start: number; dur: number }>();
 
 /**
  * Numbers marked `data-count` (and `data-key`, to remember them by) count up
@@ -64,19 +67,60 @@ export function countUp(root: HTMLElement): void {
   for (const el of root.querySelectorAll<HTMLElement>("[data-count]")) {
     const to = Number(el.dataset.count);
     const key = el.dataset.key ?? "";
-    const from = key ? (shownCounts.get(key) ?? 0) : 0;
-    if (key) shownCounts.set(key, to);
-    if (reduced || !Number.isFinite(to) || from === to) continue;
-    const start = performance.now();
-    const dur = Math.min(900, 380 + Math.abs(to - from) * 0.6);
-    const step = (now: number) => {
-      const k = Math.min(1, (now - start) / dur);
-      const eased = 1 - (1 - k) ** 3;
-      el.textContent = Math.round(from + (to - from) * eased).toLocaleString();
-      if (k < 1 && el.isConnected) requestAnimationFrame(step);
+    const running = key ? counting.get(key) : undefined;
+    let count = running && running.to === to && performance.now() < running.start + running.dur ? running : undefined;
+    if (!count) {
+      const from = key ? (shownCounts.get(key) ?? 0) : 0;
+      if (key) shownCounts.set(key, to);
+      if (reduced || !Number.isFinite(to) || from === to) continue;
+      count = { from, to, start: performance.now(), dur: Math.min(900, 380 + Math.abs(to - from) * 0.6) };
+      if (key) counting.set(key, count);
+    }
+    const { from, start, dur } = count;
+    const show = (now: number) => {
+      const k = Math.min(1, Math.max(0, (now - start) / dur));
+      el.textContent = Math.round(from + (to - from) * (1 - (1 - k) ** 3)).toLocaleString();
+      return k < 1;
     };
-    el.textContent = from.toLocaleString();
+    const step = (now: number) => {
+      if (show(now) && el.isConnected) requestAnimationFrame(step);
+      else if (counting.get(key) === count && now >= start + dur) counting.delete(key);
+    };
+    show(performance.now());
     requestAnimationFrame(step);
+  }
+}
+
+/** When each container's cards started floating in, and when they stop. */
+const entrances = new WeakMap<HTMLElement, { at: number; timer: ReturnType<typeof setTimeout> }>();
+
+/** The cards in `root` float in one after another (the `.enter` styles), for `ms`. */
+export function enter(root: HTMLElement, ms: number): void {
+  const before = entrances.get(root);
+  if (before) clearTimeout(before.timer);
+  root.classList.remove("enter");
+  void root.offsetWidth; // restart the entrance
+  root.classList.add("enter");
+  const timer = setTimeout(() => {
+    root.classList.remove("enter");
+    entrances.delete(root);
+  }, ms);
+  entrances.set(root, { at: performance.now(), timer });
+}
+
+/**
+ * Puts new contents in `root`, for a redraw of what's already showing (fresh
+ * data, or something loaded after the section opened). While the cards are
+ * still floating in, the new ones carry on from where the old ones were,
+ * rather than starting again from nothing, which made the section flicker.
+ */
+export function swapIn(root: HTMLElement, ...nodes: Node[]): void {
+  root.replaceChildren(...nodes);
+  const entering = entrances.get(root);
+  if (!entering || typeof root.getAnimations !== "function") return;
+  const into = performance.now() - entering.at;
+  for (const anim of root.getAnimations({ subtree: true })) {
+    if ((anim.effect as KeyframeEffect | null)?.target !== root) anim.currentTime = into;
   }
 }
 
