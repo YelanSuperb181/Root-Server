@@ -131,7 +131,7 @@ In chat, Blitz leaves a matching emoji on your message and replies. Without a ke
 
 **Privacy:** with a key set, messages that mention Blitz, plus the last 12 messages in that channel, are sent to Anthropic's API to work out the answer. Nothing is stored by Blitz; its memory lives only while it runs. Channels you mark private are never sent; Blitz answers there with its wits only. The full details are in the [privacy policy](PRIVACY.md).
 
-Each person's Blitz lives entirely in their own domain window, so it's always smooth, whatever the connection. The only thing it asks Blitz's server for is an answer, when you type to it (if the server can't be reached, it reads your mood from keywords instead). **[Try it in your browser](https://claude.ai/artifact/JjoXEpCC6r2eeme9ZjCi57)**: there, Blitz thinks with Claude only for the page's creator (it asks once); everyone else gets the keyword Blitz. In Root, the brain is whatever key is in the App's settings, which only people who can manage the App can change.
+Each person's Blitz lives entirely in their own domain window, so it's always smooth, whatever the connection. The only thing it asks Blitz's server for is an answer, when you type to it (if the server can't be reached, it reads your mood from keywords instead). To try it without Root, run `npm run demo` in `blitz/` ([two-minute guide](docs/REVIEW.md#see-it-in-two-minutes)): the domain opens in your browser with a made-up community, and Blitz answers with its wits. In Root, the brain is whatever key is in the App's settings, which only people who can manage the App can change.
 
 Root Apps live inside their own channel, so the domain is a channel rather than a window over the rest of Root. Bursting the bubble is how it gets as big as Root lets it.
 
